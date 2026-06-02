@@ -1,0 +1,74 @@
+title: ArchSpec
+description: Static architecture checks for Ruby and Rails.
+url: "https://archspec.dev"
+baseurl: ""
+lang: en-US
+timezone: UTC
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter_opts:
+    block:
+      line_numbers: false
+
+permalink: pretty
+
+theme: jekyll-vitepress-theme
+
+collections:
+  guides:
+    output: true
+    permalink: "/:name/"
+  reference:
+    output: true
+    permalink: "/:name/"
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+  - scope:
+      type: guides
+    values:
+      layout: default
+  - scope:
+      type: reference
+    values:
+      layout: default
+
+jekyll_vitepress:
+  branding:
+    site_title: ArchSpec
+  syntax:
+    light_theme: github
+    dark_theme: github.dark
+  doc_footer:
+    enabled: true
+    previous_label: Previous page
+    next_label: Next page
+  last_updated:
+    enabled: true
+    text: Last updated
+    format: "%-d %b %Y"
+  edit_link:
+    enabled: true
+    pattern: "https://github.com/crmne/archspec/edit/main/docs/:path"
+    text: Edit this page on GitHub
+  github_star:
+    enabled: true
+    repository: crmne/archspec
+    text: Star
+    show_count: true
+  labels:
+    outline: On this page
+    sidebar_menu: Menu
+    return_to_top: Return to top
+    skip_to_content: Skip to content
+    appearance_menu: Appearance
+    switch_to_dark: Switch to dark theme
+    switch_to_light: Switch to light theme
+
+plugins:
+  - jekyll-vitepress-theme

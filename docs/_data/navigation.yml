@@ -1,0 +1,10 @@
+- title: Guides
+  url: /getting-started/
+  collections:
+    - guides
+- title: Reference
+  url: /configuration/
+  collections:
+    - reference
+- title: GitHub
+  url: https://github.com/crmne/archspec

@@ -17,7 +17,8 @@ module ArchSpec
         graph.add_file(
           path: path,
           expected_constant: expected_constant_for(path),
-          parse_errors: result.errors.map(&:message)
+          parse_errors: parse_errors_for(path, result.errors),
+          suppressions: suppressions_for(result.comments)
         )
 
         SourceVisitor.new(graph, path).visit(result.value) if result.value
@@ -74,6 +75,77 @@ module ArchSpec
       path.split("/").map do |part|
         part.split("_").map { |word| word[0] ? word[0].upcase + word[1..] : word }.join
       end.join("::")
+    end
+
+    def suppressions_for(comments)
+      SuppressionParser.new(comments).call
+    end
+
+    def parse_errors_for(path, errors)
+      errors.map do |error|
+        ParseError.new(error.message, SourceLocation.from_prism(path, error.location))
+      end
+    end
+
+    class SuppressionParser
+      DISABLE_PATTERN = /\Aarchspec:disable(?:-(next-line|line))?(?:\s+([a-z0-9_.-]+|\*))?(?:\s+--\s*(.+))?\z/i
+      ENABLE_PATTERN = /\Aarchspec:enable(?:\s+([a-z0-9_.-]+|\*))?\z/i
+
+      def initialize(comments)
+        @comments = comments
+      end
+
+      def call
+        suppressions = []
+        active = Hash.new { |hash, key| hash[key] = [] }
+
+        sorted_comments.each do |comment|
+          text = comment.slice.sub(/\A#\s?/, "").strip
+          line = comment.location.start_line
+
+          if (match = text.match(DISABLE_PATTERN))
+            mode, rule, reason = match.captures
+            rule = normalize_rule(rule)
+
+            case mode
+            when "line"
+              suppressions << Suppression.new(rule, line, line, reason)
+            when "next-line"
+              suppressions << Suppression.new(rule, line + 1, line + 1, reason)
+            else
+              active[rule] << [line + 1, reason]
+            end
+          elsif (match = text.match(ENABLE_PATTERN))
+            rule = normalize_rule(match[1])
+            if active[rule].any?
+              start_line, reason = active[rule].pop
+              suppressions << Suppression.new(rule, start_line, [line - 1, start_line].max, reason)
+            end
+          end
+        end
+
+        active.each do |rule, entries|
+          entries.each do |start_line, reason|
+            suppressions << Suppression.new(rule, start_line, Float::INFINITY, reason)
+          end
+        end
+
+        suppressions
+      end
+
+      private
+
+      attr_reader :comments
+
+      def sorted_comments
+        comments.sort_by { |comment| [comment.location.start_line, comment.location.start_column] }
+      end
+
+      def normalize_rule(rule)
+        return nil if rule.nil? || rule == "*"
+
+        rule.downcase
+      end
     end
 
     class SourceVisitor

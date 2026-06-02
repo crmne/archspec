@@ -38,3 +38,13 @@ archspec check --format json
 archspec check --update-baseline
 archspec explain app/models/user.rb
 ```
+
+Local suppressions are intentionally narrow:
+
+```ruby
+# archspec:disable-next-line dependencies.forbid -- legacy admin export
+Admin::UsersController
+```
+
+Read the short guides in `docs/` for setup, Rails usage, and reviewing
+AI-written code with the same architecture rules as hand-written code.

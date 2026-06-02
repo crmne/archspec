@@ -122,6 +122,77 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_disable_next_line_suppresses_one_rule
+    with_project do |root|
+      write "#{root}/app/models/user.rb", <<~RUBY
+        class User
+          # archspec:disable-next-line dependencies.forbid -- migrating old controller coupling
+          UsersController
+          OtherController
+        end
+      RUBY
+
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+      write "#{root}/app/controllers/other_controller.rb", "class OtherController; end\n"
+
+      definition = ArchSpec.define do
+        component :models, in: "app/models/**/*.rb"
+        component :controllers, in: "app/controllers/**/*.rb"
+        models.cannot_use :controllers
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/OtherController/, diagnostics.first.evidence)
+    end
+  end
+
+  def test_block_suppression_suppresses_until_enable
+    with_project do |root|
+      write "#{root}/app/services/create_user.rb", <<~RUBY
+        class CreateUser
+          # archspec:disable methods.forbid -- temporary controller API cleanup
+          def call
+            render :new
+          end
+          # archspec:enable methods.forbid
+
+          def rollback
+            redirect_to "/"
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :services, in: "app/services/**/*.rb"
+        services.cannot_call :render, :redirect_to
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/redirect_to/, diagnostics.first.message)
+    end
+  end
+
+  def test_parse_errors_are_reported
+    with_project do |root|
+      write "#{root}/app/models/user.rb", <<~RUBY
+        class User
+          def call
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: "app/models/**/*.rb"
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert diagnostics.any? { |diagnostic| diagnostic.rule == "parser.syntax" }
+    end
+  end
+
   private
 
   def diagnostics_for(definition, root)

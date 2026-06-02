@@ -59,7 +59,31 @@ class CLITest < ArchSpecTest
 
       assert_equal 0, status
       assert_match(/expected constant: User/, output.string)
-      assert_match(/components: models/, output.string)
+      assert_match(/components:\n    models: matched file pattern app\/models\/\*\*\/\*\.rb/, output.string)
+    end
+  end
+
+  def test_explain_file_includes_suppressions
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        ArchSpec.define do
+          component :models, in: "app/models/**/*.rb"
+        end
+      RUBY
+
+      write "#{root}/app/models/user.rb", <<~RUBY
+        class User
+          # archspec:disable-next-line dependencies.forbid -- accepted boundary
+          UsersController
+        end
+      RUBY
+
+      output = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.call(["explain", "app/models/user.rb"], output: output, error: StringIO.new) }
+
+      assert_equal 0, status
+      assert_match(/suppressions:/, output.string)
+      assert_match(/dependencies\.forbid on line 3 -- accepted boundary/, output.string)
     end
   end
 end

@@ -154,7 +154,9 @@ module ArchSpec
         output.puts file.relative_path
         output.puts "  expected constant: #{file.expected_constant || "(none)"}"
         output.puts "  defined constants: #{graph.constants_for_path(path).map(&:name).join(", ")}"
-        output.puts "  components: #{graph.component_names_for_path(path).to_a.sort.join(", ")}"
+        output_parse_errors(file)
+        output_component_reasons(graph.component_assignment_reasons_for_path(path))
+        output_suppressions(file)
         output.puts "  outgoing facts:"
 
         graph.edges.select { |edge| edge.from_path == path }.each do |edge|
@@ -168,11 +170,51 @@ module ArchSpec
           output.puts constant.name
           output.puts "  kind: #{constant.kind}"
           output.puts "  file: #{constant.location.relative_path(graph.root)}:#{constant.location.line}"
-          output.puts "  components: #{graph.component_names_for_constant(constant.name).to_a.sort.join(", ")}"
+          output_component_reasons(graph.component_assignment_reasons_for_constant(constant.name))
           output.puts "  superclass: #{constant.superclass || "(none)"}"
           output.puts "  instance methods: #{constant.instance_methods.to_a.sort.join(", ")}"
           output.puts "  class methods: #{constant.class_methods.to_a.sort.join(", ")}"
         end
+      end
+    end
+
+    def output_component_reasons(assignments)
+      if assignments.empty?
+        output.puts "  components: (none)"
+        return
+      end
+
+      output.puts "  components:"
+      assignments.sort_by { |name, _reasons| name.to_s }.each do |name, reasons|
+        output.puts "    #{name}: #{reasons.empty? ? "(no recorded reason)" : reasons.join("; ")}"
+      end
+    end
+
+    def output_suppressions(file)
+      return if file.suppressions.empty?
+
+      output.puts "  suppressions:"
+      file.suppressions.each do |suppression|
+        line_range =
+          if suppression.end_line == Float::INFINITY
+            "#{suppression.start_line}-EOF"
+          elsif suppression.start_line == suppression.end_line
+            suppression.start_line
+          else
+            "#{suppression.start_line}-#{suppression.end_line}"
+          end
+        rule = suppression.rule || "*"
+        reason = suppression.reason ? " -- #{suppression.reason}" : ""
+        output.puts "    #{rule} on line #{line_range}#{reason}"
+      end
+    end
+
+    def output_parse_errors(file)
+      return if file.parse_errors.empty?
+
+      output.puts "  parse errors:"
+      file.parse_errors.each do |parse_error|
+        output.puts "    #{parse_error.location.line}:#{parse_error.location.column} #{parse_error.message}"
       end
     end
 

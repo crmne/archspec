@@ -2,14 +2,25 @@ require "pathname"
 require "set"
 
 module ArchSpec
-  class SourceFile
-    attr_reader :path, :relative_path, :expected_constant, :parse_errors
+  ParseError = Data.define(:message, :location)
 
-    def initialize(root:, path:, expected_constant:, parse_errors:)
+  Suppression = Data.define(:rule, :start_line, :end_line, :reason) do
+    def matches?(diagnostic)
+      (rule.nil? || rule == diagnostic.rule) &&
+        diagnostic.location.line >= start_line &&
+        diagnostic.location.line <= end_line
+    end
+  end
+
+  class SourceFile
+    attr_reader :path, :relative_path, :expected_constant, :parse_errors, :suppressions
+
+    def initialize(root:, path:, expected_constant:, parse_errors:, suppressions:)
       @path = path
       @relative_path = Pathname(path).relative_path_from(Pathname(root)).to_s
       @expected_constant = expected_constant
       @parse_errors = parse_errors
+      @suppressions = suppressions
     end
   end
 
@@ -55,20 +66,24 @@ module ArchSpec
   Edge = Data.define(:type, :from_path, :from_constant, :to, :location, :confidence)
 
   class Component
-    attr_reader :name, :files, :constants
+    attr_reader :name, :files, :constants, :file_reasons, :constant_reasons
 
     def initialize(name)
       @name = name.to_sym
       @files = Set.new
       @constants = Set.new
+      @file_reasons = Hash.new { |hash, key| hash[key] = Set.new }
+      @constant_reasons = Hash.new { |hash, key| hash[key] = Set.new }
     end
 
-    def add_file(path)
+    def add_file(path, reason: nil)
       files.add(path)
+      file_reasons[path].add(reason) if reason
     end
 
-    def add_constant(name)
+    def add_constant(name, reason: nil)
       constants.add(name)
+      constant_reasons[name].add(reason) if reason
     end
   end
 
@@ -92,12 +107,13 @@ module ArchSpec
       @components = {}
     end
 
-    def add_file(path:, expected_constant:, parse_errors:)
+    def add_file(path:, expected_constant:, parse_errors:, suppressions: [])
       files[path] = SourceFile.new(
         root: root,
         path: path,
         expected_constant: expected_constant,
-        parse_errors: parse_errors
+        parse_errors: parse_errors,
+        suppressions: suppressions
       )
     end
 
@@ -131,14 +147,16 @@ module ArchSpec
         component = Component.new(spec.name)
 
         spec.file_patterns.each do |pattern|
-          each_matching_file(pattern) { |path| component.add_file(path) }
+          each_matching_file(pattern) { |path| component.add_file(path, reason: "matched file pattern #{pattern}") }
         end
 
         constants.each do |constant|
-          next unless component.files.include?(constant.path) || spec.matches_constant?(constant.name)
+          matched_file = component.files.include?(constant.path)
+          matched_constant = spec.matches_constant?(constant.name)
+          next unless matched_file || matched_constant
 
-          component.add_file(constant.path)
-          component.add_constant(constant.name)
+          component.add_file(constant.path, reason: "defines #{constant.name}") if matched_constant
+          component.add_constant(constant.name, reason: matched_file ? "defined in matched file" : "matched namespace/constant selector")
         end
 
         @components[component.name] = component
@@ -208,6 +226,28 @@ module ArchSpec
       end
 
       pairs
+    end
+
+    def component_assignment_reasons_for_path(path)
+      components.values.each_with_object({}) do |component, reasons|
+        next unless component.files.include?(path)
+
+        reasons[component.name] = component.file_reasons[path].to_a.sort
+      end
+    end
+
+    def component_assignment_reasons_for_constant(name)
+      normalized = normalize_constant(name)
+
+      components.values.each_with_object({}) do |component, reasons|
+        next unless component.constants.include?(normalized)
+
+        reasons[component.name] = component.constant_reasons[normalized].to_a.sort
+      end
+    end
+
+    def suppressed?(diagnostic)
+      files[diagnostic.location.path]&.suppressions&.any? { |suppression| suppression.matches?(diagnostic) }
     end
 
     private

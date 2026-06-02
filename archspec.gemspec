@@ -7,14 +7,19 @@ Gem::Specification.new do |spec|
 
   spec.summary = "Architecture fitness functions for Ruby and Rails."
   spec.description = "Static, convention-aware architecture checks for Ruby and Rails codebases."
+  spec.homepage = "https://archspec.dev"
   spec.license = "MIT"
 
   spec.required_ruby_version = ">= 3.3"
 
-  spec.metadata["allowed_push_host"] = "https://rubygems.org"
+  spec.metadata["homepage_uri"] = spec.homepage
+  spec.metadata["source_code_uri"] = "https://github.com/crmne/archspec"
+  spec.metadata["changelog_uri"] = "#{spec.metadata["source_code_uri"]}/releases"
+  spec.metadata["documentation_uri"] = "#{spec.homepage}/getting-started/"
+  spec.metadata["bug_tracker_uri"] = "#{spec.metadata["source_code_uri"]}/issues"
   spec.metadata["rubygems_mfa_required"] = "true"
 
-  spec.files = Dir["exe/*", "lib/**/*.rb", "README.md", "LICENSE.txt"]
+  spec.files = Dir["exe/*", "lib/**/*.rb", "README.md", "LICENSE.txt"].select { |file| File.file?(file) }
   spec.bindir = "exe"
   spec.executables = ["archspec"]
   spec.require_paths = ["lib"]
