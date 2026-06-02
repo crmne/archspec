@@ -3,7 +3,8 @@ require_relative "lib/archspec/version"
 Gem::Specification.new do |spec|
   spec.name = "archspec"
   spec.version = ArchSpec::VERSION
-  spec.authors = ["ArchSpec contributors"]
+  spec.authors = ["Carmine Paolino"]
+  spec.email = ["carmine@paolino.me"]
 
   spec.summary = "Architecture fitness functions for Ruby and Rails."
   spec.description = "Static, convention-aware architecture checks for Ruby and Rails codebases."
