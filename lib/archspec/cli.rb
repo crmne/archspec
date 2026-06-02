@@ -1,7 +1,9 @@
 require "optparse"
 
 module ArchSpec
-  class CLI
+  module CLI
+    extend self
+
     CONFIG_FILE = "Archspec.rb"
     TEMPLATE = <<~RUBY
       ArchSpec.define "Application architecture" do
@@ -19,26 +21,17 @@ module ArchSpec
       end
     RUBY
 
-    def self.run(argv, output: $stdout, error: $stderr)
-      new(argv, output: output, error: error).run
-    end
-
-    def initialize(argv, output:, error:)
-      @argv = argv.dup
-      @output = output
-      @error = error
-    end
-
-    def run
+    def run(argv, output: $stdout, error: $stderr)
+      argv = argv.dup
       command = argv.shift || "check"
 
       case command
       when "init"
-        init
+        init(argv, output)
       when "check"
-        check
+        check(argv, output)
       when "explain"
-        explain
+        explain(argv, output)
       when "version", "--version", "-v"
         output.puts ArchSpec::VERSION
         0
@@ -54,9 +47,7 @@ module ArchSpec
 
     private
 
-    attr_reader :argv, :output, :error
-
-    def init
+    def init(argv, output)
       force = argv.delete("--force")
       path = argv.shift || CONFIG_FILE
 
@@ -69,7 +60,7 @@ module ArchSpec
       0
     end
 
-    def check
+    def check(argv, output)
       options = {
         config: CONFIG_FILE,
         format: "text",
@@ -84,10 +75,10 @@ module ArchSpec
       parser.parse!(argv)
 
       definition, root = load_definition(options[:config])
-      graph = Analyzer.new(definition, root: root).analyze
+      graph = Analyzer.analyze(definition, root: root)
       baseline_path = baseline_path_for(definition, root)
       baseline = options[:update_baseline] ? Baseline.empty(root: root) : Baseline.load(baseline_path, root: root)
-      diagnostics = Evaluator.new(definition, baseline: baseline).evaluate(graph)
+      diagnostics = Evaluator.evaluate(definition, graph, baseline: baseline)
 
       if options[:update_baseline]
         raise Error, "No baseline configured. Add `baseline \".archspec_todo.yml\"` to #{options[:config]}." unless baseline_path
@@ -97,11 +88,11 @@ module ArchSpec
         return 0
       end
 
-      formatter_for(options[:format]).new(output).print(graph: graph, diagnostics: diagnostics)
+      formatter_for(options[:format]).print(output, graph: graph, diagnostics: diagnostics)
       diagnostics.empty? ? 0 : 1
     end
 
-    def explain
+    def explain(argv, output)
       options = { config: CONFIG_FILE }
       parser = OptionParser.new do |parser|
         parser.on("--config PATH") { |value| options[:config] = value }
@@ -112,8 +103,8 @@ module ArchSpec
       raise Error, "Usage: archspec explain PATH_OR_CONSTANT" unless subject
 
       definition, root = load_definition(options[:config])
-      graph = Analyzer.new(definition, root: root).analyze
-      explain_subject(graph, subject)
+      graph = Analyzer.analyze(definition, root: root)
+      explain_subject(output, graph, subject)
       0
     end
 
@@ -146,7 +137,7 @@ module ArchSpec
       end
     end
 
-    def explain_subject(graph, subject)
+    def explain_subject(output, graph, subject)
       path = File.expand_path(subject, graph.root)
 
       if graph.files.key?(path)
@@ -154,9 +145,9 @@ module ArchSpec
         output.puts file.relative_path
         output.puts "  expected constant: #{file.expected_constant || "(none)"}"
         output.puts "  defined constants: #{graph.constants_for_path(path).map(&:name).join(", ")}"
-        output_parse_errors(file)
-        output_component_reasons(graph.component_assignment_reasons_for_path(path))
-        output_suppressions(file)
+        output_parse_errors(output, file)
+        output_component_reasons(output, graph.component_assignment_reasons_for_path(path))
+        output_suppressions(output, file)
         output.puts "  outgoing facts:"
 
         graph.edges.select { |edge| edge.from_path == path }.each do |edge|
@@ -170,7 +161,7 @@ module ArchSpec
           output.puts constant.name
           output.puts "  kind: #{constant.kind}"
           output.puts "  file: #{constant.location.relative_path(graph.root)}:#{constant.location.line}"
-          output_component_reasons(graph.component_assignment_reasons_for_constant(constant.name))
+          output_component_reasons(output, graph.component_assignment_reasons_for_constant(constant.name))
           output.puts "  superclass: #{constant.superclass || "(none)"}"
           output.puts "  instance methods: #{constant.instance_methods.to_a.sort.join(", ")}"
           output.puts "  class methods: #{constant.class_methods.to_a.sort.join(", ")}"
@@ -178,7 +169,7 @@ module ArchSpec
       end
     end
 
-    def output_component_reasons(assignments)
+    def output_component_reasons(output, assignments)
       if assignments.empty?
         output.puts "  components: (none)"
         return
@@ -190,7 +181,7 @@ module ArchSpec
       end
     end
 
-    def output_suppressions(file)
+    def output_suppressions(output, file)
       return if file.suppressions.empty?
 
       output.puts "  suppressions:"
@@ -209,7 +200,7 @@ module ArchSpec
       end
     end
 
-    def output_parse_errors(file)
+    def output_parse_errors(output, file)
       return if file.parse_errors.empty?
 
       output.puts "  parse errors:"

@@ -24,7 +24,7 @@ class AnalyzerTest < ArchSpecTest
         component :models, in: "app/models/**/*.rb"
       end
 
-      graph = ArchSpec::Analyzer.new(definition, root: root).analyze
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
 
       assert_equal ["Billing", "Billing::Invoice", "User"], graph.constants.map(&:name).sort
       assert_equal ["User"], graph.constants_named("User").map(&:name)
@@ -48,7 +48,7 @@ class AnalyzerTest < ArchSpecTest
         component :services, in: "app/services/**/*.rb"
       end
 
-      graph = ArchSpec::Analyzer.new(definition, root: root).analyze
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
       file = graph.files.fetch("#{root}/app/services/billing/create_invoice.rb")
 
       assert_equal "Billing::CreateInvoice", file.expected_constant

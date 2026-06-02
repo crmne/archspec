@@ -152,5 +152,35 @@ module ArchSpec
         end
       end
     end
+
+    class CannotInstantiateAndInvokeRule
+      attr_reader :source
+
+      def initialize(source)
+        @source = source.to_sym
+      end
+
+      def merge_key
+        [self.class, source]
+      end
+
+      def id
+        "objects.instantiate_and_invoke_forbid"
+      end
+
+      def evaluate(graph)
+        graph.edges.filter_map do |edge|
+          next unless edge.type == :instantiates_and_invokes
+          next unless graph.component_names_for_path(edge.from_path).include?(source)
+
+          Diagnostic.new(
+            rule: id,
+            message: "#{source} must not instantiate and immediately invoke #{edge.to}",
+            location: edge.location,
+            evidence: "#{edge.from_constant || edge.from_path} uses #{edge.to}"
+          )
+        end
+      end
+    end
   end
 end

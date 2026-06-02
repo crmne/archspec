@@ -54,6 +54,7 @@ For projects that avoid anonymous command-object style APIs, forbid method defin
 
 ```ruby
 library.cannot_define :call
+library.cannot_instantiate_and_invoke
 ```
 
 ## Constant Rules

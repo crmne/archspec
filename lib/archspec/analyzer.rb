@@ -3,25 +3,23 @@ require "pathname"
 require "set"
 
 module ArchSpec
-  class Analyzer
-    def initialize(definition, root:)
-      @definition = definition
-      @root = File.expand_path(root)
-    end
+  module Analyzer
+    extend self
 
-    def analyze
+    def analyze(definition, root:)
+      root = File.expand_path(root)
       graph = Graph.new(root)
 
-      ruby_files.each do |path|
+      ruby_files(definition, root).each do |path|
         result = Prism.parse_file(path)
         graph.add_file(
           path: path,
-          expected_constant: expected_constant_for(path),
+          expected_constant: expected_constant_for(path, root),
           parse_errors: parse_errors_for(path, result.errors),
           suppressions: suppressions_for(result.comments)
         )
 
-        SourceVisitor.new(graph, path).visit(result.value) if result.value
+        SourceVisitor.visit(graph, path, result.value) if result.value
       end
 
       graph.assign_components(definition.component_specs.values)
@@ -30,10 +28,8 @@ module ArchSpec
 
     private
 
-    attr_reader :definition, :root
-
-    def ruby_files
-      ignored = ignored_files
+    def ruby_files(definition, root)
+      ignored = ignored_files(definition, root)
 
       definition.analysis_patterns.flat_map do |pattern|
         Dir.glob(File.absolute_path(pattern, root))
@@ -46,13 +42,13 @@ module ArchSpec
       end.sort
     end
 
-    def ignored_files
+    def ignored_files(definition, root)
       definition.ignore_patterns.flat_map do |pattern|
         Dir.glob(File.absolute_path(pattern, root))
       end.select { |path| File.file?(path) }.map { |path| File.expand_path(path) }.to_set
     end
 
-    def expected_constant_for(path)
+    def expected_constant_for(path, root)
       relative = Pathname(path).relative_path_from(Pathname(root)).to_s
       stem =
         case relative
@@ -78,7 +74,7 @@ module ArchSpec
     end
 
     def suppressions_for(comments)
-      SuppressionParser.new(comments).parse
+      SuppressionParser.parse(comments)
     end
 
     def parse_errors_for(path, errors)
@@ -87,19 +83,17 @@ module ArchSpec
       end
     end
 
-    class SuppressionParser
+    module SuppressionParser
+      extend self
+
       DISABLE_PATTERN = /\Aarchspec:disable(?:-(next-line|line))?(?:\s+([a-z0-9_.-]+|\*))?(?:\s+--\s*(.+))?\z/i
       ENABLE_PATTERN = /\Aarchspec:enable(?:\s+([a-z0-9_.-]+|\*))?\z/i
 
-      def initialize(comments)
-        @comments = comments
-      end
-
-      def parse
+      def parse(comments)
         suppressions = []
         active = Hash.new { |hash, key| hash[key] = [] }
 
-        sorted_comments.each do |comment|
+        sorted_comments(comments).each do |comment|
           text = comment.slice.sub(/\A#\s?/, "").strip
           line = comment.location.start_line
 
@@ -135,9 +129,7 @@ module ArchSpec
 
       private
 
-      attr_reader :comments
-
-      def sorted_comments
+      def sorted_comments(comments)
         comments.sort_by { |comment| [comment.location.start_line, comment.location.start_column] }
       end
 
@@ -148,7 +140,9 @@ module ArchSpec
       end
     end
 
-    class SourceVisitor
+    module SourceVisitor
+      extend self
+
       DYNAMIC_MESSAGES = %i[
         class_eval
         const_get
@@ -167,37 +161,30 @@ module ArchSpec
         extend: :extends
       }.freeze
 
-      def initialize(graph, path)
-        @graph = graph
-        @path = path
-      end
-
-      def visit(node, current_constant: nil, namespace: [])
+      def visit(graph, path, node, current_constant: nil, namespace: [])
         return unless node
 
         case node
         when Prism::ProgramNode, Prism::StatementsNode
-          visit_children(node, current_constant: current_constant, namespace: namespace)
+          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace)
         when Prism::ClassNode
-          visit_class(node, current_constant: current_constant, namespace: namespace)
+          visit_class(graph, path, node, current_constant: current_constant, namespace: namespace)
         when Prism::ModuleNode
-          visit_module(node, current_constant: current_constant, namespace: namespace)
+          visit_module(graph, path, node, current_constant: current_constant, namespace: namespace)
         when Prism::DefNode
-          visit_def(node, current_constant: current_constant, namespace: namespace)
+          visit_def(graph, path, node, current_constant: current_constant, namespace: namespace)
         when Prism::CallNode
-          visit_call(node, current_constant: current_constant, namespace: namespace)
+          visit_call(graph, path, node, current_constant: current_constant, namespace: namespace)
         when Prism::ConstantPathNode, Prism::ConstantReadNode
-          add_constant_reference(node, current_constant)
+          add_constant_reference(graph, path, node, current_constant)
         else
-          visit_children(node, current_constant: current_constant, namespace: namespace)
+          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace)
         end
       end
 
       private
 
-      attr_reader :graph, :path
-
-      def visit_class(node, current_constant:, namespace:)
+      def visit_class(graph, path, node, current_constant:, namespace:)
         name = qualified_constant_name(node.constant_path, namespace)
         constant = graph.add_constant(
           name: name,
@@ -218,10 +205,10 @@ module ArchSpec
           )
         end
 
-        visit(node.body, current_constant: constant.name, namespace: constant.name.split("::"))
+        visit(graph, path, node.body, current_constant: constant.name, namespace: constant.name.split("::"))
       end
 
-      def visit_module(node, current_constant:, namespace:)
+      def visit_module(graph, path, node, current_constant:, namespace:)
         name = qualified_constant_name(node.constant_path, namespace)
         constant = graph.add_constant(
           name: name,
@@ -230,10 +217,10 @@ module ArchSpec
           location: SourceLocation.from_prism(path, node.location)
         )
 
-        visit(node.body, current_constant: constant.name, namespace: constant.name.split("::"))
+        visit(graph, path, node.body, current_constant: constant.name, namespace: constant.name.split("::"))
       end
 
-      def visit_def(node, current_constant:, namespace:)
+      def visit_def(graph, path, node, current_constant:, namespace:)
         if current_constant && (constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path })
           if node.receiver
             constant.add_class_method(node.name, location: SourceLocation.from_prism(path, node.location))
@@ -253,14 +240,24 @@ module ArchSpec
           )
         end
 
-        visit_children(node, current_constant: current_constant, namespace: namespace)
+        visit_children(graph, path, node, current_constant: current_constant, namespace: namespace)
       end
 
-      def visit_call(node, current_constant:, namespace:)
-        return visit_children(node, current_constant: current_constant, namespace: namespace) unless node.message
+      def visit_call(graph, path, node, current_constant:, namespace:)
+        return visit_children(graph, path, node, current_constant: current_constant, namespace: namespace) unless node.message
 
         message = node.message.to_sym
         location = SourceLocation.from_prism(path, node.location)
+
+        if (one_shot = instantiates_and_invokes(node))
+          graph.add_edge(
+            type: :instantiates_and_invokes,
+            from_path: path,
+            from_constant: current_constant,
+            to: one_shot,
+            location: location
+          )
+        end
 
         if (required = literal_require_argument(node))
           graph.add_edge(
@@ -307,10 +304,10 @@ module ArchSpec
           )
         end
 
-        visit_children(node, current_constant: current_constant, namespace: namespace)
+        visit_children(graph, path, node, current_constant: current_constant, namespace: namespace)
       end
 
-      def add_constant_reference(node, current_constant)
+      def add_constant_reference(graph, path, node, current_constant)
         graph.add_edge(
           type: :references_constant,
           from_path: path,
@@ -320,9 +317,9 @@ module ArchSpec
         )
       end
 
-      def visit_children(node, current_constant:, namespace:)
+      def visit_children(graph, path, node, current_constant:, namespace:)
         node.child_nodes.compact.each do |child|
-          visit(child, current_constant: current_constant, namespace: namespace)
+          visit(graph, path, child, current_constant: current_constant, namespace: namespace)
         end
       end
 
@@ -340,6 +337,20 @@ module ArchSpec
         node.arguments&.arguments&.filter_map do |argument|
           constant_reference_name(argument) if constant_node?(argument)
         end || []
+      end
+
+      def instantiates_and_invokes(node)
+        receiver = node.receiver
+        return unless receiver.is_a?(Prism::CallNode)
+        return unless receiver.message == "new"
+
+        "#{new_receiver_name(receiver)}##{node.message}"
+      end
+
+      def new_receiver_name(node)
+        return constant_reference_name(node.receiver) if constant_node?(node.receiver)
+
+        node.receiver&.slice || "(unknown)"
       end
 
       def qualified_constant_name(node, namespace)

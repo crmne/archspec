@@ -217,10 +217,33 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_instantiate_and_invoke_is_reported
+    with_project do |root|
+      write "#{root}/app/services/create_user.rb", <<~RUBY
+        class CreateUser
+          def run
+            UserBuilder.new(params).build
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :services, in: "app/services/**/*.rb"
+        services.cannot_instantiate_and_invoke
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_equal "objects.instantiate_and_invoke_forbid", diagnostics.first.rule
+      assert_match(/services must not instantiate and immediately invoke UserBuilder#build/, diagnostics.first.message)
+    end
+  end
+
   private
 
   def diagnostics_for(definition, root)
-    graph = ArchSpec::Analyzer.new(definition, root: root).analyze
-    ArchSpec::Evaluator.new(definition).evaluate(graph)
+    graph = ArchSpec::Analyzer.analyze(definition, root: root)
+    ArchSpec::Evaluator.evaluate(definition, graph)
   end
 end

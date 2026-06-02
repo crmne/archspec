@@ -25,7 +25,8 @@ module ArchSpec
 
     def define(name = "Architecture", &block)
       definition = Definition.new(name)
-      DSL::Context.new(definition).instance_eval(&block) if block
+      definition.extend(DSL::Context)
+      definition.instance_eval(&block) if block
       self.last_definition = definition
     end
   end

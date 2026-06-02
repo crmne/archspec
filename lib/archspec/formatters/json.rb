@@ -2,12 +2,10 @@ require "json"
 
 module ArchSpec
   module Formatters
-    class JSON
-      def initialize(output = $stdout)
-        @output = output
-      end
+    module JSON
+      extend self
 
-      def print(graph:, diagnostics:)
+      def print(output = $stdout, graph:, diagnostics:)
         output.puts ::JSON.pretty_generate(
           files: graph.files.size,
           constants: graph.constants.size,
@@ -15,10 +13,6 @@ module ArchSpec
           violations: diagnostics.map { |diagnostic| diagnostic.to_h(root: graph.root) }
         )
       end
-
-      private
-
-      attr_reader :output
     end
   end
 end

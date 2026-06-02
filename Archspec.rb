@@ -21,17 +21,18 @@ ArchSpec.define "ArchSpec architecture" do
     lib/archspec/dsl.rb
     lib/archspec/presets.rb
   ]
-  component :rules, in: "lib/archspec/rules/**/*.rb"
+  component :rule_checks, in: "lib/archspec/rules/**/*.rb"
   component :formatters, in: "lib/archspec/formatters/**/*.rb"
   component :support, in: "lib/archspec/version.rb"
 
   library.cannot_call :call
   library.cannot_define :call
+  library.cannot_instantiate_and_invoke
 
-  domain.cannot_use :analysis, :cli, :dsl, :formatters, :rules
-  rules.cannot_use :analysis, :cli, :dsl, :formatters
-  formatters.cannot_use :analysis, :cli, :dsl, :rules
+  domain.cannot_use :analysis, :cli, :dsl, :formatters, :rule_checks
+  rule_checks.cannot_use :analysis, :cli, :dsl, :formatters
+  formatters.cannot_use :analysis, :cli, :dsl, :rule_checks
   dsl.cannot_use :analysis, :cli, :formatters
 
-  no_cycles! among: %i[public_api cli analysis domain dsl rules formatters support]
+  no_cycles! among: %i[public_api cli analysis domain dsl rule_checks formatters support]
 end

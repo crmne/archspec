@@ -12,14 +12,14 @@ class BaselineTest < ArchSpecTest
         models.cannot_use :controllers
       end
 
-      graph = ArchSpec::Analyzer.new(definition, root: root).analyze
-      diagnostics = ArchSpec::Evaluator.new(definition).evaluate(graph)
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      diagnostics = ArchSpec::Evaluator.evaluate(definition, graph)
       baseline_path = "#{root}/.archspec_todo.yml"
 
       ArchSpec::Baseline.write(baseline_path, diagnostics, root: root)
       baseline = ArchSpec::Baseline.load(baseline_path, root: root)
 
-      assert_empty ArchSpec::Evaluator.new(definition, baseline: baseline).evaluate(graph)
+      assert_empty ArchSpec::Evaluator.evaluate(definition, graph, baseline: baseline)
       assert_match "app/models/user.rb", File.read(baseline_path)
       refute_match root, File.read(baseline_path)
     end

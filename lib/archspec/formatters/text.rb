@@ -1,11 +1,9 @@
 module ArchSpec
   module Formatters
-    class Text
-      def initialize(output = $stdout)
-        @output = output
-      end
+    module Text
+      extend self
 
-      def print(graph:, diagnostics:)
+      def print(output = $stdout, graph:, diagnostics:)
         if diagnostics.empty?
           output.puts "ArchSpec passed: #{graph.files.size} files, #{graph.constants.size} constants, #{graph.edges.size} facts checked."
           return
@@ -23,10 +21,6 @@ module ArchSpec
           output.puts
         end
       end
-
-      private
-
-      attr_reader :output
     end
   end
 end

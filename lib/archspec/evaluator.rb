@@ -1,11 +1,8 @@
 module ArchSpec
-  class Evaluator
-    def initialize(definition, baseline: Baseline.empty)
-      @definition = definition
-      @baseline = baseline
-    end
+  module Evaluator
+    extend self
 
-    def evaluate(graph)
+    def evaluate(definition, graph, baseline: Baseline.empty)
       (parser_diagnostics(graph) + definition.rules.flat_map { |rule| rule.evaluate(graph) })
         .reject { |diagnostic| graph.suppressed?(diagnostic) }
         .reject { |diagnostic| baseline.include?(diagnostic) }
@@ -13,8 +10,6 @@ module ArchSpec
     end
 
     private
-
-    attr_reader :definition, :baseline
 
     def parser_diagnostics(graph)
       graph.files.values.flat_map do |file|
