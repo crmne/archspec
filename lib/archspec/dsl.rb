@@ -88,6 +88,11 @@ module ArchSpec
         self
       end
 
+      def cannot_define(*methods)
+        add_rule(Rules::CannotDefineMethodRule.new(name, methods))
+        self
+      end
+
       def cannot_reference_constants(*constants)
         add_rule(Rules::CannotReferenceConstantsRule.new(name, constants))
         self

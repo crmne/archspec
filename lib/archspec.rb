@@ -24,7 +24,9 @@ module ArchSpec
     attr_accessor :last_definition
 
     def define(name = "Architecture", &block)
-      self.last_definition = Definition.build(name, &block)
+      definition = Definition.new(name)
+      DSL::Context.new(definition).instance_eval(&block) if block
+      self.last_definition = definition
     end
   end
 end

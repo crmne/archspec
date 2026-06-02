@@ -5,4 +5,8 @@ Rake::TestTask.new(:test) do |task|
   task.pattern = "test/**/*_test.rb"
 end
 
-task default: :test
+task :architecture do
+  sh "exe/archspec check"
+end
+
+task default: %i[test architecture]

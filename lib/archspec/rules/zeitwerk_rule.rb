@@ -5,7 +5,7 @@ module ArchSpec
         "zeitwerk.naming"
       end
 
-      def call(graph)
+      def evaluate(graph)
         graph.files.values.filter_map do |file|
           next unless file.expected_constant
 

@@ -11,7 +11,7 @@ module ArchSpec
         "dependencies.no_cycles"
       end
 
-      def call(graph)
+      def evaluate(graph)
         cycles(graph).map do |cycle|
           location = first_location_for_cycle(graph, cycle) || SourceLocation.new(graph.root, 1, 1)
           Diagnostic.new(

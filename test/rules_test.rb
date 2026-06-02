@@ -193,10 +193,34 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_forbidden_method_definitions_are_reported
+    with_project do |root|
+      write "#{root}/app/services/create_user.rb", <<~RUBY
+        class CreateUser
+          def call
+            User
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :services, in: "app/services/**/*.rb"
+        services.cannot_define :call
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_equal "methods.define_forbid", diagnostics.first.rule
+      assert_match(/services must not define #call/, diagnostics.first.message)
+      assert_match(/CreateUser defines instance method call/, diagnostics.first.evidence)
+    end
+  end
+
   private
 
   def diagnostics_for(definition, root)
-    graph = ArchSpec::Analyzer.new(definition, root: root).call
-    ArchSpec::Evaluator.new(definition).call(graph)
+    graph = ArchSpec::Analyzer.new(definition, root: root).analyze
+    ArchSpec::Evaluator.new(definition).evaluate(graph)
   end
 end

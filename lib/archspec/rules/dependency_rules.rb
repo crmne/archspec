@@ -39,7 +39,7 @@ module ArchSpec
         "dependencies.allow"
       end
 
-      def call(graph)
+      def evaluate(graph)
         relevant_edges(graph).flat_map do |edge|
           target_components(graph, edge).filter_map do |target|
             next if target == source || targets.include?(target)
@@ -60,7 +60,7 @@ module ArchSpec
         "dependencies.forbid"
       end
 
-      def call(graph)
+      def evaluate(graph)
         relevant_edges(graph).flat_map do |edge|
           forbidden = target_components(graph, edge) & targets
 
@@ -97,7 +97,7 @@ module ArchSpec
         "constants.forbid"
       end
 
-      def call(graph)
+      def evaluate(graph)
         graph.dependency_edges.filter_map do |edge|
           next unless graph.component_names_for_path(edge.from_path).include?(source)
 

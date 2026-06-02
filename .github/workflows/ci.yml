@@ -35,6 +35,9 @@ jobs:
       - name: Run tests
         run: bundle exec rake test
 
+      - name: Run architecture checks
+        run: bundle exec rake architecture
+
       - name: Build gem
         run: gem build archspec.gemspec
 

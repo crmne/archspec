@@ -4,4 +4,4 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 
 require "archspec"
 
-exit ArchSpec::CLI.call(ARGV)
+exit ArchSpec::CLI.run(ARGV)

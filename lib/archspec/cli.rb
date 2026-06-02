@@ -19,8 +19,8 @@ module ArchSpec
       end
     RUBY
 
-    def self.call(argv, output: $stdout, error: $stderr)
-      new(argv, output: output, error: error).call
+    def self.run(argv, output: $stdout, error: $stderr)
+      new(argv, output: output, error: error).run
     end
 
     def initialize(argv, output:, error:)
@@ -29,7 +29,7 @@ module ArchSpec
       @error = error
     end
 
-    def call
+    def run
       command = argv.shift || "check"
 
       case command
@@ -84,10 +84,10 @@ module ArchSpec
       parser.parse!(argv)
 
       definition, root = load_definition(options[:config])
-      graph = Analyzer.new(definition, root: root).call
+      graph = Analyzer.new(definition, root: root).analyze
       baseline_path = baseline_path_for(definition, root)
       baseline = options[:update_baseline] ? Baseline.empty(root: root) : Baseline.load(baseline_path, root: root)
-      diagnostics = Evaluator.new(definition, baseline: baseline).call(graph)
+      diagnostics = Evaluator.new(definition, baseline: baseline).evaluate(graph)
 
       if options[:update_baseline]
         raise Error, "No baseline configured. Add `baseline \".archspec_todo.yml\"` to #{options[:config]}." unless baseline_path
@@ -112,7 +112,7 @@ module ArchSpec
       raise Error, "Usage: archspec explain PATH_OR_CONSTANT" unless subject
 
       definition, root = load_definition(options[:config])
-      graph = Analyzer.new(definition, root: root).call
+      graph = Analyzer.new(definition, root: root).analyze
       explain_subject(graph, subject)
       0
     end

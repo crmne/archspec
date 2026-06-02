@@ -3,6 +3,7 @@ require "set"
 
 module ArchSpec
   ParseError = Data.define(:message, :location)
+  MethodDefinition = Data.define(:owner, :name, :scope, :location)
 
   Suppression = Data.define(:rule, :start_line, :end_line, :reason) do
     def matches?(diagnostic)
@@ -25,7 +26,7 @@ module ArchSpec
   end
 
   class ConstantNode
-    attr_reader :name, :kind, :path, :location, :instance_methods, :class_methods, :mixins
+    attr_reader :name, :kind, :path, :location, :instance_methods, :class_methods, :method_definitions, :mixins
     attr_accessor :superclass
 
     def initialize(name:, kind:, path:, location:)
@@ -35,6 +36,7 @@ module ArchSpec
       @location = location
       @instance_methods = Set.new
       @class_methods = Set.new
+      @method_definitions = []
       @mixins = {
         include: Set.new,
         prepend: Set.new,
@@ -50,12 +52,14 @@ module ArchSpec
       kind == :module
     end
 
-    def add_instance_method(name)
+    def add_instance_method(name, location:)
       instance_methods.add(name.to_sym)
+      method_definitions << MethodDefinition.new(self.name, name.to_sym, :instance, location)
     end
 
-    def add_class_method(name)
+    def add_class_method(name, location:)
       class_methods.add(name.to_sym)
+      method_definitions << MethodDefinition.new(self.name, name.to_sym, :class, location)
     end
 
     def add_mixin(kind, name)
@@ -138,6 +142,13 @@ module ArchSpec
 
     def constants_for_path(path)
       constants.select { |constant| constant.path == path }
+    end
+
+    def method_definitions_for_component(name)
+      component = components.fetch(name.to_sym)
+      component.constants.flat_map { |constant_name| constants_named(constant_name) }.flat_map(&:method_definitions)
+    rescue KeyError
+      []
     end
 
     def assign_components(component_specs)

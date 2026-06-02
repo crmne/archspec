@@ -9,7 +9,7 @@ module ArchSpec
       @root = File.expand_path(root)
     end
 
-    def call
+    def analyze
       graph = Graph.new(root)
 
       ruby_files.each do |path|
@@ -78,7 +78,7 @@ module ArchSpec
     end
 
     def suppressions_for(comments)
-      SuppressionParser.new(comments).call
+      SuppressionParser.new(comments).parse
     end
 
     def parse_errors_for(path, errors)
@@ -95,7 +95,7 @@ module ArchSpec
         @comments = comments
       end
 
-      def call
+      def parse
         suppressions = []
         active = Hash.new { |hash, key| hash[key] = [] }
 
@@ -236,9 +236,9 @@ module ArchSpec
       def visit_def(node, current_constant:, namespace:)
         if current_constant && (constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path })
           if node.receiver
-            constant.add_class_method(node.name)
+            constant.add_class_method(node.name, location: SourceLocation.from_prism(path, node.location))
           else
-            constant.add_instance_method(node.name)
+            constant.add_instance_method(node.name, location: SourceLocation.from_prism(path, node.location))
           end
         end
 

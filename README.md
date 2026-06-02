@@ -39,6 +39,12 @@ archspec check --update-baseline
 archspec explain app/models/user.rb
 ```
 
+This repository dogfoods ArchSpec with:
+
+```sh
+rake architecture
+```
+
 Local suppressions are intentionally narrow:
 
 ```ruby

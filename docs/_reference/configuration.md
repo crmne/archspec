@@ -50,6 +50,12 @@ services.cannot_call :render, :redirect_to, :params, :session
 
 These are name-based checks. They are useful for Rails boundaries and callable object conventions.
 
+For projects that avoid anonymous command-object style APIs, forbid method definitions too:
+
+```ruby
+library.cannot_define :call
+```
+
 ## Constant Rules
 
 ```ruby

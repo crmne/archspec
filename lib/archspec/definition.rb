@@ -18,12 +18,6 @@ module ArchSpec
     attr_accessor :name, :root_path, :baseline_path
     attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules
 
-    def self.build(name, &block)
-      definition = new(name)
-      DSL::Context.new(definition).instance_eval(&block) if block
-      definition
-    end
-
     def initialize(name)
       @name = name
       @root_path = "."

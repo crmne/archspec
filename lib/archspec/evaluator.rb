@@ -5,8 +5,8 @@ module ArchSpec
       @baseline = baseline
     end
 
-    def call(graph)
-      (parser_diagnostics(graph) + definition.rules.flat_map { |rule| rule.call(graph) })
+    def evaluate(graph)
+      (parser_diagnostics(graph) + definition.rules.flat_map { |rule| rule.evaluate(graph) })
         .reject { |diagnostic| graph.suppressed?(diagnostic) }
         .reject { |diagnostic| baseline.include?(diagnostic) }
         .sort_by { |diagnostic| [diagnostic.location.path, diagnostic.location.line, diagnostic.rule, diagnostic.message] }

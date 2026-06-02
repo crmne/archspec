@@ -21,7 +21,7 @@ module ArchSpec
         "methods.forbid"
       end
 
-      def call(graph)
+      def evaluate(graph)
         graph.edges.filter_map do |edge|
           next unless edge.type == :calls_named_method
           next unless method_names.include?(edge.to.to_sym)
@@ -53,7 +53,7 @@ module ArchSpec
         "protocol.must_implement"
       end
 
-      def call(graph)
+      def evaluate(graph)
         constants_for(graph).filter_map do |constant|
           next if constant.instance_methods.include?(method_name)
 
@@ -96,7 +96,7 @@ module ArchSpec
         "protocol.must_implement_one_of"
       end
 
-      def call(graph)
+      def evaluate(graph)
         constants_for(graph).filter_map do |constant|
           next if method_names.any? { |method_name| constant.instance_methods.include?(method_name) }
 
@@ -115,6 +115,41 @@ module ArchSpec
         graph.components.fetch(source).constants.flat_map { |name| graph.constants_named(name) }.select(&:class?)
       rescue KeyError
         []
+      end
+    end
+
+    class CannotDefineMethodRule
+      attr_reader :source, :method_names
+
+      def initialize(source, methods)
+        @source = source.to_sym
+        @method_names = Array(methods).flatten.map(&:to_sym)
+      end
+
+      def merge_key
+        [self.class, source]
+      end
+
+      def merge!(other)
+        @method_names |= other.method_names
+        self
+      end
+
+      def id
+        "methods.define_forbid"
+      end
+
+      def evaluate(graph)
+        graph.method_definitions_for_component(source).filter_map do |method_definition|
+          next unless method_names.include?(method_definition.name)
+
+          Diagnostic.new(
+            rule: id,
+            message: "#{source} must not define ##{method_definition.name}",
+            location: method_definition.location,
+            evidence: "#{method_definition.owner} defines #{method_definition.scope} method #{method_definition.name}"
+          )
+        end
       end
     end
   end
