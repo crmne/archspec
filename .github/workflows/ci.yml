@@ -42,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pages: write
     env:
       BUNDLE_PATH: vendor/bundle
       BUNDLE_DISABLE_SHARED_GEMS: "true"
@@ -55,13 +56,21 @@ jobs:
           bundler-cache: true
           working-directory: docs
 
-      - name: Build docs
-        working-directory: docs
-        run: bundle exec jekyll build
-
       - name: Set up Pages
+        id: pages
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: actions/configure-pages@v5
+
+      - name: Build docs
+        working-directory: docs
+        run: |
+          if [ -n "${PAGES_BASE_PATH}" ]; then
+            bundle exec jekyll build --baseurl "${PAGES_BASE_PATH}"
+          else
+            bundle exec jekyll build
+          fi
+        env:
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
 
       - name: Upload Pages artifact
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
