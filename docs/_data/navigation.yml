@@ -6,6 +6,10 @@
   url: /rules/
   collections:
     - rules
+- title: Architectures
+  url: /architectures/
+  collections:
+    - architectures
 - title: Reference
   url: /configuration/
   collections:

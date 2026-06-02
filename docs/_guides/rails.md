@@ -10,7 +10,7 @@ After reading this guide, you will know:
 
 - What the Rails preset checks.
 - How ArchSpec uses Rails conventions.
-- How to add service and command object checks.
+- How to add stricter architecture checks.
 
 ## What ArchSpec Uses
 
@@ -39,19 +39,27 @@ The preset defines controllers, models, helpers, mailers, jobs, and services. It
 
 - Models should not depend on controllers or helpers.
 - Services should not depend on controllers or helpers.
-- Models and services should not call controller-only APIs such as `render`, `redirect_to`, `params`, or `session`.
+- Models and services should not call controller-only APIs such as `render`, `redirect_to`, `params`, `session`, `cookies`, or `flash`.
 
-## Add Callable Objects
+## Add More Structure
 
-Many Rails teams use services or commands as callable objects:
+Use architecture bundles when the app already has the matching folders:
 
 ```ruby
-component :services, in: "app/services/**/*.rb"
-services.must_implement :call
-services.cannot_call :render, :redirect_to, :params, :session
+architecture :layered, layers: {
+  interface: "app/controllers/**/*.rb",
+  application: "app/services/**/*.rb",
+  domain: "app/models/**/*.rb"
+}
 ```
 
-This does not prove every service is well-designed. It catches drift from the convention.
+Or use a Rails preset:
+
+```ruby
+preset :rails_layered
+```
+
+Presets are ordinary rules written for conventional Rails paths. Add local rules beside them when the app has its own vocabulary.
 
 ## Check Names
 

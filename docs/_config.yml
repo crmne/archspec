@@ -21,6 +21,9 @@ collections:
   rules:
     output: true
     permalink: "/rules/:name/"
+  architectures:
+    output: true
+    permalink: "/architectures/:name/"
   reference:
     output: true
     permalink: "/:name/"
@@ -36,6 +39,10 @@ defaults:
       layout: default
   - scope:
       type: rules
+    values:
+      layout: default
+  - scope:
+      type: architectures
     values:
       layout: default
   - scope:

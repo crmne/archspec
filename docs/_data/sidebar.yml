@@ -2,5 +2,7 @@
   collection: guides
 - title: Rules
   collection: rules
+- title: Architectures
+  collection: architectures
 - title: Reference
   collection: reference

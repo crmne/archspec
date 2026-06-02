@@ -31,6 +31,18 @@ component :billing,     namespace: "Billing"
 
 `component`, `layer`, and `role` are aliases. Use the word that matches the architecture you are describing.
 
+## Architectures
+
+```ruby
+architecture :layered, layers: {
+  interface: "app/controllers/**/*.rb",
+  application: "app/services/**/*.rb",
+  domain: "app/models/**/*.rb"
+}
+```
+
+Architectures define components and rules together. See [Architectures](/architectures/).
+
 ## Dependency Rules
 
 ```ruby
@@ -48,7 +60,7 @@ services.must_implement_one_of :call, :resolve
 services.cannot_call :render, :redirect_to, :params, :session
 ```
 
-These are name-based checks. They are useful for Rails boundaries and callable object conventions. See [Method Rules](/rules/methods/) and [Protocol Rules](/rules/protocols/).
+These are name-based checks. They are useful for Rails boundaries and method protocols. See [Method Rules](/rules/methods/) and [Protocol Rules](/rules/protocols/).
 
 For projects that avoid anonymous command-object style APIs, forbid method definitions too:
 
@@ -73,9 +85,12 @@ See [Constant Rules](/rules/constants/).
 
 ```ruby
 preset :rails_way
+preset :rails_layered
 ```
 
-The Rails preset is intentionally small. Add your own rules beside it.
+Presets are shortcuts for common Rails checks and architecture bundles. Add your own rules beside them.
+
+See [Presets](/architectures/presets/).
 
 ## Cycles and Names
 

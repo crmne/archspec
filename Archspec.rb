@@ -18,6 +18,7 @@ ArchSpec.define "ArchSpec architecture" do
     lib/archspec/source_location.rb
   ]
   component :dsl, in: %w[
+    lib/archspec/architectures.rb
     lib/archspec/dsl.rb
     lib/archspec/presets.rb
   ]

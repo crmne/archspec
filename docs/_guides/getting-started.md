@@ -44,16 +44,17 @@ This creates `Archspec.rb`:
 ArchSpec.define "Application architecture" do
   root "."
   preset :rails_way
-
-  component :controllers, in: "app/controllers/**/*.rb"
-  component :models,      in: "app/models/**/*.rb"
-  component :services,    in: "app/services/**/*.rb"
-
-  controllers.can_use :models, :services
-  models.cannot_use :controllers
-  services.must_implement :call
-  services.cannot_call :render, :redirect_to, :params, :session
 end
+```
+
+Add a fuller architecture when the app has a clear shape:
+
+```ruby
+architecture :layered, layers: {
+  interface: "app/controllers/**/*.rb",
+  application: "app/services/**/*.rb",
+  domain: "app/models/**/*.rb"
+}
 ```
 
 ## Run It

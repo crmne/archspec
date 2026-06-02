@@ -9,15 +9,6 @@ module ArchSpec
       ArchSpec.define "Application architecture" do
         root "."
         preset :rails_way
-
-        component :controllers, in: "app/controllers/**/*.rb"
-        component :models,      in: "app/models/**/*.rb"
-        component :services,    in: "app/services/**/*.rb"
-
-        controllers.can_use :models, :services
-        models.cannot_use :controllers
-        services.must_implement :call
-        services.cannot_call :render, :redirect_to, :params, :session
       end
     RUBY
 

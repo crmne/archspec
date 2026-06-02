@@ -29,8 +29,12 @@ module ArchSpec
       alias layer component
       alias role component
 
-      def preset(name)
-        Presets.apply(name, self)
+      def preset(name, **options)
+        Presets.apply(name, self, **options)
+      end
+
+      def architecture(name, **options)
+        Architectures.apply(name, self, **options)
       end
 
       def no_cycles!(among: nil)
