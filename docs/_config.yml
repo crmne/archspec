@@ -1,7 +1,5 @@
 title: ArchSpec
 description: Static architecture checks for Ruby and Rails.
-url: "https://archspec.dev"
-baseurl: ""
 lang: en-US
 timezone: UTC
 
