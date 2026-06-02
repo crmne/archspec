@@ -40,6 +40,8 @@ jobs:
 
   docs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       BUNDLE_PATH: vendor/bundle
       BUNDLE_DISABLE_SHARED_GEMS: "true"
@@ -56,3 +58,29 @@ jobs:
       - name: Build docs
         working-directory: docs
         run: bundle exec jekyll build
+
+      - name: Set up Pages
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs/_site
+
+  deploy_docs:
+    name: Deploy docs
+    needs: [test, docs]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

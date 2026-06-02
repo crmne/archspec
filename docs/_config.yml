@@ -52,7 +52,7 @@ jekyll_vitepress:
     format: "%-d %b %Y"
   edit_link:
     enabled: true
-    pattern: "https://github.com/crmne/archspec/edit/main/docs/:path"
+    pattern: "https://github.com/crmne/archspec/edit/master/docs/:path"
     text: Edit this page on GitHub
   github_star:
     enabled: true
