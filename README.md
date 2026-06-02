@@ -1,6 +1,6 @@
 # ArchSpec
 
-ArchSpec is a static architecture fitness function tool for Ruby and Rails.
+Architecture checks for Ruby and Rails.
 
 It checks explicit structural rules: components, layers, constant references,
 inheritance, mixins, named method calls, callable object protocols, cycles, and
