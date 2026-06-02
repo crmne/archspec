@@ -2,6 +2,10 @@
   url: /getting-started/
   collections:
     - guides
+- title: Rules
+  url: /rules/
+  collections:
+    - rules
 - title: Reference
   url: /configuration/
   collections:

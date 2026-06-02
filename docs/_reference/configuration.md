@@ -38,7 +38,7 @@ controllers.can_use :models, :services
 models.cannot_use :controllers
 ```
 
-`can_use` is an allowlist for other declared components. `cannot_use` forbids specific components.
+`can_use` is an allowlist for other declared components. `cannot_use` forbids specific components. See [Dependency Rules](/rules/dependencies/).
 
 ## Method Rules
 
@@ -48,7 +48,7 @@ services.must_implement_one_of :call, :resolve
 services.cannot_call :render, :redirect_to, :params, :session
 ```
 
-These are name-based checks. They are useful for Rails boundaries and callable object conventions.
+These are name-based checks. They are useful for Rails boundaries and callable object conventions. See [Method Rules](/rules/methods/) and [Protocol Rules](/rules/protocols/).
 
 For projects that avoid anonymous command-object style APIs, forbid method definitions too:
 
@@ -57,6 +57,8 @@ library.cannot_define :call
 library.cannot_instantiate_and_invoke
 ```
 
+See [Object Rules](/rules/objects/).
+
 ## Constant Rules
 
 ```ruby
@@ -64,6 +66,8 @@ models.cannot_reference_constants "ActionController", "ActionView"
 ```
 
 Use this when the dependency is better expressed as a framework constant than a component.
+
+See [Constant Rules](/rules/constants/).
 
 ## Presets
 
@@ -81,6 +85,8 @@ verify_zeitwerk_names!
 ```
 
 `no_cycles!` checks component dependency cycles. `verify_zeitwerk_names!` checks file-to-constant naming for conventional Rails paths.
+
+See [Cycle Rules](/rules/cycles/) and [Zeitwerk Name Rules](/rules/zeitwerk-names/).
 
 ## Suppressions
 

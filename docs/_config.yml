@@ -18,6 +18,9 @@ collections:
   guides:
     output: true
     permalink: "/:name/"
+  rules:
+    output: true
+    permalink: "/rules/:name/"
   reference:
     output: true
     permalink: "/:name/"
@@ -29,6 +32,10 @@ defaults:
       layout: default
   - scope:
       type: guides
+    values:
+      layout: default
+  - scope:
+      type: rules
     values:
       layout: default
   - scope:
