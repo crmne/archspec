@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build + Publish
+    runs-on: ubuntu-latest
+    env:
+      BUNDLE_PATH: vendor/bundle
+      BUNDLE_DISABLE_SHARED_GEMS: "true"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Check if version needs publishing
+        id: check_version
+        run: |
+          set -euo pipefail
+
+          VERSION_FILE="./lib/archspec/version.rb"
+          VERSION=$(ruby -r "$VERSION_FILE" -e "puts ArchSpec::VERSION" 2>/dev/null)
+
+          if [ -z "$VERSION" ]; then
+            echo "Error: Could not extract VERSION from $VERSION_FILE" >&2
+            exit 1
+          fi
+
+          echo "Local version: $VERSION"
+          echo "Fetching published versions for archspec..."
+
+          ALL_PUBLISHED_VERSIONS=$(( \
+            gem list ^archspec$ -r --all 2>/dev/null || true; \
+            gem list ^archspec$ -r --prerelease 2>/dev/null || true; \
+          ) | sed -n 's/.*(\(.*\)).*/\1/p' \
+            | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+            | grep . \
+            | sort -u )
+
+          if [ -n "$ALL_PUBLISHED_VERSIONS" ]; then
+            echo "$ALL_PUBLISHED_VERSIONS" | sed 's/^/  /'
+          else
+            echo "  (none found)"
+          fi
+
+          if echo "$ALL_PUBLISHED_VERSIONS" | grep -Fxq "$VERSION"; then
+            echo "Verdict: Version $VERSION already published."
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Verdict: Version $VERSION is new."
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash
+
+      - name: Publish to RubyGems
+        if: steps.check_version.outputs.version_changed == 'true'
+        run: |
+          mkdir -p "$HOME/.gem"
+          touch "$HOME/.gem/credentials"
+          chmod 0600 "$HOME/.gem/credentials"
+          printf -- "---\n:rubygems_api_key: ${GEM_HOST_API_KEY}\n" > "$HOME/.gem/credentials"
+
+          gem build archspec.gemspec
+          output=$(gem push archspec-*.gem 2>&1) || {
+            echo "$output"
+            if echo "$output" | grep -q "Repushing of gem versions is not allowed"; then
+              echo "Version already exists, skipping"
+              exit 0
+            else
+              exit 1
+            fi
+          }
+        env:
+          GEM_HOST_API_KEY: "${{ secrets.RUBYGEMS_AUTH_TOKEN }}"
