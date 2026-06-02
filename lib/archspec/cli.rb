@@ -1,0 +1,189 @@
+require "optparse"
+
+module ArchSpec
+  class CLI
+    CONFIG_FILE = "Archspec.rb"
+    TEMPLATE = <<~RUBY
+      ArchSpec.define "Application architecture" do
+        root "."
+        preset :rails_way
+
+        component :controllers, in: "app/controllers/**/*.rb"
+        component :models,      in: "app/models/**/*.rb"
+        component :services,    in: "app/services/**/*.rb"
+
+        controllers.can_use :models, :services
+        models.cannot_use :controllers
+        services.must_implement :call
+        services.cannot_call :render, :redirect_to, :params, :session
+      end
+    RUBY
+
+    def self.call(argv, output: $stdout, error: $stderr)
+      new(argv, output: output, error: error).call
+    end
+
+    def initialize(argv, output:, error:)
+      @argv = argv.dup
+      @output = output
+      @error = error
+    end
+
+    def call
+      command = argv.shift || "check"
+
+      case command
+      when "init"
+        init
+      when "check"
+        check
+      when "explain"
+        explain
+      when "version", "--version", "-v"
+        output.puts ArchSpec::VERSION
+        0
+      else
+        error.puts "Unknown command: #{command}"
+        error.puts usage
+        64
+      end
+    rescue Error => exception
+      error.puts exception.message
+      1
+    end
+
+    private
+
+    attr_reader :argv, :output, :error
+
+    def init
+      force = argv.delete("--force")
+      path = argv.shift || CONFIG_FILE
+
+      if File.exist?(path) && !force
+        raise Error, "#{path} already exists. Use --force to overwrite it."
+      end
+
+      File.write(path, TEMPLATE)
+      output.puts "Created #{path}"
+      0
+    end
+
+    def check
+      options = {
+        config: CONFIG_FILE,
+        format: "text",
+        update_baseline: false
+      }
+
+      parser = OptionParser.new do |parser|
+        parser.on("--config PATH") { |value| options[:config] = value }
+        parser.on("--format FORMAT") { |value| options[:format] = value }
+        parser.on("--update-baseline") { options[:update_baseline] = true }
+      end
+      parser.parse!(argv)
+
+      definition, root = load_definition(options[:config])
+      graph = Analyzer.new(definition, root: root).call
+      baseline_path = baseline_path_for(definition, root)
+      baseline = options[:update_baseline] ? Baseline.empty(root: root) : Baseline.load(baseline_path, root: root)
+      diagnostics = Evaluator.new(definition, baseline: baseline).call(graph)
+
+      if options[:update_baseline]
+        raise Error, "No baseline configured. Add `baseline \".archspec_todo.yml\"` to #{options[:config]}." unless baseline_path
+
+        Baseline.write(baseline_path, diagnostics, root: root)
+        output.puts "Updated #{Pathname(baseline_path).relative_path_from(Pathname(root))} with #{diagnostics.size} violations."
+        return 0
+      end
+
+      formatter_for(options[:format]).new(output).print(graph: graph, diagnostics: diagnostics)
+      diagnostics.empty? ? 0 : 1
+    end
+
+    def explain
+      options = { config: CONFIG_FILE }
+      parser = OptionParser.new do |parser|
+        parser.on("--config PATH") { |value| options[:config] = value }
+      end
+      parser.parse!(argv)
+
+      subject = argv.shift
+      raise Error, "Usage: archspec explain PATH_OR_CONSTANT" unless subject
+
+      definition, root = load_definition(options[:config])
+      graph = Analyzer.new(definition, root: root).call
+      explain_subject(graph, subject)
+      0
+    end
+
+    def load_definition(config_path)
+      raise Error, "Missing #{config_path}. Run `archspec init` first." unless File.exist?(config_path)
+
+      ArchSpec.last_definition = nil
+      absolute_config = File.expand_path(config_path)
+      load absolute_config
+      definition = ArchSpec.last_definition
+      raise Error, "#{config_path} did not call ArchSpec.define." unless definition
+
+      [definition, definition.absolute_root(File.dirname(absolute_config))]
+    end
+
+    def baseline_path_for(definition, root)
+      return unless definition.baseline_path
+
+      File.expand_path(definition.baseline_path, root)
+    end
+
+    def formatter_for(name)
+      case name
+      when "text"
+        Formatters::Text
+      when "json"
+        Formatters::JSON
+      else
+        raise Error, "Unknown format: #{name.inspect}"
+      end
+    end
+
+    def explain_subject(graph, subject)
+      path = File.expand_path(subject, graph.root)
+
+      if graph.files.key?(path)
+        file = graph.files.fetch(path)
+        output.puts file.relative_path
+        output.puts "  expected constant: #{file.expected_constant || "(none)"}"
+        output.puts "  defined constants: #{graph.constants_for_path(path).map(&:name).join(", ")}"
+        output.puts "  components: #{graph.component_names_for_path(path).to_a.sort.join(", ")}"
+        output.puts "  outgoing facts:"
+
+        graph.edges.select { |edge| edge.from_path == path }.each do |edge|
+          output.puts "    #{edge.type} #{edge.to} at #{edge.location.line}:#{edge.location.column}"
+        end
+      else
+        constants = graph.constants_named(subject)
+        raise Error, "No file or constant found for #{subject.inspect}" if constants.empty?
+
+        constants.each do |constant|
+          output.puts constant.name
+          output.puts "  kind: #{constant.kind}"
+          output.puts "  file: #{constant.location.relative_path(graph.root)}:#{constant.location.line}"
+          output.puts "  components: #{graph.component_names_for_constant(constant.name).to_a.sort.join(", ")}"
+          output.puts "  superclass: #{constant.superclass || "(none)"}"
+          output.puts "  instance methods: #{constant.instance_methods.to_a.sort.join(", ")}"
+          output.puts "  class methods: #{constant.class_methods.to_a.sort.join(", ")}"
+        end
+      end
+    end
+
+    def usage
+      <<~TEXT
+        Usage:
+          archspec init [PATH] [--force]
+          archspec check [--config PATH] [--format text|json] [--update-baseline]
+          archspec explain PATH_OR_CONSTANT [--config PATH]
+          archspec version
+      TEXT
+    end
+  end
+end

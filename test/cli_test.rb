@@ -1,0 +1,65 @@
+require "test_helper"
+require "stringio"
+
+class CLITest < ArchSpecTest
+  def test_check_returns_nonzero_on_violations
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        ArchSpec.define do
+          component :models, in: "app/models/**/*.rb"
+          component :controllers, in: "app/controllers/**/*.rb"
+          models.cannot_use :controllers
+        end
+      RUBY
+
+      write "#{root}/app/models/user.rb", "class User; UsersController; end\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+
+      output = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.call(["check"], output: output, error: StringIO.new) }
+
+      assert_equal 1, status
+      assert_match(/architecture violation/, output.string)
+      assert_match(/dependencies.forbid/, output.string)
+    end
+  end
+
+  def test_json_format
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        ArchSpec.define do
+          component :models, in: "app/models/**/*.rb"
+        end
+      RUBY
+
+      write "#{root}/app/models/user.rb", "class User; end\n"
+
+      output = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.call(["check", "--format", "json"], output: output, error: StringIO.new) }
+
+      assert_equal 0, status
+      parsed = JSON.parse(output.string)
+      assert_equal 1, parsed.fetch("files")
+      assert_equal [], parsed.fetch("violations")
+    end
+  end
+
+  def test_explain_file
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        ArchSpec.define do
+          component :models, in: "app/models/**/*.rb"
+        end
+      RUBY
+
+      write "#{root}/app/models/user.rb", "class User; end\n"
+
+      output = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.call(["explain", "app/models/user.rb"], output: output, error: StringIO.new) }
+
+      assert_equal 0, status
+      assert_match(/expected constant: User/, output.string)
+      assert_match(/components: models/, output.string)
+    end
+  end
+end

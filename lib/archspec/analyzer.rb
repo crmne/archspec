@@ -1,0 +1,293 @@
+require "prism"
+require "pathname"
+require "set"
+
+module ArchSpec
+  class Analyzer
+    def initialize(definition, root:)
+      @definition = definition
+      @root = File.expand_path(root)
+    end
+
+    def call
+      graph = Graph.new(root)
+
+      ruby_files.each do |path|
+        result = Prism.parse_file(path)
+        graph.add_file(
+          path: path,
+          expected_constant: expected_constant_for(path),
+          parse_errors: result.errors.map(&:message)
+        )
+
+        SourceVisitor.new(graph, path).visit(result.value) if result.value
+      end
+
+      graph.assign_components(definition.component_specs.values)
+      graph
+    end
+
+    private
+
+    attr_reader :definition, :root
+
+    def ruby_files
+      ignored = ignored_files
+
+      definition.analysis_patterns.flat_map do |pattern|
+        Dir.glob(File.absolute_path(pattern, root))
+      end.select do |path|
+        File.file?(path) && path.end_with?(".rb")
+      end.map do |path|
+        File.expand_path(path)
+      end.uniq.reject do |path|
+        ignored.include?(path)
+      end.sort
+    end
+
+    def ignored_files
+      definition.ignore_patterns.flat_map do |pattern|
+        Dir.glob(File.absolute_path(pattern, root))
+      end.select { |path| File.file?(path) }.map { |path| File.expand_path(path) }.to_set
+    end
+
+    def expected_constant_for(path)
+      relative = Pathname(path).relative_path_from(Pathname(root)).to_s
+      stem =
+        case relative
+        when %r{\Aapp/[^/]+/concerns/(.+)\.rb\z}
+          Regexp.last_match(1)
+        when %r{\Aapp/[^/]+/(.+)\.rb\z}
+          Regexp.last_match(1)
+        when %r{\Alib/(.+)\.rb\z}
+          Regexp.last_match(1)
+        when %r{\A(?:packs|engines)/[^/]+/app/[^/]+/(.+)\.rb\z}
+          Regexp.last_match(1)
+        else
+          return nil
+        end
+
+      camelize_path(stem)
+    end
+
+    def camelize_path(path)
+      path.split("/").map do |part|
+        part.split("_").map { |word| word[0] ? word[0].upcase + word[1..] : word }.join
+      end.join("::")
+    end
+
+    class SourceVisitor
+      DYNAMIC_MESSAGES = %i[
+        class_eval
+        const_get
+        const_set
+        define_method
+        instance_eval
+        method_missing
+        module_eval
+        public_send
+        send
+      ].freeze
+
+      MIXIN_MESSAGES = {
+        include: :includes,
+        prepend: :prepends,
+        extend: :extends
+      }.freeze
+
+      def initialize(graph, path)
+        @graph = graph
+        @path = path
+      end
+
+      def visit(node, current_constant: nil, namespace: [])
+        return unless node
+
+        case node
+        when Prism::ProgramNode, Prism::StatementsNode
+          visit_children(node, current_constant: current_constant, namespace: namespace)
+        when Prism::ClassNode
+          visit_class(node, current_constant: current_constant, namespace: namespace)
+        when Prism::ModuleNode
+          visit_module(node, current_constant: current_constant, namespace: namespace)
+        when Prism::DefNode
+          visit_def(node, current_constant: current_constant, namespace: namespace)
+        when Prism::CallNode
+          visit_call(node, current_constant: current_constant, namespace: namespace)
+        when Prism::ConstantPathNode, Prism::ConstantReadNode
+          add_constant_reference(node, current_constant)
+        else
+          visit_children(node, current_constant: current_constant, namespace: namespace)
+        end
+      end
+
+      private
+
+      attr_reader :graph, :path
+
+      def visit_class(node, current_constant:, namespace:)
+        name = qualified_constant_name(node.constant_path, namespace)
+        constant = graph.add_constant(
+          name: name,
+          kind: :class,
+          path: path,
+          location: SourceLocation.from_prism(path, node.location)
+        )
+
+        if node.superclass
+          superclass = constant_reference_name(node.superclass)
+          constant.superclass = superclass
+          graph.add_edge(
+            type: :inherits_from,
+            from_path: path,
+            from_constant: constant.name,
+            to: superclass,
+            location: SourceLocation.from_prism(path, node.superclass.location)
+          )
+        end
+
+        visit(node.body, current_constant: constant.name, namespace: constant.name.split("::"))
+      end
+
+      def visit_module(node, current_constant:, namespace:)
+        name = qualified_constant_name(node.constant_path, namespace)
+        constant = graph.add_constant(
+          name: name,
+          kind: :module,
+          path: path,
+          location: SourceLocation.from_prism(path, node.location)
+        )
+
+        visit(node.body, current_constant: constant.name, namespace: constant.name.split("::"))
+      end
+
+      def visit_def(node, current_constant:, namespace:)
+        if current_constant && (constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path })
+          if node.receiver
+            constant.add_class_method(node.name)
+          else
+            constant.add_instance_method(node.name)
+          end
+        end
+
+        if node.name == :method_missing
+          graph.add_edge(
+            type: :dynamic_feature,
+            from_path: path,
+            from_constant: current_constant,
+            to: "method_missing",
+            location: SourceLocation.from_prism(path, node.location),
+            confidence: :unknown_due_to_dynamic_feature
+          )
+        end
+
+        visit_children(node, current_constant: current_constant, namespace: namespace)
+      end
+
+      def visit_call(node, current_constant:, namespace:)
+        return visit_children(node, current_constant: current_constant, namespace: namespace) unless node.message
+
+        message = node.message.to_sym
+        location = SourceLocation.from_prism(path, node.location)
+
+        if (required = literal_require_argument(node))
+          graph.add_edge(
+            type: message == :require_relative ? :requires_relative : :requires,
+            from_path: path,
+            from_constant: current_constant,
+            to: required,
+            location: location
+          )
+        end
+
+        if (edge_type = MIXIN_MESSAGES[message])
+          constant_arguments(node).each do |constant_name|
+            if current_constant && (constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path })
+              constant.add_mixin(message, constant_name)
+            end
+
+            graph.add_edge(
+              type: edge_type,
+              from_path: path,
+              from_constant: current_constant,
+              to: constant_name,
+              location: location
+            )
+          end
+        end
+
+        graph.add_edge(
+          type: :calls_named_method,
+          from_path: path,
+          from_constant: current_constant,
+          to: message,
+          location: location
+        )
+
+        if DYNAMIC_MESSAGES.include?(message)
+          graph.add_edge(
+            type: :dynamic_feature,
+            from_path: path,
+            from_constant: current_constant,
+            to: message,
+            location: location,
+            confidence: :unknown_due_to_dynamic_feature
+          )
+        end
+
+        visit_children(node, current_constant: current_constant, namespace: namespace)
+      end
+
+      def add_constant_reference(node, current_constant)
+        graph.add_edge(
+          type: :references_constant,
+          from_path: path,
+          from_constant: current_constant,
+          to: constant_reference_name(node),
+          location: SourceLocation.from_prism(path, node.location)
+        )
+      end
+
+      def visit_children(node, current_constant:, namespace:)
+        node.child_nodes.compact.each do |child|
+          visit(child, current_constant: current_constant, namespace: namespace)
+        end
+      end
+
+      def literal_require_argument(node)
+        return unless %i[require require_relative].include?(node.message.to_sym)
+        return if node.receiver
+
+        first_argument = node.arguments&.arguments&.first
+        return unless first_argument.is_a?(Prism::StringNode)
+
+        first_argument.unescaped
+      end
+
+      def constant_arguments(node)
+        node.arguments&.arguments&.filter_map do |argument|
+          constant_reference_name(argument) if constant_node?(argument)
+        end || []
+      end
+
+      def qualified_constant_name(node, namespace)
+        raw = constant_reference_name(node)
+        absolute = node.respond_to?(:full_name_parts) && node.full_name_parts.first == :""
+
+        if absolute || raw.include?("::") || namespace.empty?
+          raw
+        else
+          "#{namespace.join("::")}::#{raw}"
+        end
+      end
+
+      def constant_reference_name(node)
+        node.full_name.to_s.sub(/\A::/, "")
+      end
+
+      def constant_node?(node)
+        node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
+      end
+    end
+  end
+end
