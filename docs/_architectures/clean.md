@@ -22,7 +22,7 @@ Dependencies move inward:
 frameworks -> interface_adapters -> use_cases -> entities
 ```
 
-This compiles to the same primitive rules as [Layered](/architectures/layered/), with names that match Clean Architecture vocabulary.
+This compiles to the same primitive rules as [Layered]({% link _architectures/layered.md %}), with names that match Clean Architecture vocabulary.
 
 Use the Rails defaults with:
 

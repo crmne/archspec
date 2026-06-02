@@ -41,7 +41,7 @@ architecture :layered, layers: {
 }
 ```
 
-Architectures define components and rules together. See [Architectures](/architectures/).
+Architectures define components and rules together. See [Architectures]({% link _architectures/index.md %}).
 
 ## Dependency Rules
 
@@ -50,7 +50,7 @@ controllers.can_use :models, :services
 models.cannot_use :controllers
 ```
 
-`can_use` is an allowlist for other declared components. `cannot_use` forbids specific components. See [Dependency Rules](/rules/dependencies/).
+`can_use` is an allowlist for other declared components. `cannot_use` forbids specific components. See [Dependency Rules]({% link _rules/dependencies.md %}).
 
 ## Method Rules
 
@@ -60,7 +60,7 @@ services.must_implement_one_of :call, :resolve
 services.cannot_call :render, :redirect_to, :params, :session
 ```
 
-These are name-based checks. They are useful for Rails boundaries and method protocols. See [Method Rules](/rules/methods/) and [Protocol Rules](/rules/protocols/).
+These are name-based checks. They are useful for Rails boundaries and method protocols. See [Method Rules]({% link _rules/methods.md %}) and [Protocol Rules]({% link _rules/protocols.md %}).
 
 For projects that avoid anonymous command-object style APIs, forbid method definitions too:
 
@@ -69,7 +69,7 @@ library.cannot_define :call
 library.cannot_instantiate_and_invoke
 ```
 
-See [Object Rules](/rules/objects/).
+See [Object Rules]({% link _rules/objects.md %}).
 
 ## Constant Rules
 
@@ -79,7 +79,7 @@ models.cannot_reference_constants "ActionController", "ActionView"
 
 Use this when the dependency is better expressed as a framework constant than a component.
 
-See [Constant Rules](/rules/constants/).
+See [Constant Rules]({% link _rules/constants.md %}).
 
 ## Presets
 
@@ -90,7 +90,7 @@ preset :rails_layered
 
 Presets are shortcuts for common Rails checks and architecture bundles. Add your own rules beside them.
 
-See [Presets](/architectures/presets/).
+See [Presets]({% link _architectures/presets.md %}).
 
 ## Cycles and Names
 
@@ -101,7 +101,7 @@ verify_zeitwerk_names!
 
 `no_cycles!` checks component dependency cycles. `verify_zeitwerk_names!` checks file-to-constant naming for conventional Rails paths.
 
-See [Cycle Rules](/rules/cycles/) and [Zeitwerk Name Rules](/rules/zeitwerk-names/).
+See [Cycle Rules]({% link _rules/cycles.md %}) and [Zeitwerk Name Rules]({% link _rules/zeitwerk-names.md %}).
 
 ## Suppressions
 

@@ -22,13 +22,13 @@ ArchSpec reports the rule id, file, line, message, evidence, confidence, and sta
 
 ## Rule Families
 
-- [Dependencies](/rules/dependencies/)
-- [Methods](/rules/methods/)
-- [Protocols](/rules/protocols/)
-- [Objects](/rules/objects/)
-- [Constants](/rules/constants/)
-- [Cycles](/rules/cycles/)
-- [Zeitwerk Names](/rules/zeitwerk-names/)
+- [Dependencies]({% link _rules/dependencies.md %})
+- [Methods]({% link _rules/methods.md %})
+- [Protocols]({% link _rules/protocols.md %})
+- [Objects]({% link _rules/objects.md %})
+- [Constants]({% link _rules/constants.md %})
+- [Cycles]({% link _rules/cycles.md %})
+- [Zeitwerk Names]({% link _rules/zeitwerk-names.md %})
 
 ## Suppressing a Rule
 

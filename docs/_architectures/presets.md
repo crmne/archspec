@@ -14,7 +14,7 @@ Presets are shortcuts. They call the same DSL you can write by hand.
 preset :rails_way
 ```
 
-Defines the [Rails MVC](/architectures/rails-mvc/) architecture.
+Defines the [Rails MVC]({% link _architectures/rails-mvc.md %}) architecture.
 
 ## Rails Strict
 

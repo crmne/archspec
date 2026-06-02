@@ -16,4 +16,4 @@ Rule id: `constants.forbid`
 
 This fails when a file in the component references the constant or anything under it.
 
-For component-to-component boundaries, prefer [dependency rules](/rules/dependencies/).
+For component-to-component boundaries, prefer [dependency rules]({% link _rules/dependencies.md %}).

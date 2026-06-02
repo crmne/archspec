@@ -13,13 +13,13 @@ They define conventional components and apply dependency rules between them. The
 
 Available architectures:
 
-- [Rails MVC](/architectures/rails-mvc/)
-- [Layered](/architectures/layered/)
-- [Hexagonal](/architectures/hexagonal/)
-- [Clean](/architectures/clean/)
-- [Modular Monolith](/architectures/modular-monolith/)
-- [CQRS](/architectures/cqrs/)
-- [Event Driven](/architectures/event-driven/)
-- [Presets](/architectures/presets/)
+- [Rails MVC]({% link _architectures/rails-mvc.md %})
+- [Layered]({% link _architectures/layered.md %})
+- [Hexagonal]({% link _architectures/hexagonal.md %})
+- [Clean]({% link _architectures/clean.md %})
+- [Modular Monolith]({% link _architectures/modular-monolith.md %})
+- [CQRS]({% link _architectures/cqrs.md %})
+- [Event Driven]({% link _architectures/event-driven.md %})
+- [Presets]({% link _architectures/presets.md %})
 
-Use an architecture when your app already follows a clear folder or namespace convention. Use primitive [rules](/rules/) when the shape is custom.
+Use an architecture when your app already follows a clear folder or namespace convention. Use primitive [rules]({% link _rules/index.md %}) when the shape is custom.
