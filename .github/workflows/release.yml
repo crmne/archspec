@@ -42,14 +42,17 @@ jobs:
           echo "Local version: $VERSION"
           echo "Fetching published versions for archspec..."
 
-          ALL_PUBLISHED_VERSIONS=$(( \
-            gem list ^archspec$ -r --all 2>/dev/null || true; \
-            gem list ^archspec$ -r --prerelease 2>/dev/null || true; \
-          ) | sed -n 's/.*(\(.*\)).*/\1/p' \
-            | tr ',' '\n' \
-            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
-            | grep . \
-            | sort -u )
+          ALL_PUBLISHED_VERSIONS=$( \
+            ( \
+              gem list ^archspec$ -r --all 2>/dev/null || true; \
+              gem list ^archspec$ -r --prerelease 2>/dev/null || true; \
+            ) | sed -n 's/.*(\(.*\)).*/\1/p' \
+              | tr ',' '\n' \
+              | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+              | grep . \
+              | sort -u \
+              || true \
+          )
 
           if [ -n "$ALL_PUBLISHED_VERSIONS" ]; then
             echo "$ALL_PUBLISHED_VERSIONS" | sed 's/^/  /'
