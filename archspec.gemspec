@@ -7,7 +7,7 @@ Gem::Specification.new do |spec|
   spec.email = ["carmine@paolino.me"]
 
   spec.summary = "Architecture fitness functions for Ruby and Rails."
-  spec.description = "Static, convention-aware architecture checks for Ruby and Rails codebases."
+  spec.description = "Convention-aware architecture checks for Ruby and Rails codebases."
   spec.homepage = "https://crmne.github.io/archspec"
   spec.license = "MIT"
 

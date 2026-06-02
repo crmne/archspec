@@ -1,7 +1,7 @@
 ---
 layout: home
 title: ArchSpec
-description: Static architecture checks for Ruby and Rails.
+description: Architecture checks for Ruby and Rails.
 permalink: /
 hero:
   name: ArchSpec
