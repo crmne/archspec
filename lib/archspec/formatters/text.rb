@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 module ArchSpec
   module Formatters
     module Text
-      extend self
+      module_function
 
       def print(output = $stdout, graph:, diagnostics:)
         if diagnostics.empty?
@@ -9,7 +11,7 @@ module ArchSpec
           return
         end
 
-        output.puts "#{diagnostics.size} architecture #{diagnostics.size == 1 ? "violation" : "violations"}"
+        output.puts "#{diagnostics.size} architecture #{diagnostics.size == 1 ? 'violation' : 'violations'}"
         output.puts
 
         diagnostics.each do |diagnostic|

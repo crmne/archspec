@@ -1,5 +1,6 @@
-require "set"
-require "yaml"
+# frozen_string_literal: true
+
+require 'yaml'
 
 module ArchSpec
   class Baseline
@@ -11,8 +12,8 @@ module ArchSpec
       return empty(root: root) unless path && File.exist?(path)
 
       document = YAML.safe_load_file(path, permitted_classes: [], aliases: false) || {}
-      ids = Array(document["violations"]).filter_map do |entry|
-        entry.is_a?(Hash) ? entry["id"] : entry
+      ids = Array(document['violations']).filter_map do |entry|
+        entry.is_a?(Hash) ? entry['id'] : entry
       end
 
       new(ids.to_set, root: root)
@@ -20,13 +21,13 @@ module ArchSpec
 
     def self.write(path, diagnostics, root:)
       payload = {
-        "violations" => diagnostics.map do |diagnostic|
+        'violations' => diagnostics.map do |diagnostic|
           {
-            "id" => diagnostic.fingerprint(root: root),
-            "rule" => diagnostic.rule,
-            "path" => diagnostic.location.relative_path(root),
-            "line" => diagnostic.location.line,
-            "message" => diagnostic.message
+            'id' => diagnostic.fingerprint(root: root),
+            'rule' => diagnostic.rule,
+            'path' => diagnostic.location.relative_path(root),
+            'line' => diagnostic.location.line,
+            'message' => diagnostic.message
           }
         end
       }

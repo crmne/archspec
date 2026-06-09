@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ArchSpec
   module DSL
     module Context
@@ -15,7 +17,7 @@ module ArchSpec
         add_ignore_patterns(patterns)
       end
 
-      def baseline(path = ".archspec_todo.yml")
+      def baseline(path = '.archspec_todo.yml')
         self.baseline_path = path.to_s
       end
 
@@ -101,6 +103,11 @@ module ArchSpec
         self
       end
 
+      def must_be_empty(because: nil)
+        add_rule(Rules::MustBeEmptyRule.new(name, because: because))
+        self
+      end
+
       def must_implement(*methods)
         methods.each do |method_name|
           add_rule(Rules::MustImplementRule.new(name, method_name))
@@ -121,7 +128,7 @@ module ArchSpec
             candidate.respond_to?(:merge_key) && candidate.merge_key == rule.merge_key
           end
 
-          return existing.merge!(rule) if existing&.respond_to?(:merge!)
+          return existing.merge!(rule) if existing.respond_to?(:merge!)
           return existing if existing
         end
 

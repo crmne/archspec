@@ -1,26 +1,28 @@
+# frozen_string_literal: true
+
 module ArchSpec
   module Architectures
     extend self
 
     DEFAULT_LAYERED = {
-      interface: "app/controllers/**/*.rb",
+      interface: 'app/controllers/**/*.rb',
       application: %w[app/services/**/*.rb app/jobs/**/*.rb app/mailers/**/*.rb],
-      domain: "app/models/**/*.rb"
+      domain: 'app/models/**/*.rb'
     }.freeze
 
     DEFAULT_RAILS_MVC = {
-      controllers: "app/controllers/**/*.rb",
-      models: "app/models/**/*.rb",
-      helpers: "app/helpers/**/*.rb",
-      mailers: "app/mailers/**/*.rb",
-      jobs: "app/jobs/**/*.rb",
-      services: "app/services/**/*.rb"
+      controllers: 'app/controllers/**/*.rb',
+      models: 'app/models/**/*.rb',
+      helpers: 'app/helpers/**/*.rb',
+      mailers: 'app/mailers/**/*.rb',
+      jobs: 'app/jobs/**/*.rb',
+      services: 'app/services/**/*.rb'
     }.freeze
 
     DEFAULT_HEXAGONAL = {
       application: %w[app/services/**/*.rb app/use_cases/**/*.rb],
-      domain: "app/domain/**/*.rb",
-      ports: "app/ports/**/*.rb",
+      domain: 'app/domain/**/*.rb',
+      ports: 'app/ports/**/*.rb',
       adapters: %w[app/adapters/**/*.rb app/integrations/**/*.rb app/infrastructure/**/*.rb]
     }.freeze
 
@@ -32,15 +34,15 @@ module ArchSpec
     }.freeze
 
     DEFAULT_CQRS = {
-      commands: "app/commands/**/*.rb",
-      queries: "app/queries/**/*.rb",
-      read_models: "app/read_models/**/*.rb"
+      commands: 'app/commands/**/*.rb',
+      queries: 'app/queries/**/*.rb',
+      read_models: 'app/read_models/**/*.rb'
     }.freeze
 
     DEFAULT_EVENT_DRIVEN = {
-      events: "app/events/**/*.rb",
-      publishers: "app/publishers/**/*.rb",
-      subscribers: "app/subscribers/**/*.rb"
+      events: 'app/events/**/*.rb',
+      publishers: 'app/publishers/**/*.rb',
+      subscribers: 'app/subscribers/**/*.rb'
     }.freeze
 
     CONTROLLER_METHODS = %i[render redirect_to params session cookies flash].freeze

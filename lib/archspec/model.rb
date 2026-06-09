@@ -1,5 +1,6 @@
-require "pathname"
-require "set"
+# frozen_string_literal: true
+
+require 'pathname'
 
 module ArchSpec
   ParseError = Data.define(:message, :location)
@@ -167,7 +168,8 @@ module ArchSpec
           next unless matched_file || matched_constant
 
           component.add_file(constant.path, reason: "defines #{constant.name}") if matched_constant
-          component.add_constant(constant.name, reason: matched_file ? "defined in matched file" : "matched namespace/constant selector")
+          component.add_constant(constant.name,
+                                 reason: matched_file ? 'defined in matched file' : 'matched namespace/constant selector')
         end
 
         @components[component.name] = component
@@ -207,11 +209,11 @@ module ArchSpec
       candidates = []
 
       if from_constant
-        namespace = normalize_constant(from_constant).split("::")
+        namespace = normalize_constant(from_constant).split('::')
         namespace.pop
 
         until namespace.empty?
-          candidates << "#{namespace.join("::")}::#{normalized}"
+          candidates << "#{namespace.join('::')}::#{normalized}"
           namespace.pop
         end
       end
@@ -272,7 +274,7 @@ module ArchSpec
     end
 
     def normalize_constant(value)
-      value.to_s.sub(/\A::/, "")
+      value.to_s.sub(/\A::/, '')
     end
   end
 end

@@ -1,8 +1,10 @@
+# frozen_string_literal: true
+
 module ArchSpec
   module Rules
     class ZeitwerkNamingRule
       def id
-        "zeitwerk.naming"
+        'zeitwerk.naming'
       end
 
       def evaluate(graph)
@@ -16,7 +18,7 @@ module ArchSpec
             rule: id,
             message: "#{file.relative_path} should define #{file.expected_constant}",
             location: SourceLocation.new(file.path, 1, 1),
-            evidence: "defined constants: #{defined.empty? ? "(none)" : defined.join(", ")}"
+            evidence: "defined constants: #{defined.empty? ? '(none)' : defined.join(', ')}"
           )
         end
       end

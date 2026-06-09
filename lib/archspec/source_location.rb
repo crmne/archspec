@@ -1,4 +1,6 @@
-require "pathname"
+# frozen_string_literal: true
+
+require 'pathname'
 
 module ArchSpec
   SourceLocation = Data.define(:path, :line, :column) do

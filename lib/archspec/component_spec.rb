@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ArchSpec
   class ComponentSpec
     attr_reader :name, :file_patterns, :namespaces, :constants
@@ -28,7 +30,7 @@ module ArchSpec
     private
 
     def normalize_constant(value)
-      value.to_s.sub(/\A::/, "")
+      value.to_s.sub(/\A::/, '')
     end
   end
 end

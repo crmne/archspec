@@ -1,4 +1,6 @@
-require "test_helper"
+# frozen_string_literal: true
+
+require 'test_helper'
 
 class AnalyzerTest < ArchSpecTest
   def test_builds_graph_from_direct_prism_parse
@@ -21,16 +23,16 @@ class AnalyzerTest < ArchSpecTest
       RUBY
 
       definition = ArchSpec.define do
-        component :models, in: "app/models/**/*.rb"
+        component :models, in: 'app/models/**/*.rb'
       end
 
       graph = ArchSpec::Analyzer.analyze(definition, root: root)
 
-      assert_equal ["Billing", "Billing::Invoice", "User"], graph.constants.map(&:name).sort
-      assert_equal ["User"], graph.constants_named("User").map(&:name)
-      assert graph.edges.any? { |edge| edge.type == :inherits_from && edge.to == "ApplicationRecord" }
-      assert graph.edges.any? { |edge| edge.type == :includes && edge.to == "Billable" }
-      assert graph.edges.any? { |edge| edge.type == :references_constant && edge.to == "Billing::Invoice" }
+      assert_equal ['Billing', 'Billing::Invoice', 'User'], graph.constants.map(&:name).sort
+      assert_equal ['User'], graph.constants_named('User').map(&:name)
+      assert(graph.edges.any? { |edge| edge.type == :inherits_from && edge.to == 'ApplicationRecord' })
+      assert(graph.edges.any? { |edge| edge.type == :includes && edge.to == 'Billable' })
+      assert(graph.edges.any? { |edge| edge.type == :references_constant && edge.to == 'Billing::Invoice' })
       assert_equal [:models], graph.component_names_for_path("#{root}/app/models/user.rb").to_a
     end
   end
@@ -45,13 +47,28 @@ class AnalyzerTest < ArchSpecTest
       RUBY
 
       definition = ArchSpec.define do
-        component :services, in: "app/services/**/*.rb"
+        component :services, in: 'app/services/**/*.rb'
       end
 
       graph = ArchSpec::Analyzer.analyze(definition, root: root)
       file = graph.files.fetch("#{root}/app/services/billing/create_invoice.rb")
 
-      assert_equal "Billing::CreateInvoice", file.expected_constant
+      assert_equal 'Billing::CreateInvoice', file.expected_constant
+    end
+  end
+
+  def test_expected_constant_ignores_concerns_directory_in_packs
+    with_project do |root|
+      write "#{root}/packs/billing/app/models/concerns/chargeable.rb", "module Chargeable; end\n"
+
+      definition = ArchSpec.define do
+        component :billing, in: 'packs/billing/**/*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      file = graph.files.fetch("#{root}/packs/billing/app/models/concerns/chargeable.rb")
+
+      assert_equal 'Chargeable', file.expected_constant
     end
   end
 end

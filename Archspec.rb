@@ -1,10 +1,12 @@
-ArchSpec.define "ArchSpec architecture" do
-  root "."
-  source "lib/**/*.rb"
+# frozen_string_literal: true
 
-  component :library, in: "lib/**/*.rb"
-  component :public_api, in: "lib/archspec.rb"
-  component :cli, in: "lib/archspec/cli.rb"
+ArchSpec.define 'ArchSpec architecture' do
+  root '.'
+  source 'lib/**/*.rb'
+
+  component :library, in: 'lib/**/*.rb'
+  component :public_api, in: 'lib/archspec.rb'
+  component :cli, in: 'lib/archspec/cli.rb'
   component :analysis, in: %w[
     lib/archspec/analyzer.rb
     lib/archspec/evaluator.rb
@@ -22,9 +24,9 @@ ArchSpec.define "ArchSpec architecture" do
     lib/archspec/dsl.rb
     lib/archspec/presets.rb
   ]
-  component :rule_checks, in: "lib/archspec/rules/**/*.rb"
-  component :formatters, in: "lib/archspec/formatters/**/*.rb"
-  component :support, in: "lib/archspec/version.rb"
+  component :rule_checks, in: 'lib/archspec/rules/**/*.rb'
+  component :formatters, in: 'lib/archspec/formatters/**/*.rb'
+  component :support, in: 'lib/archspec/version.rb'
 
   library.cannot_call :call
   library.cannot_define :call

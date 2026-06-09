@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ArchSpec
   module Presets
     module_function
@@ -8,6 +10,8 @@ module ArchSpec
         rails_way(dsl, **options)
       when :rails_strict
         rails_strict(dsl, **options)
+      when :vanilla_rails
+        vanilla_rails(dsl, **options)
       when :rails_layered
         rails_layered(dsl, **options)
       when :rails_hexagonal
@@ -31,6 +35,23 @@ module ArchSpec
       rails_way(dsl, **options)
       dsl.verify_zeitwerk_names!
       dsl.no_cycles!(among: %i[controllers models helpers mailers jobs services])
+    end
+
+    VANILLA_RAILS_EMPTY = {
+      services: ['app/services/**/*.rb', 'behavior belongs on models, not service objects'],
+      forms: ['app/forms/**/*.rb', 'use strong parameters and model validations'],
+      policies: ['app/policies/**/*.rb', 'authorization is predicate methods on models'],
+      decorators: ['app/decorators/**/*.rb', 'use helpers and partials'],
+      presenters: ['app/presenters/**/*.rb', 'presentation objects are POROs in app/models'],
+      view_components: ['app/components/**/*.rb', 'use helpers and ERB partials']
+    }.freeze
+
+    def vanilla_rails(dsl, **options)
+      rails_way(dsl, **options)
+
+      VANILLA_RAILS_EMPTY.each do |name, (pattern, reason)|
+        dsl.component(name, in: pattern).must_be_empty(because: reason)
+      end
     end
 
     def rails_layered(dsl, **options)

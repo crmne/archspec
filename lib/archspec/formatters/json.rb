@@ -1,9 +1,11 @@
-require "json"
+# frozen_string_literal: true
+
+require 'json'
 
 module ArchSpec
   module Formatters
     module JSON
-      extend self
+      module_function
 
       def print(output = $stdout, graph:, diagnostics:)
         output.puts ::JSON.pretty_generate(

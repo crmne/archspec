@@ -1,9 +1,11 @@
-ArchSpec.define "Fixture Rails app" do
-  root "."
-  preset :rails_way
-  baseline ".archspec_todo.yml"
+# frozen_string_literal: true
 
-  component :commands, in: "app/commands/**/*.rb"
+ArchSpec.define 'Fixture Rails app' do
+  root '.'
+  preset :rails_way
+  baseline '.archspec_todo.yml'
+
+  component :commands, in: 'app/commands/**/*.rb'
   commands.must_implement :call
   commands.cannot_call :render, :redirect_to, :params, :session
 

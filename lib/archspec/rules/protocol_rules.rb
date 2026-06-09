@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ArchSpec
   module Rules
     class CannotCallRule
@@ -18,7 +20,7 @@ module ArchSpec
       end
 
       def id
-        "methods.forbid"
+        'methods.forbid'
       end
 
       def evaluate(graph)
@@ -50,7 +52,7 @@ module ArchSpec
       end
 
       def id
-        "protocol.must_implement"
+        'protocol.must_implement'
       end
 
       def evaluate(graph)
@@ -61,7 +63,7 @@ module ArchSpec
             rule: id,
             message: "#{constant.name} must implement ##{method_name}",
             location: constant.location,
-            evidence: "#{constant.name} methods: #{constant.instance_methods.to_a.sort.join(", ")}"
+            evidence: "#{constant.name} methods: #{constant.instance_methods.to_a.sort.join(', ')}"
           )
         end
       end
@@ -93,7 +95,7 @@ module ArchSpec
       end
 
       def id
-        "protocol.must_implement_one_of"
+        'protocol.must_implement_one_of'
       end
 
       def evaluate(graph)
@@ -102,9 +104,9 @@ module ArchSpec
 
           Diagnostic.new(
             rule: id,
-            message: "#{constant.name} must implement one of #{method_names.map { |name| "##{name}" }.join(", ")}",
+            message: "#{constant.name} must implement one of #{method_names.map { |name| "##{name}" }.join(', ')}",
             location: constant.location,
-            evidence: "#{constant.name} methods: #{constant.instance_methods.to_a.sort.join(", ")}"
+            evidence: "#{constant.name} methods: #{constant.instance_methods.to_a.sort.join(', ')}"
           )
         end
       end
@@ -136,7 +138,7 @@ module ArchSpec
       end
 
       def id
-        "methods.define_forbid"
+        'methods.define_forbid'
       end
 
       def evaluate(graph)
@@ -165,7 +167,7 @@ module ArchSpec
       end
 
       def id
-        "objects.instantiate_and_invoke_forbid"
+        'objects.instantiate_and_invoke_forbid'
       end
 
       def evaluate(graph)

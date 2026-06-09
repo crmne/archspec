@@ -1,4 +1,6 @@
-require "test_helper"
+# frozen_string_literal: true
+
+require 'test_helper'
 
 class BaselineTest < ArchSpecTest
   def test_baseline_uses_root_relative_fingerprints
@@ -7,8 +9,8 @@ class BaselineTest < ArchSpecTest
       write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
 
       definition = ArchSpec.define do
-        component :models, in: "app/models/**/*.rb"
-        component :controllers, in: "app/controllers/**/*.rb"
+        component :models, in: 'app/models/**/*.rb'
+        component :controllers, in: 'app/controllers/**/*.rb'
         models.cannot_use :controllers
       end
 
@@ -20,7 +22,7 @@ class BaselineTest < ArchSpecTest
       baseline = ArchSpec::Baseline.load(baseline_path, root: root)
 
       assert_empty ArchSpec::Evaluator.evaluate(definition, graph, baseline: baseline)
-      assert_match "app/models/user.rb", File.read(baseline_path)
+      assert_match 'app/models/user.rb', File.read(baseline_path)
       refute_match root, File.read(baseline_path)
     end
   end

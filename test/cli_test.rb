@@ -1,5 +1,7 @@
-require "test_helper"
-require "stringio"
+# frozen_string_literal: true
+
+require 'test_helper'
+require 'stringio'
 
 class CLITest < ArchSpecTest
   def test_check_returns_nonzero_on_violations
@@ -16,7 +18,7 @@ class CLITest < ArchSpecTest
       write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
 
       output = StringIO.new
-      status = Dir.chdir(root) { ArchSpec::CLI.run(["check"], output: output, error: StringIO.new) }
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['check'], output: output, error: StringIO.new) }
 
       assert_equal 1, status
       assert_match(/architecture violation/, output.string)
@@ -35,12 +37,12 @@ class CLITest < ArchSpecTest
       write "#{root}/app/models/user.rb", "class User; end\n"
 
       output = StringIO.new
-      status = Dir.chdir(root) { ArchSpec::CLI.run(["check", "--format", "json"], output: output, error: StringIO.new) }
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['check', '--format', 'json'], output: output, error: StringIO.new) }
 
       assert_equal 0, status
       parsed = JSON.parse(output.string)
-      assert_equal 1, parsed.fetch("files")
-      assert_equal [], parsed.fetch("violations")
+      assert_equal 1, parsed.fetch('files')
+      assert_equal [], parsed.fetch('violations')
     end
   end
 
@@ -55,11 +57,11 @@ class CLITest < ArchSpecTest
       write "#{root}/app/models/user.rb", "class User; end\n"
 
       output = StringIO.new
-      status = Dir.chdir(root) { ArchSpec::CLI.run(["explain", "app/models/user.rb"], output: output, error: StringIO.new) }
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['explain', 'app/models/user.rb'], output: output, error: StringIO.new) }
 
       assert_equal 0, status
       assert_match(/expected constant: User/, output.string)
-      assert_match(/components:\n    models: matched file pattern app\/models\/\*\*\/\*\.rb/, output.string)
+      assert_match(%r{components:\n    models: matched file pattern app/models/\*\*/\*\.rb}, output.string)
     end
   end
 
@@ -79,7 +81,7 @@ class CLITest < ArchSpecTest
       RUBY
 
       output = StringIO.new
-      status = Dir.chdir(root) { ArchSpec::CLI.run(["explain", "app/models/user.rb"], output: output, error: StringIO.new) }
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['explain', 'app/models/user.rb'], output: output, error: StringIO.new) }
 
       assert_equal 0, status
       assert_match(/suppressions:/, output.string)

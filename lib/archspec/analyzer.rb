@@ -1,6 +1,7 @@
-require "prism"
-require "pathname"
-require "set"
+# frozen_string_literal: true
+
+require 'prism'
+require 'pathname'
 
 module ArchSpec
   module Analyzer
@@ -34,7 +35,7 @@ module ArchSpec
       definition.analysis_patterns.flat_map do |pattern|
         Dir.glob(File.absolute_path(pattern, root))
       end.select do |path|
-        File.file?(path) && path.end_with?(".rb")
+        File.file?(path) && path.end_with?('.rb')
       end.map do |path|
         File.expand_path(path)
       end.uniq.reject do |path|
@@ -58,6 +59,8 @@ module ArchSpec
           Regexp.last_match(1)
         when %r{\Alib/(.+)\.rb\z}
           Regexp.last_match(1)
+        when %r{\A(?:packs|engines)/[^/]+/app/[^/]+/concerns/(.+)\.rb\z}
+          Regexp.last_match(1)
         when %r{\A(?:packs|engines)/[^/]+/app/[^/]+/(.+)\.rb\z}
           Regexp.last_match(1)
         else
@@ -68,9 +71,9 @@ module ArchSpec
     end
 
     def camelize_path(path)
-      path.split("/").map do |part|
-        part.split("_").map { |word| word[0] ? word[0].upcase + word[1..] : word }.join
-      end.join("::")
+      path.split('/').map do |part|
+        part.split('_').map { |word| word[0] ? word[0].upcase + word[1..] : word }.join
+      end.join('::')
     end
 
     def suppressions_for(comments)
@@ -94,7 +97,7 @@ module ArchSpec
         active = Hash.new { |hash, key| hash[key] = [] }
 
         sorted_comments(comments).each do |comment|
-          text = comment.slice.sub(/\A#\s?/, "").strip
+          text = comment.slice.sub(/\A#\s?/, '').strip
           line = comment.location.start_line
 
           if (match = text.match(DISABLE_PATTERN))
@@ -102,9 +105,9 @@ module ArchSpec
             rule = normalize_rule(rule)
 
             case mode
-            when "line"
+            when 'line'
               suppressions << Suppression.new(rule, line, line, reason)
-            when "next-line"
+            when 'next-line'
               suppressions << Suppression.new(rule, line + 1, line + 1, reason)
             else
               active[rule] << [line + 1, reason]
@@ -134,7 +137,7 @@ module ArchSpec
       end
 
       def normalize_rule(rule)
-        return nil if rule.nil? || rule == "*"
+        return nil if rule.nil? || rule == '*'
 
         rule.downcase
       end
@@ -205,7 +208,7 @@ module ArchSpec
           )
         end
 
-        visit(graph, path, node.body, current_constant: constant.name, namespace: constant.name.split("::"))
+        visit(graph, path, node.body, current_constant: constant.name, namespace: constant.name.split('::'))
       end
 
       def visit_module(graph, path, node, current_constant:, namespace:)
@@ -217,11 +220,13 @@ module ArchSpec
           location: SourceLocation.from_prism(path, node.location)
         )
 
-        visit(graph, path, node.body, current_constant: constant.name, namespace: constant.name.split("::"))
+        visit(graph, path, node.body, current_constant: constant.name, namespace: constant.name.split('::'))
       end
 
       def visit_def(graph, path, node, current_constant:, namespace:)
-        if current_constant && (constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path })
+        if current_constant && (constant = graph.constants_named(current_constant).find do |candidate|
+          candidate.path == path
+        end)
           if node.receiver
             constant.add_class_method(node.name, location: SourceLocation.from_prism(path, node.location))
           else
@@ -234,7 +239,7 @@ module ArchSpec
             type: :dynamic_feature,
             from_path: path,
             from_constant: current_constant,
-            to: "method_missing",
+            to: 'method_missing',
             location: SourceLocation.from_prism(path, node.location),
             confidence: :unknown_due_to_dynamic_feature
           )
@@ -244,7 +249,10 @@ module ArchSpec
       end
 
       def visit_call(graph, path, node, current_constant:, namespace:)
-        return visit_children(graph, path, node, current_constant: current_constant, namespace: namespace) unless node.message
+        unless node.message
+          return visit_children(graph, path, node, current_constant: current_constant,
+                                                   namespace: namespace)
+        end
 
         message = node.message.to_sym
         location = SourceLocation.from_prism(path, node.location)
@@ -271,7 +279,9 @@ module ArchSpec
 
         if (edge_type = MIXIN_MESSAGES[message])
           constant_arguments(node).each do |constant_name|
-            if current_constant && (constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path })
+            if current_constant && (constant = graph.constants_named(current_constant).find do |candidate|
+              candidate.path == path
+            end)
               constant.add_mixin(message, constant_name)
             end
 
@@ -342,7 +352,7 @@ module ArchSpec
       def instantiates_and_invokes(node)
         receiver = node.receiver
         return unless receiver.is_a?(Prism::CallNode)
-        return unless receiver.message == "new"
+        return unless receiver.message == 'new'
 
         "#{new_receiver_name(receiver)}##{node.message}"
       end
@@ -350,22 +360,22 @@ module ArchSpec
       def new_receiver_name(node)
         return constant_reference_name(node.receiver) if constant_node?(node.receiver)
 
-        node.receiver&.slice || "(unknown)"
+        node.receiver&.slice || '(unknown)'
       end
 
       def qualified_constant_name(node, namespace)
         raw = constant_reference_name(node)
         absolute = node.respond_to?(:full_name_parts) && node.full_name_parts.first == :""
 
-        if absolute || raw.include?("::") || namespace.empty?
+        if absolute || raw.include?('::') || namespace.empty?
           raw
         else
-          "#{namespace.join("::")}::#{raw}"
+          "#{namespace.join('::')}::#{raw}"
         end
       end
 
       def constant_reference_name(node)
-        node.full_name.to_s.sub(/\A::/, "")
+        node.full_name.to_s.sub(/\A::/, '')
       end
 
       def constant_node?(node)

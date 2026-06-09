@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ArchSpec
   module Rules
     class NoCyclesRule
@@ -8,7 +10,7 @@ module ArchSpec
       end
 
       def id
-        "dependencies.no_cycles"
+        'dependencies.no_cycles'
       end
 
       def evaluate(graph)
@@ -16,9 +18,9 @@ module ArchSpec
           location = first_location_for_cycle(graph, cycle) || SourceLocation.new(graph.root, 1, 1)
           Diagnostic.new(
             rule: id,
-            message: "component dependency cycle: #{cycle.join(" -> ")}",
+            message: "component dependency cycle: #{cycle.join(' -> ')}",
             location: location,
-            evidence: cycle.join(" -> ")
+            evidence: cycle.join(' -> ')
           )
         end
       end
@@ -26,17 +28,17 @@ module ArchSpec
       private
 
       def cycles(graph)
-        adjacency = Hash.new { |hash, key| hash[key] = Set.new }
+        adjacency = {}
         graph.component_dependency_pairs(only: components).each do |source, target|
           next if source == target
 
-          adjacency[source].add(target)
+          (adjacency[source] ||= Set.new).add(target)
         end
 
         found = Set.new
         result = []
 
-        adjacency.keys.each do |start|
+        adjacency.each_key do |start|
           walk(adjacency, start, start, [], found, result)
         end
 
@@ -46,7 +48,7 @@ module ArchSpec
       def walk(adjacency, start, node, path, found, result)
         next_path = path + [node]
 
-        adjacency[node].each do |target|
+        adjacency.fetch(node, []).each do |target|
           if target == start
             cycle = canonical_cycle(next_path + [start])
             key = cycle.join("\0")

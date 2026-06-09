@@ -39,6 +39,15 @@ ArchSpec.define "Application architecture" do
 end
 ```
 
+Go vanilla, 37signals style — rich models, no service objects:
+
+```ruby
+ArchSpec.define "Application architecture" do
+  root "."
+  preset :vanilla_rails
+end
+```
+
 Add layers when the app has a clear direction of dependencies:
 
 ```ruby
@@ -124,6 +133,7 @@ end
 - **Protocols:** required methods such as `resolve`, `perform`, or project-specific interfaces
 - **Objects:** rules against one-shot `Something.new(...).whatever` command objects
 - **Zeitwerk names:** conventional file names defining the expected constants
+- **Empty components:** directories that must stay empty, like `app/services` in vanilla Rails
 - **Suppressions:** narrow local exceptions with a reason
 
 ## Installation

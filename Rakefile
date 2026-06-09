@@ -1,12 +1,14 @@
-require "rake/testtask"
+# frozen_string_literal: true
+
+require 'rake/testtask'
 
 Rake::TestTask.new(:test) do |task|
-  task.libs << "test"
-  task.pattern = "test/**/*_test.rb"
+  task.libs << 'test'
+  task.pattern = 'test/**/*_test.rb'
 end
 
 task :architecture do
-  sh "exe/archspec check"
+  sh 'exe/archspec check'
 end
 
 task default: %i[test architecture]

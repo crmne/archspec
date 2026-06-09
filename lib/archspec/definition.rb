@@ -1,18 +1,20 @@
+# frozen_string_literal: true
+
 module ArchSpec
   class Definition
     DEFAULT_SOURCE_PATTERNS = [
-      "app/**/*.rb",
-      "lib/**/*.rb",
-      "packs/*/app/**/*.rb",
-      "engines/*/app/**/*.rb"
+      'app/**/*.rb',
+      'lib/**/*.rb',
+      'packs/*/app/**/*.rb',
+      'engines/*/app/**/*.rb'
     ].freeze
 
     DEFAULT_IGNORE_PATTERNS = [
-      ".git/**/*",
-      ".bundle/**/*",
-      "node_modules/**/*",
-      "tmp/**/*",
-      "vendor/**/*"
+      '.git/**/*',
+      '.bundle/**/*',
+      'node_modules/**/*',
+      'tmp/**/*',
+      'vendor/**/*'
     ].freeze
 
     attr_accessor :name, :root_path, :baseline_path
@@ -20,7 +22,7 @@ module ArchSpec
 
     def initialize(name)
       @name = name
-      @root_path = "."
+      @root_path = '.'
       @baseline_path = nil
       @source_patterns = []
       @ignore_patterns = DEFAULT_IGNORE_PATTERNS.dup

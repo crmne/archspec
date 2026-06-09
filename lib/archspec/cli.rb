@@ -1,10 +1,12 @@
-require "optparse"
+# frozen_string_literal: true
+
+require 'optparse'
 
 module ArchSpec
   module CLI
     extend self
 
-    CONFIG_FILE = "Archspec.rb"
+    CONFIG_FILE = 'Archspec.rb'
     TEMPLATE = <<~RUBY
       ArchSpec.define "Application architecture" do
         root "."
@@ -14,16 +16,16 @@ module ArchSpec
 
     def run(argv, output: $stdout, error: $stderr)
       argv = argv.dup
-      command = argv.shift || "check"
+      command = argv.shift || 'check'
 
       case command
-      when "init"
+      when 'init'
         init(argv, output)
-      when "check"
+      when 'check'
         check(argv, output)
-      when "explain"
+      when 'explain'
         explain(argv, output)
-      when "version", "--version", "-v"
+      when 'version', '--version', '-v'
         output.puts ArchSpec::VERSION
         0
       else
@@ -31,20 +33,18 @@ module ArchSpec
         error.puts usage
         64
       end
-    rescue Error => exception
-      error.puts exception.message
+    rescue Error => e
+      error.puts e.message
       1
     end
 
     private
 
     def init(argv, output)
-      force = argv.delete("--force")
+      force = argv.delete('--force')
       path = argv.shift || CONFIG_FILE
 
-      if File.exist?(path) && !force
-        raise Error, "#{path} already exists. Use --force to overwrite it."
-      end
+      raise Error, "#{path} already exists. Use --force to overwrite it." if File.exist?(path) && !force
 
       File.write(path, TEMPLATE)
       output.puts "Created #{path}"
@@ -54,14 +54,14 @@ module ArchSpec
     def check(argv, output)
       options = {
         config: CONFIG_FILE,
-        format: "text",
+        format: 'text',
         update_baseline: false
       }
 
-      parser = OptionParser.new do |parser|
-        parser.on("--config PATH") { |value| options[:config] = value }
-        parser.on("--format FORMAT") { |value| options[:format] = value }
-        parser.on("--update-baseline") { options[:update_baseline] = true }
+      parser = OptionParser.new do |opts|
+        opts.on('--config PATH') { |value| options[:config] = value }
+        opts.on('--format FORMAT') { |value| options[:format] = value }
+        opts.on('--update-baseline') { options[:update_baseline] = true }
       end
       parser.parse!(argv)
 
@@ -72,7 +72,10 @@ module ArchSpec
       diagnostics = Evaluator.evaluate(definition, graph, baseline: baseline)
 
       if options[:update_baseline]
-        raise Error, "No baseline configured. Add `baseline \".archspec_todo.yml\"` to #{options[:config]}." unless baseline_path
+        unless baseline_path
+          raise Error,
+                "No baseline configured. Add `baseline \".archspec_todo.yml\"` to #{options[:config]}."
+        end
 
         Baseline.write(baseline_path, diagnostics, root: root)
         output.puts "Updated #{Pathname(baseline_path).relative_path_from(Pathname(root))} with #{diagnostics.size} violations."
@@ -85,13 +88,13 @@ module ArchSpec
 
     def explain(argv, output)
       options = { config: CONFIG_FILE }
-      parser = OptionParser.new do |parser|
-        parser.on("--config PATH") { |value| options[:config] = value }
+      parser = OptionParser.new do |opts|
+        opts.on('--config PATH') { |value| options[:config] = value }
       end
       parser.parse!(argv)
 
       subject = argv.shift
-      raise Error, "Usage: archspec explain PATH_OR_CONSTANT" unless subject
+      raise Error, 'Usage: archspec explain PATH_OR_CONSTANT' unless subject
 
       definition, root = load_definition(options[:config])
       graph = Analyzer.analyze(definition, root: root)
@@ -119,9 +122,9 @@ module ArchSpec
 
     def formatter_for(name)
       case name
-      when "text"
+      when 'text'
         Formatters::Text
-      when "json"
+      when 'json'
         Formatters::JSON
       else
         raise Error, "Unknown format: #{name.inspect}"
@@ -134,12 +137,12 @@ module ArchSpec
       if graph.files.key?(path)
         file = graph.files.fetch(path)
         output.puts file.relative_path
-        output.puts "  expected constant: #{file.expected_constant || "(none)"}"
-        output.puts "  defined constants: #{graph.constants_for_path(path).map(&:name).join(", ")}"
+        output.puts "  expected constant: #{file.expected_constant || '(none)'}"
+        output.puts "  defined constants: #{graph.constants_for_path(path).map(&:name).join(', ')}"
         output_parse_errors(output, file)
         output_component_reasons(output, graph.component_assignment_reasons_for_path(path))
         output_suppressions(output, file)
-        output.puts "  outgoing facts:"
+        output.puts '  outgoing facts:'
 
         graph.edges.select { |edge| edge.from_path == path }.each do |edge|
           output.puts "    #{edge.type} #{edge.to} at #{edge.location.line}:#{edge.location.column}"
@@ -153,29 +156,29 @@ module ArchSpec
           output.puts "  kind: #{constant.kind}"
           output.puts "  file: #{constant.location.relative_path(graph.root)}:#{constant.location.line}"
           output_component_reasons(output, graph.component_assignment_reasons_for_constant(constant.name))
-          output.puts "  superclass: #{constant.superclass || "(none)"}"
-          output.puts "  instance methods: #{constant.instance_methods.to_a.sort.join(", ")}"
-          output.puts "  class methods: #{constant.class_methods.to_a.sort.join(", ")}"
+          output.puts "  superclass: #{constant.superclass || '(none)'}"
+          output.puts "  instance methods: #{constant.instance_methods.to_a.sort.join(', ')}"
+          output.puts "  class methods: #{constant.class_methods.to_a.sort.join(', ')}"
         end
       end
     end
 
     def output_component_reasons(output, assignments)
       if assignments.empty?
-        output.puts "  components: (none)"
+        output.puts '  components: (none)'
         return
       end
 
-      output.puts "  components:"
+      output.puts '  components:'
       assignments.sort_by { |name, _reasons| name.to_s }.each do |name, reasons|
-        output.puts "    #{name}: #{reasons.empty? ? "(no recorded reason)" : reasons.join("; ")}"
+        output.puts "    #{name}: #{reasons.empty? ? '(no recorded reason)' : reasons.join('; ')}"
       end
     end
 
     def output_suppressions(output, file)
       return if file.suppressions.empty?
 
-      output.puts "  suppressions:"
+      output.puts '  suppressions:'
       file.suppressions.each do |suppression|
         line_range =
           if suppression.end_line == Float::INFINITY
@@ -185,8 +188,8 @@ module ArchSpec
           else
             "#{suppression.start_line}-#{suppression.end_line}"
           end
-        rule = suppression.rule || "*"
-        reason = suppression.reason ? " -- #{suppression.reason}" : ""
+        rule = suppression.rule || '*'
+        reason = suppression.reason ? " -- #{suppression.reason}" : ''
         output.puts "    #{rule} on line #{line_range}#{reason}"
       end
     end
@@ -194,7 +197,7 @@ module ArchSpec
     def output_parse_errors(output, file)
       return if file.parse_errors.empty?
 
-      output.puts "  parse errors:"
+      output.puts '  parse errors:'
       file.parse_errors.each do |parse_error|
         output.puts "    #{parse_error.location.line}:#{parse_error.location.column} #{parse_error.message}"
       end

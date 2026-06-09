@@ -29,6 +29,7 @@ ArchSpec reports the rule id, file, line, message, evidence, confidence, and sta
 - [Constants]({% link _rules/constants.md %})
 - [Cycles]({% link _rules/cycles.md %})
 - [Zeitwerk Names]({% link _rules/zeitwerk-names.md %})
+- [Components]({% link _rules/components.md %})
 
 ## Suppressing a Rule
 

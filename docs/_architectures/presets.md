@@ -24,6 +24,20 @@ preset :rails_strict
 
 Runs `rails_way`, verifies conventional file names, and checks cycles across Rails components.
 
+## Vanilla Rails
+
+```ruby
+preset :vanilla_rails
+```
+
+Runs `rails_way`, then forbids the abstraction-layer directories that
+37signals-style Rails does without: `app/services`, `app/forms`,
+`app/policies`, `app/decorators`, `app/presenters`, and `app/components`
+must all stay empty. Behavior belongs on models.
+
+See the [Vanilla Rails guide]({% link _guides/vanilla-rails.md %}) for the
+reasoning and for the rules you can add on top.
+
 ## Rails Architectures
 
 ```ruby

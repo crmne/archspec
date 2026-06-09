@@ -1,4 +1,6 @@
-require "test_helper"
+# frozen_string_literal: true
+
+require 'test_helper'
 
 class ArchitecturesTest < ArchSpecTest
   def test_rails_mvc_architecture_keeps_models_away_from_controllers
@@ -17,8 +19,8 @@ class ArchitecturesTest < ArchSpecTest
 
       diagnostics = diagnostics_for(definition, root)
 
-      assert diagnostics.any? { |diagnostic| diagnostic.message.match?(/models must not depend on controllers/) }
-      assert diagnostics.any? { |diagnostic| diagnostic.message.match?(/models must not call #render/) }
+      assert(diagnostics.any? { |diagnostic| diagnostic.message.match?(/models must not depend on controllers/) })
+      assert(diagnostics.any? { |diagnostic| diagnostic.message.match?(/models must not call #render/) })
     end
   end
 
@@ -29,14 +31,14 @@ class ArchitecturesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         architecture :layered, layers: {
-          interface: "app/controllers/**/*.rb",
-          domain: "app/models/**/*.rb"
+          interface: 'app/controllers/**/*.rb',
+          domain: 'app/models/**/*.rb'
         }
       end
 
       diagnostics = diagnostics_for(definition, root)
 
-      assert_equal ["dependencies.allow"], diagnostics.map(&:rule).uniq
+      assert_equal ['dependencies.allow'], diagnostics.map(&:rule).uniq
       assert_match(/domain may not depend on interface/, diagnostics.first.message)
     end
   end
@@ -48,15 +50,15 @@ class ArchitecturesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         architecture :hexagonal,
-          domain: "app/domain/**/*.rb",
-          ports: "app/ports/**/*.rb",
-          adapters: "app/adapters/**/*.rb",
-          application: "app/services/**/*.rb"
+                     domain: 'app/domain/**/*.rb',
+                     ports: 'app/ports/**/*.rb',
+                     adapters: 'app/adapters/**/*.rb',
+                     application: 'app/services/**/*.rb'
       end
 
       diagnostics = diagnostics_for(definition, root)
 
-      assert diagnostics.any? { |diagnostic| diagnostic.message.match?(/domain must not depend on adapters/) }
+      assert(diagnostics.any? { |diagnostic| diagnostic.message.match?(/domain must not depend on adapters/) })
     end
   end
 
@@ -67,15 +69,15 @@ class ArchitecturesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         architecture :clean,
-          frameworks: "app/controllers/**/*.rb",
-          interface_adapters: "app/adapters/**/*.rb",
-          use_cases: "app/use_cases/**/*.rb",
-          entities: "app/entities/**/*.rb"
+                     frameworks: 'app/controllers/**/*.rb',
+                     interface_adapters: 'app/adapters/**/*.rb',
+                     use_cases: 'app/use_cases/**/*.rb',
+                     entities: 'app/entities/**/*.rb'
       end
 
       diagnostics = diagnostics_for(definition, root)
 
-      assert diagnostics.any? { |diagnostic| diagnostic.message.match?(/entities may not depend on frameworks/) }
+      assert(diagnostics.any? { |diagnostic| diagnostic.message.match?(/entities may not depend on frameworks/) })
     end
   end
 
@@ -87,15 +89,15 @@ class ArchitecturesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         architecture :modular_monolith,
-          components: {
-            billing: "packs/billing/**/*.rb",
-            catalog: "packs/catalog/**/*.rb",
-            shared: "packs/shared/**/*.rb"
-          },
-          allow: {
-            billing: %i[shared],
-            catalog: %i[shared]
-          }
+                     components: {
+                       billing: 'packs/billing/**/*.rb',
+                       catalog: 'packs/catalog/**/*.rb',
+                       shared: 'packs/shared/**/*.rb'
+                     },
+                     allow: {
+                       billing: %i[shared],
+                       catalog: %i[shared]
+                     }
       end
 
       diagnostics = diagnostics_for(definition, root)
@@ -119,15 +121,15 @@ class ArchitecturesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         architecture :cqrs,
-          commands: "app/commands/**/*.rb",
-          queries: "app/queries/**/*.rb"
+                     commands: 'app/commands/**/*.rb',
+                     queries: 'app/queries/**/*.rb'
       end
 
       diagnostics = diagnostics_for(definition, root)
 
-      assert diagnostics.any? { |diagnostic| diagnostic.message.match?(/commands must not depend on queries/) }
-      assert diagnostics.any? { |diagnostic| diagnostic.message.match?(/queries must not depend on commands/) }
-      assert diagnostics.any? { |diagnostic| diagnostic.message.match?(/queries must not call #update!/) }
+      assert(diagnostics.any? { |diagnostic| diagnostic.message.match?(/commands must not depend on queries/) })
+      assert(diagnostics.any? { |diagnostic| diagnostic.message.match?(/queries must not depend on commands/) })
+      assert(diagnostics.any? { |diagnostic| diagnostic.message.match?(/queries must not call #update!/) })
     end
   end
 
@@ -139,14 +141,14 @@ class ArchitecturesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         architecture :event_driven,
-          events: "app/events/**/*.rb",
-          publishers: "app/publishers/**/*.rb",
-          subscribers: "app/subscribers/**/*.rb"
+                     events: 'app/events/**/*.rb',
+                     publishers: 'app/publishers/**/*.rb',
+                     subscribers: 'app/subscribers/**/*.rb'
       end
 
       diagnostics = diagnostics_for(definition, root)
 
-      assert diagnostics.any? { |diagnostic| diagnostic.message.match?(/events must not depend on subscribers/) }
+      assert(diagnostics.any? { |diagnostic| diagnostic.message.match?(/events must not depend on subscribers/) })
     end
   end
 
@@ -167,10 +169,35 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
-  private
+  def test_vanilla_rails_preset_forbids_service_objects
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/app/services/create_user.rb", "class CreateUser; end\n"
+      write "#{root}/app/policies/user_policy.rb", "class UserPolicy; end\n"
 
-  def diagnostics_for(definition, root)
-    graph = ArchSpec::Analyzer.analyze(definition, root: root)
-    ArchSpec::Evaluator.evaluate(definition, graph)
+      definition = ArchSpec.define do
+        preset :vanilla_rails
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+      messages = diagnostics.map(&:message)
+
+      assert_equal ['components.empty'], diagnostics.map(&:rule).uniq
+      assert(messages.any? { |message| message.match?(/services must stay empty/) })
+      assert(messages.any? { |message| message.match?(/policies must stay empty/) })
+    end
+  end
+
+  def test_vanilla_rails_preset_passes_a_vanilla_app
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; User; end\n"
+
+      definition = ArchSpec.define do
+        preset :vanilla_rails
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
   end
 end

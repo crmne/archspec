@@ -1,4 +1,4 @@
-require "set"
+# frozen_string_literal: true
 
 module ArchSpec
   module Rules
@@ -36,7 +36,7 @@ module ArchSpec
 
     class AllowDependenciesRule < DependencyRule
       def id
-        "dependencies.allow"
+        'dependencies.allow'
       end
 
       def evaluate(graph)
@@ -57,7 +57,7 @@ module ArchSpec
 
     class ForbidDependenciesRule < DependencyRule
       def id
-        "dependencies.forbid"
+        'dependencies.forbid'
       end
 
       def evaluate(graph)
@@ -81,7 +81,7 @@ module ArchSpec
 
       def initialize(source, constants)
         @source = source.to_sym
-        @constants = Array(constants).flatten.map { |constant| constant.to_s.sub(/\A::/, "") }
+        @constants = Array(constants).flatten.map { |constant| constant.to_s.sub(/\A::/, '') }
       end
 
       def merge_key
@@ -94,7 +94,7 @@ module ArchSpec
       end
 
       def id
-        "constants.forbid"
+        'constants.forbid'
       end
 
       def evaluate(graph)
