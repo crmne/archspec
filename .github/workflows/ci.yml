@@ -102,4 +102,6 @@ jobs:
     needs: [test, docs]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     uses: ./.github/workflows/release.yml
+    permissions:
+      contents: write
     secrets: inherit

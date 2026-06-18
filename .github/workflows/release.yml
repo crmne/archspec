@@ -2,9 +2,12 @@ name: Release
 
 on:
   workflow_call:
+  push:
+    tags:
+      - "v*"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -14,11 +17,15 @@ jobs:
   publish:
     name: Build + Publish
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     env:
       BUNDLE_PATH: vendor/bundle
       BUNDLE_DISABLE_SHARED_GEMS: "true"
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -26,8 +33,9 @@ jobs:
           ruby-version: "3.3"
           bundler-cache: true
 
-      - name: Check if version needs publishing
-        id: check_version
+      - name: Read gem version
+        id: version
+        shell: bash
         run: |
           set -euo pipefail
 
@@ -40,6 +48,31 @@ jobs:
           fi
 
           echo "Local version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches gem version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG_VERSION="${TAG#v}"
+          if [ "$TAG_VERSION" != "$VERSION" ]; then
+            echo "Tag $TAG does not match gem version $VERSION." >&2
+            exit 1
+          fi
+
+      - name: Check if version needs publishing
+        id: check_version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
           echo "Fetching published versions for archspec..."
 
           ALL_PUBLISHED_VERSIONS=$( \
@@ -67,18 +100,32 @@ jobs:
             echo "Verdict: Version $VERSION is new."
             echo "version_changed=true" >> "$GITHUB_OUTPUT"
           fi
-        shell: bash
+
+      - name: Build gem package
+        if: steps.check_version.outputs.version_changed == 'true'
+        run: gem build archspec.gemspec
 
       - name: Publish to RubyGems
         if: steps.check_version.outputs.version_changed == 'true'
+        env:
+          GEM_HOST_API_KEY: "${{ secrets.RUBYGEMS_AUTH_TOKEN }}"
+          GEM_VERSION: "${{ steps.version.outputs.version }}"
+        shell: bash
         run: |
-          mkdir -p "$HOME/.gem"
-          touch "$HOME/.gem/credentials"
-          chmod 0600 "$HOME/.gem/credentials"
-          printf -- "---\n:rubygems_api_key: ${GEM_HOST_API_KEY}\n" > "$HOME/.gem/credentials"
+          set -euo pipefail
+          if [ -z "${GEM_HOST_API_KEY}" ]; then
+            echo "RUBYGEMS_AUTH_TOKEN is not configured."
+            exit 1
+          fi
 
-          gem build archspec.gemspec
-          output=$(gem push archspec-*.gem 2>&1) || {
+          mkdir -p "$HOME/.gem"
+          cat > "$HOME/.gem/credentials" <<EOF
+          ---
+          :rubygems_api_key: ${GEM_HOST_API_KEY}
+          EOF
+          chmod 0600 "$HOME/.gem/credentials"
+
+          output=$(gem push "archspec-${GEM_VERSION}.gem" 2>&1) || {
             echo "$output"
             if echo "$output" | grep -q "Repushing of gem versions is not allowed"; then
               echo "Version already exists, skipping"
@@ -87,5 +134,67 @@ jobs:
               exit 1
             fi
           }
+          echo "$output"
+
+      - name: Create tag and GitHub release
         env:
-          GEM_HOST_API_KEY: "${{ secrets.RUBYGEMS_AUTH_TOKEN }}"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="v${VERSION}"
+          release_target="$GITHUB_SHA"
+
+          git fetch --tags --force
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            tag_sha=$(git rev-list -n 1 "${TAG}")
+            if [ "$tag_sha" != "$GITHUB_SHA" ] && [ "${{ steps.check_version.outputs.version_changed }}" = "true" ]; then
+              echo "Tag ${TAG} already exists at ${tag_sha}, not ${GITHUB_SHA}." >&2
+              exit 1
+            fi
+            release_target="$tag_sha"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "$TAG"
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub release $TAG already exists."
+            exit 0
+          fi
+
+          prerelease_args=()
+          if ruby -rrubygems/version -e 'exit Gem::Version.new(ARGV.fetch(0)).prerelease? ? 0 : 1' "$VERSION"; then
+            prerelease_args=(--prerelease)
+          fi
+
+          previous_tag=$(git tag --sort=-v:refname --list 'v*' | grep -v "^${TAG}$" | head -n 1 || true)
+          if [ -n "$previous_tag" ]; then
+            commit_range="${previous_tag}..${release_target}"
+          else
+            commit_range="$release_target"
+          fi
+
+          commits=$(git log --reverse --format='* %H %s' "$commit_range" | grep -Ev '^\* [0-9a-f]+ (docs|test|chore):' || true)
+          if [ -z "$commits" ]; then
+            commits=$(git log --reverse --format='* %H %s' "$commit_range")
+          fi
+
+          {
+            echo "## Changelog"
+            echo "$commits"
+            if [ -n "$previous_tag" ]; then
+              echo
+              echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${previous_tag}...${TAG}"
+            fi
+          } > release-notes.md
+
+          gh release create "$TAG" \
+            --target "$release_target" \
+            --notes-file release-notes.md \
+            "${prerelease_args[@]}"
