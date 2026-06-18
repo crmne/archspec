@@ -30,7 +30,6 @@ Instructions only cover code generation. ArchSpec checks the code afterwards.
 ```ruby
 # Archspec.rb
 ArchSpec.define "Application architecture" do
-  root "."
   preset :vanilla_rails
 end
 ```

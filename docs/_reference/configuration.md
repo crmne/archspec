@@ -12,14 +12,13 @@ description: The Archspec.rb DSL.
 
 ```ruby
 ArchSpec.define "Application architecture" do
-  root "."
   source "app/**/*.rb", "lib/**/*.rb"
   ignore "tmp/**/*", "vendor/**/*"
   baseline ".archspec_todo.yml"
 end
 ```
 
-`root` is resolved relative to the config file.
+The project root defaults to the directory containing `Archspec.rb`. Use `root` only when the code you want to analyze lives somewhere else; it is resolved relative to the config file.
 
 ## Components
 

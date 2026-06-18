@@ -30,7 +30,6 @@ That convention gives ArchSpec enough information to check many boundaries cheap
 
 ```ruby
 ArchSpec.define "Application architecture" do
-  root "."
   preset :rails_way
 end
 ```

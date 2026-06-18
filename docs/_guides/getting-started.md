@@ -42,7 +42,6 @@ This creates `Archspec.rb`:
 
 ```ruby
 ArchSpec.define "Application architecture" do
-  root "."
   preset :rails_way
 end
 ```

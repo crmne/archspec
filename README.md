@@ -34,7 +34,6 @@ Start with conventional Rails boundaries:
 ```ruby
 # Archspec.rb
 ArchSpec.define "Application architecture" do
-  root "."
   preset :rails_way
 end
 ```
@@ -43,7 +42,6 @@ Go vanilla, 37signals style — rich models, no service objects:
 
 ```ruby
 ArchSpec.define "Application architecture" do
-  root "."
   preset :vanilla_rails
 end
 ```
@@ -52,7 +50,6 @@ Add layers when the app has a clear direction of dependencies:
 
 ```ruby
 ArchSpec.define "Application architecture" do
-  root "."
   architecture :layered, layers: {
     interface: "app/controllers/**/*.rb",
     application: "app/services/**/*.rb",
@@ -65,8 +62,6 @@ Keep a hexagonal core away from adapters:
 
 ```ruby
 ArchSpec.define "Application architecture" do
-  root "."
-
   architecture :hexagonal,
     application: %w[app/services/**/*.rb app/use_cases/**/*.rb],
     domain: "app/domain/**/*.rb",
@@ -79,8 +74,6 @@ Check a modular monolith:
 
 ```ruby
 ArchSpec.define "Application architecture" do
-  root "."
-
   architecture :modular_monolith,
     components: {
       billing: "packs/billing/**/*.rb",
@@ -98,8 +91,6 @@ Write local rules in plain Ruby:
 
 ```ruby
 ArchSpec.define "Application architecture" do
-  root "."
-
   component :controllers, in: "app/controllers/**/*.rb"
   component :models, in: "app/models/**/*.rb"
   component :services, in: "app/services/**/*.rb"
@@ -115,8 +106,6 @@ Check command/query separation:
 
 ```ruby
 ArchSpec.define "Application architecture" do
-  root "."
-
   architecture :cqrs,
     commands: "app/commands/**/*.rb",
     queries: "app/queries/**/*.rb",

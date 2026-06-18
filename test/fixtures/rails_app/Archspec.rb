@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 ArchSpec.define 'Fixture Rails app' do
-  root '.'
   preset :rails_way
   baseline '.archspec_todo.yml'
 

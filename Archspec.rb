@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 ArchSpec.define 'ArchSpec architecture' do
-  root '.'
   source 'lib/**/*.rb'
 
   component :library, in: 'lib/**/*.rb'

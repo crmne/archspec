@@ -9,7 +9,6 @@ module ArchSpec
     CONFIG_FILE = 'Archspec.rb'
     TEMPLATE = <<~RUBY
       ArchSpec.define "Application architecture" do
-        root "."
         preset :rails_way
       end
     RUBY

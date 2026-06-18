@@ -4,6 +4,20 @@ require 'test_helper'
 require 'stringio'
 
 class CLITest < ArchSpecTest
+  def test_init_uses_default_root
+    with_project do |root|
+      output = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['init'], output: output, error: StringIO.new) }
+
+      assert_equal 0, status
+      assert_match(/Created Archspec\.rb/, output.string)
+
+      config = File.read("#{root}/Archspec.rb")
+      refute_match(/root\s+["']\./, config)
+      assert_match(/preset :rails_way/, config)
+    end
+  end
+
   def test_check_returns_nonzero_on_violations
     with_project do |root|
       write "#{root}/Archspec.rb", <<~RUBY
