@@ -41,9 +41,7 @@ bundle exec archspec init
 This creates `Archspec.rb`:
 
 ```ruby
-ArchSpec.define "Application architecture" do
-  preset :rails_way
-end
+preset :rails_way
 ```
 {: data-title="Archspec.rb"}
 

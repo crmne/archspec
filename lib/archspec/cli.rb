@@ -8,9 +8,7 @@ module ArchSpec
 
     CONFIG_FILE = 'Archspec.rb'
     TEMPLATE = <<~RUBY
-      ArchSpec.define "Application architecture" do
-        preset :rails_way
-      end
+      preset :rails_way
     RUBY
 
     def run(argv, output: $stdout, error: $stderr)
@@ -106,9 +104,10 @@ module ArchSpec
 
       ArchSpec.last_definition = nil
       absolute_config = File.expand_path(config_path)
-      load absolute_config
-      definition = ArchSpec.last_definition
-      raise Error, "#{config_path} did not call ArchSpec.define." unless definition
+      definition = Definition.new
+      definition.extend(DSL::Context)
+      definition.instance_eval(File.read(absolute_config), absolute_config)
+      definition = ArchSpec.last_definition || definition
 
       [definition, definition.absolute_root(File.dirname(absolute_config))]
     end

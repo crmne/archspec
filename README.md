@@ -32,84 +32,70 @@ to remember:
 Start with conventional Rails boundaries:
 
 ```ruby
-ArchSpec.define "Application architecture" do
-  preset :rails_way
-end
+preset :rails_way
 ```
 
 Go vanilla, 37signals style — rich models, no service objects:
 
 ```ruby
-ArchSpec.define "Application architecture" do
-  preset :vanilla_rails
-end
+preset :vanilla_rails
 ```
 
 Add layers when the app has a clear direction of dependencies:
 
 ```ruby
-ArchSpec.define "Application architecture" do
-  architecture :layered, layers: {
-    interface: "app/controllers/**/*.rb",
-    application: "app/services/**/*.rb",
-    domain: "app/models/**/*.rb"
-  }
-end
+architecture :layered, layers: {
+  interface: "app/controllers/**/*.rb",
+  application: "app/services/**/*.rb",
+  domain: "app/models/**/*.rb"
+}
 ```
 
 Keep a hexagonal core away from adapters:
 
 ```ruby
-ArchSpec.define "Application architecture" do
-  architecture :hexagonal,
-    application: %w[app/services/**/*.rb app/use_cases/**/*.rb],
-    domain: "app/domain/**/*.rb",
-    ports: "app/ports/**/*.rb",
-    adapters: %w[app/adapters/**/*.rb app/integrations/**/*.rb]
-end
+architecture :hexagonal,
+  application: %w[app/services/**/*.rb app/use_cases/**/*.rb],
+  domain: "app/domain/**/*.rb",
+  ports: "app/ports/**/*.rb",
+  adapters: %w[app/adapters/**/*.rb app/integrations/**/*.rb]
 ```
 
 Check a modular monolith:
 
 ```ruby
-ArchSpec.define "Application architecture" do
-  architecture :modular_monolith,
-    components: {
-      billing: "packs/billing/**/*.rb",
-      catalog: "packs/catalog/**/*.rb",
-      shared: "packs/shared/**/*.rb"
-    },
-    allow: {
-      billing: %i[shared],
-      catalog: %i[shared]
-    }
-end
+architecture :modular_monolith,
+  components: {
+    billing: "packs/billing/**/*.rb",
+    catalog: "packs/catalog/**/*.rb",
+    shared: "packs/shared/**/*.rb"
+  },
+  allow: {
+    billing: %i[shared],
+    catalog: %i[shared]
+  }
 ```
 
 Write local rules in plain Ruby:
 
 ```ruby
-ArchSpec.define "Application architecture" do
-  component :controllers, in: "app/controllers/**/*.rb"
-  component :models, in: "app/models/**/*.rb"
-  component :services, in: "app/services/**/*.rb"
+component :controllers, in: "app/controllers/**/*.rb"
+component :models, in: "app/models/**/*.rb"
+component :services, in: "app/services/**/*.rb"
 
-  controllers.can_use :models, :services
-  models.cannot_use :controllers
-  services.cannot_call :render, :redirect_to, :params, :session
-  services.cannot_instantiate_and_invoke
-end
+controllers.can_use :models, :services
+models.cannot_use :controllers
+services.cannot_call :render, :redirect_to, :params, :session
+services.cannot_instantiate_and_invoke
 ```
 
 Check command/query separation:
 
 ```ruby
-ArchSpec.define "Application architecture" do
-  architecture :cqrs,
-    commands: "app/commands/**/*.rb",
-    queries: "app/queries/**/*.rb",
-    read_models: "app/read_models/**/*.rb"
-end
+architecture :cqrs,
+  commands: "app/commands/**/*.rb",
+  queries: "app/queries/**/*.rb",
+  read_models: "app/read_models/**/*.rb"
 ```
 
 ## What It Checks

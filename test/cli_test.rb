@@ -13,6 +13,7 @@ class CLITest < ArchSpecTest
       assert_match(/Created Archspec\.rb/, output.string)
 
       config = File.read("#{root}/Archspec.rb")
+      refute_match(/ArchSpec\.define/, config)
       refute_match(/root\s+["']\./, config)
       assert_match(/preset :rails_way/, config)
     end
@@ -21,11 +22,9 @@ class CLITest < ArchSpecTest
   def test_check_returns_nonzero_on_violations
     with_project do |root|
       write "#{root}/Archspec.rb", <<~RUBY
-        ArchSpec.define do
-          component :models, in: "app/models/**/*.rb"
-          component :controllers, in: "app/controllers/**/*.rb"
-          models.cannot_use :controllers
-        end
+        component :models, in: "app/models/**/*.rb"
+        component :controllers, in: "app/controllers/**/*.rb"
+        models.cannot_use :controllers
       RUBY
 
       write "#{root}/app/models/user.rb", "class User; UsersController; end\n"
@@ -40,12 +39,28 @@ class CLITest < ArchSpecTest
     end
   end
 
-  def test_json_format
+  def test_check_supports_wrapped_definition
     with_project do |root|
       write "#{root}/Archspec.rb", <<~RUBY
         ArchSpec.define do
           component :models, in: "app/models/**/*.rb"
         end
+      RUBY
+
+      write "#{root}/app/models/user.rb", "class User; end\n"
+
+      output = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['check'], output: output, error: StringIO.new) }
+
+      assert_equal 0, status
+      assert_match(/ArchSpec passed/, output.string)
+    end
+  end
+
+  def test_json_format
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
       RUBY
 
       write "#{root}/app/models/user.rb", "class User; end\n"
@@ -63,9 +78,7 @@ class CLITest < ArchSpecTest
   def test_explain_file
     with_project do |root|
       write "#{root}/Archspec.rb", <<~RUBY
-        ArchSpec.define do
-          component :models, in: "app/models/**/*.rb"
-        end
+        component :models, in: "app/models/**/*.rb"
       RUBY
 
       write "#{root}/app/models/user.rb", "class User; end\n"
@@ -82,9 +95,7 @@ class CLITest < ArchSpecTest
   def test_explain_file_includes_suppressions
     with_project do |root|
       write "#{root}/Archspec.rb", <<~RUBY
-        ArchSpec.define do
-          component :models, in: "app/models/**/*.rb"
-        end
+        component :models, in: "app/models/**/*.rb"
       RUBY
 
       write "#{root}/app/models/user.rb", <<~RUBY

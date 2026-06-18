@@ -29,9 +29,7 @@ That convention gives ArchSpec enough information to check many boundaries cheap
 ## The Rails Preset
 
 ```ruby
-ArchSpec.define "Application architecture" do
-  preset :rails_way
-end
+preset :rails_way
 ```
 
 The preset defines controllers, models, helpers, mailers, jobs, and services. It also checks common boundaries:

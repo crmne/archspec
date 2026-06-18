@@ -28,9 +28,7 @@ Instructions only cover code generation. ArchSpec checks the code afterwards.
 ## The Preset
 
 ```ruby
-ArchSpec.define "Application architecture" do
-  preset :vanilla_rails
-end
+preset :vanilla_rails
 ```
 {: data-title="Archspec.rb"}
 

@@ -11,11 +11,9 @@ description: The Archspec.rb DSL.
 ## Project
 
 ```ruby
-ArchSpec.define "Application architecture" do
-  source "app/**/*.rb", "lib/**/*.rb"
-  ignore "tmp/**/*", "vendor/**/*"
-  baseline ".archspec_todo.yml"
-end
+source "app/**/*.rb", "lib/**/*.rb"
+ignore "tmp/**/*", "vendor/**/*"
+baseline ".archspec_todo.yml"
 ```
 {: data-title="Archspec.rb"}
 

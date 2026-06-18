@@ -20,7 +20,7 @@ module ArchSpec
     attr_accessor :name, :root_path, :baseline_path
     attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules
 
-    def initialize(name)
+    def initialize(name = nil)
       @name = name
       @root_path = '.'
       @baseline_path = nil
