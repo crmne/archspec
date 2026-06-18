@@ -32,7 +32,6 @@ to remember:
 Start with conventional Rails boundaries:
 
 ```ruby
-# Archspec.rb
 ArchSpec.define "Application architecture" do
   preset :rails_way
 end

@@ -28,11 +28,11 @@ Instructions only cover code generation. ArchSpec checks the code afterwards.
 ## The Preset
 
 ```ruby
-# Archspec.rb
 ArchSpec.define "Application architecture" do
   preset :vanilla_rails
 end
 ```
+{: data-title="Archspec.rb"}
 
 This runs the [Rails MVC]({% link _architectures/rails-mvc.md %}) checks,
 then requires these directories to stay empty, using the

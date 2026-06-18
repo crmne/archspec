@@ -17,6 +17,7 @@ ArchSpec.define "Application architecture" do
   baseline ".archspec_todo.yml"
 end
 ```
+{: data-title="Archspec.rb"}
 
 ## Components
 

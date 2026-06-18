@@ -64,11 +64,11 @@ every outgoing edge.
 Given `models.cannot_use :controllers` and this file:
 
 ```ruby
-# app/models/user.rb
 class User
   def profile_path = UsersController
 end
 ```
+{: data-title="app/models/user.rb"}
 
 Parsing records a `references_constant` edge from `app/models/user.rb` to
 `UsersController`. Component assignment puts the file in `models` and puts

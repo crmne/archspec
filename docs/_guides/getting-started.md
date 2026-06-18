@@ -45,6 +45,7 @@ ArchSpec.define "Application architecture" do
   preset :rails_way
 end
 ```
+{: data-title="Archspec.rb"}
 
 Add a fuller architecture when the app has a clear shape:
 
