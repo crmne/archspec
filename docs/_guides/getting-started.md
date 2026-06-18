@@ -41,11 +41,17 @@ bundle exec archspec init
 This creates `Archspec.rb`:
 
 ```ruby
-preset :rails_way
+architecture :rails
 ```
 {: data-title="Archspec.rb"}
 
 Add a fuller architecture when the app has a clear shape:
+
+```ruby
+architecture :layered
+```
+
+Override the default directories when the app uses different names:
 
 ```ruby
 architecture :layered, layers: {

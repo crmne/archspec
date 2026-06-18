@@ -9,11 +9,7 @@ description: Enforce inward dependencies through ordered layers.
 Layered architecture is an ordered list. Earlier layers may depend on later layers. Later layers may not depend back outward.
 
 ```ruby
-architecture :layered, layers: {
-  interface: "app/controllers/**/*.rb",
-  application: "app/services/**/*.rb",
-  domain: "app/models/**/*.rb"
-}
+architecture :layered
 ```
 
 This compiles to:
@@ -30,8 +26,12 @@ application: %w[app/services/**/*.rb app/jobs/**/*.rb app/mailers/**/*.rb]
 domain: "app/models/**/*.rb"
 ```
 
-You can also use:
+Override them when the app uses different directories:
 
 ```ruby
-preset :rails_layered
+architecture :layered, layers: {
+  interface: "app/controllers/**/*.rb",
+  application: "app/services/**/*.rb",
+  domain: "app/models/**/*.rb"
+}
 ```

@@ -30,7 +30,7 @@ message and tells the reader where the code should go instead.
 
 Use it when a convention bans a whole category of objects. Vanilla Rails in
 the 37signals style has no service objects, form objects, or policy objects;
-`preset :vanilla_rails` uses this rule for those directories. See the
+`architecture :vanilla_rails` uses this rule for those directories. See the
 [Vanilla Rails guide]({% link _guides/vanilla-rails.md %}).
 
 It also helps during migrations: once a legacy directory has been emptied,

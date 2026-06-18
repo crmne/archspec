@@ -15,7 +15,8 @@ class CLITest < ArchSpecTest
       config = File.read("#{root}/Archspec.rb")
       refute_match(/ArchSpec\.define/, config)
       refute_match(/root\s+["']\./, config)
-      assert_match(/preset :rails_way/, config)
+      refute_match(/preset/, config)
+      assert_match(/architecture :rails/, config)
     end
   end
 

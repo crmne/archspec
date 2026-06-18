@@ -77,17 +77,6 @@ Use this when the dependency is better expressed as a framework constant than a 
 
 See [Constant Rules]({% link _rules/constants.md %}).
 
-## Presets
-
-```ruby
-preset :rails_way
-preset :rails_layered
-```
-
-Presets are shortcuts for common Rails checks and architecture bundles. Add your own rules beside them.
-
-See [Presets]({% link _architectures/presets.md %}).
-
 ## Cycles and Names
 
 ```ruby

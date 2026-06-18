@@ -14,7 +14,7 @@ class ArchitecturesTest < ArchSpecTest
       write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
 
       definition = ArchSpec.define do
-        architecture :rails_mvc
+        architecture :rails
       end
 
       diagnostics = diagnostics_for(definition, root)
@@ -152,15 +152,15 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
-  def test_rails_architecture_presets_are_available
+  def test_architectures_use_rails_defaults
     with_project do |root|
       write "#{root}/app/controllers/users_controller.rb", "class UsersController; User; end\n"
       write "#{root}/app/models/user.rb", "class User; end\n"
 
       definition = ArchSpec.define do
-        preset :rails_layered
-        preset :rails_cqrs
-        preset :rails_event_driven
+        architecture :layered
+        architecture :cqrs
+        architecture :event_driven
       end
 
       diagnostics = diagnostics_for(definition, root)
@@ -169,14 +169,26 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
-  def test_vanilla_rails_preset_forbids_service_objects
+  def test_preset_remains_as_compatibility_alias
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+
+      definition = ArchSpec.define do
+        preset :rails
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_vanilla_rails_architecture_forbids_service_objects
     with_project do |root|
       write "#{root}/app/models/user.rb", "class User; end\n"
       write "#{root}/app/services/create_user.rb", "class CreateUser; end\n"
       write "#{root}/app/policies/user_policy.rb", "class UserPolicy; end\n"
 
       definition = ArchSpec.define do
-        preset :vanilla_rails
+        architecture :vanilla_rails
       end
 
       diagnostics = diagnostics_for(definition, root)
@@ -188,16 +200,27 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
-  def test_vanilla_rails_preset_passes_a_vanilla_app
+  def test_vanilla_rails_architecture_passes_a_vanilla_app
     with_project do |root|
       write "#{root}/app/models/user.rb", "class User; end\n"
       write "#{root}/app/controllers/users_controller.rb", "class UsersController; User; end\n"
 
       definition = ArchSpec.define do
-        preset :vanilla_rails
+        architecture :vanilla_rails
       end
 
       assert_empty diagnostics_for(definition, root)
     end
+  end
+
+  def test_rails_strict_architecture_adds_name_and_cycle_checks
+    definition = ArchSpec.define do
+      architecture :rails_strict
+    end
+
+    rule_names = definition.rules.map(&:class).map(&:name)
+
+    assert_includes rule_names, 'ArchSpec::Rules::ZeitwerkNamingRule'
+    assert_includes rule_names, 'ArchSpec::Rules::NoCyclesRule'
   end
 end

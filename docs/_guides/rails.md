@@ -8,7 +8,7 @@ description: Use ArchSpec with conventional Rails apps.
 
 After reading this guide, you will know:
 
-- What the Rails preset checks.
+- What the Rails architecture checks.
 - How ArchSpec uses Rails conventions.
 - How to add stricter architecture checks.
 
@@ -26,13 +26,13 @@ app/services/billing/charge.rb       -> Billing::Charge
 
 That convention gives ArchSpec enough information to check many boundaries cheaply.
 
-## The Rails Preset
+## The Rails Architecture
 
 ```ruby
-preset :rails_way
+architecture :rails
 ```
 
-The preset defines controllers, models, helpers, mailers, jobs, and services. It also checks common boundaries:
+The architecture defines controllers, models, helpers, mailers, jobs, and services. It also checks common boundaries:
 
 - Models should not depend on controllers or helpers.
 - Services should not depend on controllers or helpers.
@@ -40,7 +40,13 @@ The preset defines controllers, models, helpers, mailers, jobs, and services. It
 
 ## Add More Structure
 
-Use architecture bundles when the app already has the matching folders:
+Use another architecture when the app already has the matching folders:
+
+```ruby
+architecture :layered
+```
+
+Override the default directories when the app uses different names:
 
 ```ruby
 architecture :layered, layers: {
@@ -50,13 +56,7 @@ architecture :layered, layers: {
 }
 ```
 
-Or use a Rails preset:
-
-```ruby
-preset :rails_layered
-```
-
-Presets are ordinary rules written for conventional Rails paths. Add local rules beside them when the app has its own vocabulary.
+Architectures are ordinary rules written for conventional Rails paths. Add local rules beside them when the app has its own vocabulary.
 
 ## Check Names
 

@@ -8,7 +8,7 @@ module ArchSpec
 
     CONFIG_FILE = 'Archspec.rb'
     TEMPLATE = <<~RUBY
-      preset :rails_way
+      architecture :rails
     RUBY
 
     def run(argv, output: $stdout, error: $stderr)

@@ -45,6 +45,15 @@ module ArchSpec
       subscribers: 'app/subscribers/**/*.rb'
     }.freeze
 
+    VANILLA_RAILS_EMPTY = {
+      services: ['app/services/**/*.rb', 'behavior belongs on models, not service objects'],
+      forms: ['app/forms/**/*.rb', 'use strong parameters and model validations'],
+      policies: ['app/policies/**/*.rb', 'authorization is predicate methods on models'],
+      decorators: ['app/decorators/**/*.rb', 'use helpers and ERB partials'],
+      presenters: ['app/presenters/**/*.rb', 'presentation objects are POROs in app/models'],
+      view_components: ['app/components/**/*.rb', 'use helpers and ERB partials']
+    }.freeze
+
     CONTROLLER_METHODS = %i[render redirect_to params session cookies flash].freeze
     MUTATING_METHODS = %i[
       create create!
@@ -58,19 +67,27 @@ module ArchSpec
 
     def apply(name, dsl, **options)
       case name.to_sym
-      when :rails_mvc, :rails_way
+      when :rails, :rails_mvc, :rails_way
         rails_mvc(dsl, components: options.fetch(:components, DEFAULT_RAILS_MVC))
-      when :layered
+      when :rails_strict
+        rails_strict(dsl, components: options.fetch(:components, DEFAULT_RAILS_MVC))
+      when :vanilla_rails
+        vanilla_rails(
+          dsl,
+          components: options.fetch(:components, DEFAULT_RAILS_MVC),
+          empty: options.fetch(:empty, VANILLA_RAILS_EMPTY)
+        )
+      when :layered, :rails_layered
         layered(dsl, layers: options.fetch(:layers, DEFAULT_LAYERED))
-      when :hexagonal
+      when :hexagonal, :rails_hexagonal
         hexagonal(dsl, **with_defaults(DEFAULT_HEXAGONAL, options))
-      when :clean
+      when :clean, :rails_clean
         clean(dsl, **with_defaults(DEFAULT_CLEAN, options))
       when :modular_monolith, :bounded_contexts
         modular_monolith(dsl, components: options.fetch(:components), allow: options.fetch(:allow, {}))
-      when :cqrs
+      when :cqrs, :rails_cqrs
         cqrs(dsl, **with_defaults(DEFAULT_CQRS, options))
-      when :event_driven
+      when :event_driven, :rails_event_driven
         event_driven(dsl, **with_defaults(DEFAULT_EVENT_DRIVEN, options))
       else
         raise Error, "Unknown ArchSpec architecture: #{name.inspect}"
@@ -86,6 +103,21 @@ module ArchSpec
       proxy_for(dsl, :services).cannot_use(*components.keys & %i[controllers helpers])
       proxy_for(dsl, :models).cannot_call(*CONTROLLER_METHODS)
       proxy_for(dsl, :services).cannot_call(*CONTROLLER_METHODS)
+    end
+
+    def rails_strict(dsl, components:)
+      components = normalize_map(components)
+      rails_mvc(dsl, components: components)
+      dsl.verify_zeitwerk_names!
+      dsl.no_cycles!(among: components.keys)
+    end
+
+    def vanilla_rails(dsl, components:, empty:)
+      rails_mvc(dsl, components: components)
+
+      empty.each do |name, (pattern, reason)|
+        dsl.component(name, in: pattern).must_be_empty(because: reason)
+      end
     end
 
     def layered(dsl, layers:)

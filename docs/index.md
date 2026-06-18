@@ -22,7 +22,7 @@ features:
   - title: Rails-aware static analysis
     details: Maps Rails and Zeitwerk files to constants, so it understands controllers, models, and service objects. Extracts references, inheritance, and method calls without a database or app boot.
   - title: Boundaries and dependencies
-    details: Check allowed and forbidden references between layers and packs, dependency direction, cycles, MVC boundaries, and method protocols. Start from a preset for layered, hexagonal, clean, modular monolith, CQRS, event-driven, or vanilla Rails.
+    details: Check allowed and forbidden references between layers and packs, dependency direction, cycles, MVC boundaries, and method protocols. Start from an architecture for Rails, layered, hexagonal, clean, modular monolith, CQRS, event-driven, or vanilla Rails.
   - title: Same rules for AI-written code
     details: Generated code passes the same checks as hand-written code. `archspec explain` shows why a file belongs to a component and which facts triggered a rule.
 ---

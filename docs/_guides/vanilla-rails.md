@@ -9,7 +9,7 @@ description: Turn 37signals-style Rails conventions into executable checks.
 After reading this guide, you will know:
 
 - What vanilla Rails means as an architecture.
-- What `preset :vanilla_rails` checks.
+- What `architecture :vanilla_rails` checks.
 - Which conventions ArchSpec cannot check.
 
 ## The Architecture
@@ -25,14 +25,14 @@ The [37signals-skills](https://github.com/marckohlbrugge/37signals-skills)
 project collects these conventions as instructions for AI coding agents.
 Instructions only cover code generation. ArchSpec checks the code afterwards.
 
-## The Preset
+## The Architecture
 
 ```ruby
-preset :vanilla_rails
+architecture :vanilla_rails
 ```
 {: data-title="Archspec.rb"}
 
-This runs the [Rails MVC]({% link _architectures/rails-mvc.md %}) checks,
+This runs the [Rails]({% link _architectures/rails.md %}) checks,
 then requires these directories to stay empty, using the
 [components rule]({% link _rules/components.md %}):
 

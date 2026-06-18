@@ -9,10 +9,7 @@ description: Keep event definitions independent from publishers and subscribers.
 Event-driven architecture is modeled as events, publishers, and subscribers.
 
 ```ruby
-architecture :event_driven,
-  events: "app/events/**/*.rb",
-  publishers: "app/publishers/**/*.rb",
-  subscribers: "app/subscribers/**/*.rb"
+architecture :event_driven
 ```
 
 This checks:
@@ -22,10 +19,14 @@ This checks:
 - subscribers only depend on declared events
 - the declared components do not form cycles
 
-The Rails default is:
+The default Rails-flavored directories are:
 
 ```ruby
-preset :rails_event_driven
+events: "app/events/**/*.rb"
+publishers: "app/publishers/**/*.rb"
+subscribers: "app/subscribers/**/*.rb"
 ```
+
+Pass any of those keys to override the defaults.
 
 This is intentionally narrow. It checks source-level coupling, not event delivery semantics.

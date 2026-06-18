@@ -36,16 +36,22 @@ to remember, and checks them on every change:
 Start with conventional Rails boundaries:
 
 ```ruby
-preset :rails_way
+architecture :rails
 ```
 
 Go vanilla, 37signals style — rich models, no service objects:
 
 ```ruby
-preset :vanilla_rails
+architecture :vanilla_rails
 ```
 
 Add layers when the app has a clear direction of dependencies:
+
+```ruby
+architecture :layered
+```
+
+Override the default directories when the app uses different names:
 
 ```ruby
 architecture :layered, layers: {
@@ -106,8 +112,8 @@ architecture :cqrs,
 
 - **Dependencies:** allowed and forbidden references between components
 - **Layers:** dependency direction and cycles
-- **Rails MVC:** controller APIs kept out of models and services
-- **Architectures:** Rails MVC, layered, hexagonal, clean, modular monolith, CQRS, and event-driven bundles
+- **Rails:** controller APIs kept out of models and services
+- **Architectures:** Rails, vanilla Rails, layered, hexagonal, clean, modular monolith, CQRS, and event-driven bundles
 - **Protocols:** required methods such as `resolve`, `perform`, or project-specific interfaces
 - **Objects:** rules against one-shot `Something.new(...).whatever` command objects
 - **Zeitwerk names:** conventional file names defining the expected constants

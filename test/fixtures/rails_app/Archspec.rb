@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-preset :rails_way
+architecture :rails
 baseline '.archspec_todo.yml'
 
 component :commands, in: 'app/commands/**/*.rb'

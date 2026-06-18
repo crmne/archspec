@@ -32,7 +32,7 @@ module ArchSpec
       alias role component
 
       def preset(name, **options)
-        Presets.apply(name, self, **options)
+        architecture(name, **options)
       end
 
       def architecture(name, **options)

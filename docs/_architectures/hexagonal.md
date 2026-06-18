@@ -9,11 +9,7 @@ description: Keep domain and ports independent from adapters.
 Hexagonal architecture separates the application core from adapters.
 
 ```ruby
-architecture :hexagonal,
-  application: %w[app/services/**/*.rb app/use_cases/**/*.rb],
-  domain: "app/domain/**/*.rb",
-  ports: "app/ports/**/*.rb",
-  adapters: %w[app/adapters/**/*.rb app/integrations/**/*.rb]
+architecture :hexagonal
 ```
 
 This creates four components:
@@ -31,8 +27,13 @@ The core rules are:
 - `adapters` can use `application`, `domain`, and `ports`
 - no cycles across the four components
 
-Use the Rails defaults with:
+The default Rails-flavored directories are:
 
 ```ruby
-preset :rails_hexagonal
+application: %w[app/services/**/*.rb app/use_cases/**/*.rb]
+domain: "app/domain/**/*.rb"
+ports: "app/ports/**/*.rb"
+adapters: %w[app/adapters/**/*.rb app/integrations/**/*.rb app/infrastructure/**/*.rb]
 ```
+
+Pass any of those keys to override the defaults.

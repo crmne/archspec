@@ -9,11 +9,7 @@ description: Enforce the inward dependency rule.
 Clean architecture is modeled as ordered layers:
 
 ```ruby
-architecture :clean,
-  frameworks: "app/controllers/**/*.rb",
-  interface_adapters: "app/adapters/**/*.rb",
-  use_cases: "app/use_cases/**/*.rb",
-  entities: "app/entities/**/*.rb"
+architecture :clean
 ```
 
 Dependencies move inward:
@@ -24,8 +20,13 @@ frameworks -> interface_adapters -> use_cases -> entities
 
 This compiles to the same primitive rules as [Layered]({% link _architectures/layered.md %}), with names that match Clean Architecture vocabulary.
 
-Use the Rails defaults with:
+The default Rails-flavored directories are:
 
 ```ruby
-preset :rails_clean
+frameworks: %w[app/controllers/**/*.rb app/jobs/**/*.rb app/mailers/**/*.rb]
+interface_adapters: %w[app/adapters/**/*.rb app/presenters/**/*.rb app/serializers/**/*.rb]
+use_cases: %w[app/use_cases/**/*.rb app/services/**/*.rb]
+entities: %w[app/entities/**/*.rb app/domain/**/*.rb app/models/**/*.rb]
 ```
+
+Pass any of those keys to override the defaults.
