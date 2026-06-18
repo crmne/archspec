@@ -351,16 +351,10 @@ module ArchSpec
 
       def instantiates_and_invokes(node)
         receiver = node.receiver
-        return unless receiver.is_a?(Prism::CallNode)
-        return unless receiver.message == 'new'
+        return unless receiver.is_a?(Prism::CallNode) && receiver.message&.to_sym == :new
 
-        "#{new_receiver_name(receiver)}##{node.message}"
-      end
-
-      def new_receiver_name(node)
-        return constant_reference_name(node.receiver) if constant_node?(node.receiver)
-
-        node.receiver&.slice || '(unknown)'
+        name = constant_node?(receiver.receiver) ? constant_reference_name(receiver.receiver) : receiver.receiver&.slice
+        "#{name}##{node.message}"
       end
 
       def qualified_constant_name(node, namespace)

@@ -39,7 +39,7 @@ Start with conventional Rails boundaries:
 architecture :rails
 ```
 
-Go vanilla, 37signals style — rich models, no service objects:
+Go vanilla, 37signals style, with rich models and no service objects:
 
 ```ruby
 architecture :vanilla_rails
@@ -64,11 +64,7 @@ architecture :layered, layers: {
 Keep a hexagonal core away from adapters:
 
 ```ruby
-architecture :hexagonal,
-  application: %w[app/services/**/*.rb app/use_cases/**/*.rb],
-  domain: "app/domain/**/*.rb",
-  ports: "app/ports/**/*.rb",
-  adapters: %w[app/adapters/**/*.rb app/integrations/**/*.rb]
+architecture :hexagonal
 ```
 
 Check a modular monolith:

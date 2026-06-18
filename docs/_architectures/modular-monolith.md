@@ -1,6 +1,6 @@
 ---
 title: Modular Monolith
-nav_order: 6
+nav_order: 7
 description: Enforce allowed dependencies between application modules.
 ---
 

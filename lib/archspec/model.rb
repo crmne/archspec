@@ -146,10 +146,10 @@ module ArchSpec
     end
 
     def method_definitions_for_component(name)
-      component = components.fetch(name.to_sym)
+      component = components[name.to_sym]
+      return [] unless component
+
       component.constants.flat_map { |constant_name| constants_named(constant_name) }.flat_map(&:method_definitions)
-    rescue KeyError
-      []
     end
 
     def assign_components(component_specs)

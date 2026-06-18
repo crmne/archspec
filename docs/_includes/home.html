@@ -1,0 +1,167 @@
+{% assign home_hero = page.hero %}
+{% assign home_features = page.features %}
+{% assign home_body = include.content | strip %}
+
+<div class="VPHome">
+  {% if home_hero %}
+    {% assign hero_image = home_hero.image %}
+    {% assign hero_fallback_alt = home_hero.name | default: site.title %}
+    <div class="VPHero{% if hero_image or home_hero.code_panel %} has-image{% endif %}">
+      <div class="container">
+        <div class="main">
+          {% if home_hero.logo %}
+            <div class="hero-logo">
+              {% include vp_image.html image=home_hero.logo class='hero-logo-image' default_alt=hero_fallback_alt default_width="560" default_height="160" %}
+            </div>
+          {% endif %}
+
+          {% if home_hero.name or home_hero.text %}
+            <h1 class="heading">
+              {% if home_hero.name %}
+                <span class="name clip">{{ home_hero.name }}</span>
+              {% endif %}
+              {% if home_hero.text %}
+                <span class="text">{{ home_hero.text }}</span>
+              {% endif %}
+            </h1>
+          {% endif %}
+
+          {% if home_hero.tagline %}
+            <p class="tagline">{{ home_hero.tagline }}</p>
+          {% endif %}
+
+          {% if home_hero.actions and home_hero.actions.size > 0 %}
+            <div class="actions">
+              {% for action in home_hero.actions %}
+                <div class="action">
+                  <a class="VPButton medium {{ action.theme | default: 'brand' }}" {% include link_attrs.html href=action.link target=action.target rel=action.rel %}>
+                    {{ action.text }}
+                  </a>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+
+        {% if home_hero.code_panel %}
+          {% assign first_card = home_hero.code_panel | first %}
+          <div class="image archspec-hero-image">
+            <div class="archspec-hero-code" data-arch-cycler>
+              <div class="image-bg" aria-hidden="true"></div>
+              <div class="archspec-window">
+                <div class="archspec-window-bar">
+                  <span class="archspec-dot" aria-hidden="true"></span><span class="archspec-dot" aria-hidden="true"></span><span class="archspec-dot" aria-hidden="true"></span>
+                  <span class="archspec-window-file">Archspec.rb</span>
+                  <a class="archspec-window-doc" data-arch-doc href="{{ first_card.link | relative_url }}">{{ first_card.title }}</a>
+                </div>
+                <div class="archspec-card-stack">
+                  {% for card in home_hero.code_panel %}
+                    <div class="archspec-card{% if forloop.first %} is-active{% endif %}" data-arch-card data-title="{{ card.title }}" data-href="{{ card.link | relative_url }}">
+                      {{ card.code | markdownify }}
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="archspec-dots" role="tablist" aria-label="Examples"></div>
+            </div>
+          </div>
+        {% elsif hero_image %}
+          <div class="image">
+            <div class="image-container">
+              <div class="image-bg"></div>
+              {% include vp_image.html image=hero_image class='image-src' default_alt=hero_fallback_alt default_width="320" default_height="320" %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  {% if home_features and home_features.size > 0 %}
+    {% assign feature_count = home_features.size %}
+    {% assign feature_mod = feature_count | modulo: 3 %}
+    {% assign feature_grid = '' %}
+    {% if feature_count == 2 %}
+      {% assign feature_grid = 'grid-2' %}
+    {% elsif feature_count == 3 %}
+      {% assign feature_grid = 'grid-3' %}
+    {% elsif feature_count > 3 and feature_mod == 0 %}
+      {% assign feature_grid = 'grid-6' %}
+    {% elsif feature_count > 3 %}
+      {% assign feature_grid = 'grid-4' %}
+    {% endif %}
+
+    <div class="VPFeatures VPHomeFeatures">
+      <div class="container">
+        <div class="items">
+          {% for feature in home_features %}
+            <div class="item{% if feature_grid %} {{ feature_grid }}{% endif %}">
+              {% capture feature_body %}
+                <article class="box">
+                  {% if feature.icon %}
+                    {% assign feature_icon = feature.icon %}
+                    {% assign icon_is_object = false %}
+                    {% if feature_icon.src or feature_icon.path or feature_icon.light or feature_icon.dark %}
+                      {% assign icon_is_object = true %}
+                    {% endif %}
+
+                    {% if icon_is_object %}
+                      {% assign icon_wrap = feature_icon.wrap %}
+                      {% assign icon_class = '' %}
+                      {% if icon_wrap %}
+                        {% assign icon_class = 'icon-image' %}
+                      {% endif %}
+                      {% capture icon_images %}
+                        {% include vp_image.html image=feature_icon class=icon_class default_alt=feature.title default_width="48" default_height="48" %}
+                      {% endcapture %}
+
+                      {% if icon_wrap %}
+                        <div class="icon">{{ icon_images }}</div>
+                      {% else %}
+                        {{ icon_images }}
+                      {% endif %}
+                    {% else %}
+                      <div class="icon">{{ feature_icon }}</div>
+                    {% endif %}
+                  {% endif %}
+
+                  <h2 class="title">{{ feature.title }}</h2>
+                  {% if feature.details %}
+                    <div class="details">{{ feature.details | markdownify }}</div>
+                  {% endif %}
+                  {% if feature.link_text %}
+                    <div class="link-text">
+                      <p class="link-text-value">{{ feature.link_text }} <span class="vpi-arrow-right link-text-icon"></span></p>
+                    </div>
+                  {% endif %}
+                </article>
+              {% endcapture %}
+
+              {% if feature.link %}
+                <a class="VPFeature link" {% include link_attrs.html href=feature.link target=feature.target rel=feature.rel %}>
+                  {{ feature_body }}
+                </a>
+              {% else %}
+                <div class="VPFeature">
+                  {{ feature_body }}
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if home_body != '' %}
+    {% if page.markdown_styles == false %}
+      {{ include.content }}
+    {% else %}
+      <div class="VPHomeContent">
+        <div class="vp-doc container">
+          {{ include.content }}
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+</div>

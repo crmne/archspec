@@ -25,7 +25,7 @@ The [37signals-skills](https://github.com/marckohlbrugge/37signals-skills)
 project collects these conventions as instructions for AI coding agents.
 Instructions only cover code generation. ArchSpec checks the code afterwards.
 
-## The Architecture
+## What It Checks
 
 ```ruby
 architecture :vanilla_rails
@@ -41,7 +41,7 @@ then requires these directories to stay empty, using the
 | `app/services`   | behavior belongs on models, not service objects |
 | `app/forms`      | use strong parameters and model validations     |
 | `app/policies`   | authorization is predicate methods on models    |
-| `app/decorators` | use helpers and partials                        |
+| `app/decorators` | use helpers and ERB partials                    |
 | `app/presenters` | presentation objects are POROs in `app/models`  |
 | `app/components` | use helpers and ERB partials                    |
 

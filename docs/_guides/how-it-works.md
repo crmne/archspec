@@ -29,7 +29,7 @@ glob files -> parse -> extract facts -> assign components -> evaluate rules
    become `parser.syntax` diagnostics instead of crashes, and
    `archspec:disable` comments are collected as suppressions.
 3. **Extract facts.** A visitor walks the syntax tree and records edges in
-   a graph — who defines what, who touches what. (`Analyzer::SourceVisitor`)
+   a graph: who defines what, who touches what. (`Analyzer::SourceVisitor`)
 4. **Assign components.** Each `component` declaration claims files by glob
    and constants by namespace. A file can belong to several components; the
    `explain` command shows why. (`Graph.assign_components`)
@@ -55,8 +55,8 @@ Alongside edges, the graph keeps each constant's methods and mixins (for
 protocol rules) and each file's expected constant from its path (for the
 Zeitwerk rule: `app/models/user.rb` should define `User`).
 
-Run `archspec explain app/models/user.rb` to see the facts for one file —
-it prints the expected constant, component assignments with reasons, and
+Run `archspec explain app/models/user.rb` to see the facts for one file.
+It prints the expected constant, component assignments with reasons, and
 every outgoing edge.
 
 ## A Violation, Traced
@@ -74,7 +74,7 @@ Parsing records a `references_constant` edge from `app/models/user.rb` to
 `UsersController`. Component assignment puts the file in `models` and puts
 `UsersController` (defined in `app/controllers`) in `controllers`. The
 `dependencies.forbid` rule walks dependency edges from `models`, resolves
-`UsersController` the way Ruby would — innermost namespace outward — finds
+`UsersController` the way Ruby would, innermost namespace outward, finds
 it lands in a forbidden component, and emits:
 
 ```text

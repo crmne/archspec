@@ -1,6 +1,6 @@
 ---
 title: CQRS
-nav_order: 7
+nav_order: 8
 description: Keep command and query code separated.
 ---
 

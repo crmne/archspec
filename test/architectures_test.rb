@@ -169,18 +169,6 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
-  def test_preset_remains_as_compatibility_alias
-    with_project do |root|
-      write "#{root}/app/models/user.rb", "class User; end\n"
-
-      definition = ArchSpec.define do
-        preset :rails
-      end
-
-      assert_empty diagnostics_for(definition, root)
-    end
-  end
-
   def test_vanilla_rails_architecture_forbids_service_objects
     with_project do |root|
       write "#{root}/app/models/user.rb", "class User; end\n"

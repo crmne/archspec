@@ -1,0 +1,175 @@
+/* ArchSpec homepage: cycling code panel in the hero. */
+
+.VPHero .image.archspec-hero-image {
+  order: 3;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+@media (min-width: 960px) {
+  .VPHero .image.archspec-hero-image {
+    order: 2;
+    padding: 0;
+  }
+}
+
+.archspec-hero-code {
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  max-width: 480px;
+}
+
+/* The theme's native gradient blob: a soft, wide oval behind the code window. */
+.archspec-hero-code .image-bg {
+  z-index: -1;
+  opacity: 0.6;
+}
+
+@media (min-width: 960px) {
+  .archspec-hero-code .image-bg {
+    width: 600px;
+    height: 330px;
+  }
+}
+
+.archspec-window {
+  overflow: hidden;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background: var(--vp-c-bg-alt, var(--vp-c-bg-soft));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+}
+
+.archspec-window-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-soft);
+}
+
+.archspec-dot { width: 11px; height: 11px; border-radius: 50%; }
+.archspec-dot:nth-child(1) { background: #ff5f57; }
+.archspec-dot:nth-child(2) { background: #febc2e; }
+.archspec-dot:nth-child(3) { background: #28c840; }
+
+.archspec-window-file {
+  position: relative;
+  top: 1px;
+  margin-left: 8px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 13px;
+  color: var(--vp-c-text-3);
+}
+
+.archspec-window-doc {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.archspec-window-doc:hover { color: var(--vp-c-brand-2); }
+
+/* Card stack: JS animates its height to fit the active card. */
+.archspec-card-stack {
+  position: relative;
+  min-height: 140px;
+  transition: height 0.4s ease;
+}
+
+.archspec-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 20px 22px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.45s ease;
+}
+.archspec-card.is-active { opacity: 1; visibility: visible; }
+
+/* Drop the theme's code-block chrome; the snippet sits in our window. */
+.archspec-card .highlighter-rouge,
+.archspec-card .highlight,
+.archspec-card pre.highlight {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.archspec-card pre.highlight {
+  font-family: var(--vp-font-family-mono);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre;
+  overflow-x: auto;
+}
+.archspec-card code { background: transparent; color: var(--vp-c-text-1); }
+
+/* Real Rouge tokens (via markdownify), self-scoped and theme-adaptive. */
+.archspec-card .highlight .c,
+.archspec-card .highlight .cm,
+.archspec-card .highlight .c1,
+.archspec-card .highlight .cs { color: var(--vp-c-text-3); font-style: italic; }
+.archspec-card .highlight .k,
+.archspec-card .highlight .kp,
+.archspec-card .highlight .kd,
+.archspec-card .highlight .kn,
+.archspec-card .highlight .kr { color: var(--vp-c-red-1); }
+.archspec-card .highlight .s,
+.archspec-card .highlight .s1,
+.archspec-card .highlight .s2,
+.archspec-card .highlight .sb,
+.archspec-card .highlight .dl { color: var(--vp-c-green-1); }
+.archspec-card .highlight .ss,
+.archspec-card .highlight .si { color: var(--vp-c-brand-1); }
+.archspec-card .highlight .nb,
+.archspec-card .highlight .nf,
+.archspec-card .highlight .fm { color: var(--vp-c-purple-1); }
+.archspec-card .highlight .no,
+.archspec-card .highlight .nc,
+.archspec-card .highlight .nn { color: var(--vp-c-yellow-1); }
+.archspec-card .highlight .mi,
+.archspec-card .highlight .mf { color: var(--vp-c-yellow-1); }
+
+.archspec-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+.archspec-dots button {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--vp-c-divider);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.archspec-dots button:hover { background: var(--vp-c-text-3); }
+.archspec-dots button.is-active { background: var(--vp-c-brand-1); transform: scale(1.25); }
+
+/* Links inside the feature boxes should read as links. */
+.VPHomeFeatures .details a {
+  color: var(--vp-c-brand-1);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.VPHomeFeatures .details a:hover { color: var(--vp-c-brand-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .archspec-card,
+  .archspec-card-stack,
+  .archspec-window-title::after { transition: none; }
+}

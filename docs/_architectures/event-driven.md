@@ -1,6 +1,6 @@
 ---
 title: Event Driven
-nav_order: 8
+nav_order: 9
 description: Keep event definitions independent from publishers and subscribers.
 ---
 

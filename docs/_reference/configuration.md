@@ -6,7 +6,7 @@ description: The Archspec.rb DSL.
 
 # Configuration
 
-`Archspec.rb` is Ruby. Keep it boring.
+`Archspec.rb` is Ruby.
 
 ## Project
 

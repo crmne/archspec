@@ -1,6 +1,6 @@
 ---
 title: Hexagonal
-nav_order: 4
+nav_order: 5
 description: Keep domain and ports independent from adapters.
 ---
 
