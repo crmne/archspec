@@ -1,13 +1,15 @@
 # ArchSpec
 
-Architecture checks for Ruby and Rails.
+Architecture linter for Ruby and Rails.
 
-Turn your application's architecture into executable checks.
+ArchSpec turns your application's architecture into executable checks. Declare
+your components, dependencies, and boundaries in one file, then check every
+change in CI, whether a person or a coding agent wrote it. It reads Ruby source
+with Prism and never boots the app.
 
-ArchSpec reads Ruby source with Prism, maps conventional Rails files to
-constants, and checks the structural rules you write down: components, layers,
-constant references, inheritance, mixins, named method calls, method protocols,
-cycles, and Rails boundaries.
+It maps conventional Rails files to constants and checks the structural rules
+you write down: components, layers, constant references, inheritance, mixins,
+named method calls, method protocols, cycles, and Rails boundaries.
 
 It does not try to infer the "true" design pattern of arbitrary Ruby code. You
 describe the architecture your team wants. ArchSpec checks whether the code still
@@ -17,9 +19,11 @@ matches it.
 
 Architecture usually lives in pull request comments, onboarding docs, and senior
 engineers' heads. That does not scale well, especially when code is moving fast.
+More of that code is now written by coding agents that do not know your
+conventions.
 
 ArchSpec gives you a small Ruby DSL for the rules that code review otherwise has
-to remember:
+to remember, and checks them on every change:
 
 - models do not reach into controllers
 - domain code does not depend on adapters

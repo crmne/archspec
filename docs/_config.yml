@@ -1,5 +1,5 @@
 title: ArchSpec
-description: Architecture checks for Ruby and Rails.
+description: Architecture linter for Ruby and Rails.
 lang: en-US
 timezone: UTC
 

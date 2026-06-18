@@ -8,8 +8,10 @@ Gem::Specification.new do |spec|
   spec.authors = ['Carmine Paolino']
   spec.email = ['carmine@paolino.me']
 
-  spec.summary = 'Architecture fitness functions for Ruby and Rails.'
-  spec.description = 'Convention-aware architecture checks for Ruby and Rails codebases.'
+  spec.summary = 'Architecture linter for Ruby and Rails.'
+  spec.description = 'A static architecture linter for Ruby and Rails. Declare your ' \
+                     'components, dependencies, and boundaries in one file, then check ' \
+                     'every change in CI. It reads source with Prism and never boots the app.'
   spec.homepage = 'https://archspecrb.dev'
   spec.license = 'MIT'
 
