@@ -23,8 +23,8 @@ glob files -> parse -> extract facts -> assign components -> evaluate rules
 ```
 
 1. **Collect.** The patterns from `source` (defaulting to `app/**/*.rb`,
-   `lib/**/*.rb`, and pack/engine paths) are globbed from `root`, minus
-   `ignore` patterns. (`Analyzer.ruby_files`)
+   `lib/**/*.rb`, and pack/engine paths) are globbed from the project
+   directory, minus `ignore` patterns. (`Analyzer.ruby_files`)
 2. **Parse.** Each file goes through `Prism.parse_file`. Syntax errors
    become `parser.syntax` diagnostics instead of crashes, and
    `archspec:disable` comments are collected as suppressions.

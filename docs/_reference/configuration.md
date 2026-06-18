@@ -18,8 +18,6 @@ ArchSpec.define "Application architecture" do
 end
 ```
 
-The project root defaults to the directory containing `Archspec.rb`. Use `root` only when the code you want to analyze lives somewhere else; it is resolved relative to the config file.
-
 ## Components
 
 ```ruby
