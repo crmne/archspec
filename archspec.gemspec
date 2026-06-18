@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
 
   spec.summary = 'Architecture fitness functions for Ruby and Rails.'
   spec.description = 'Convention-aware architecture checks for Ruby and Rails codebases.'
-  spec.homepage = 'https://crmne.github.io/archspec'
+  spec.homepage = 'https://archspecrb.dev'
   spec.license = 'MIT'
 
   spec.required_ruby_version = '>= 3.3'

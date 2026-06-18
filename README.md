@@ -220,7 +220,7 @@ Admin::UsersController
 
 ## Documentation
 
-Read the guides at [crmne.github.io/archspec](https://crmne.github.io/archspec/).
+Read the guides at [archspecrb.dev](https://archspecrb.dev/).
 
 ## Dogfooding
 
