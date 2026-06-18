@@ -1,0 +1,10 @@
+current: v0.1.0
+latest: v0.1.0
+items:
+  - id: v0.1.0
+    title: v0.1.0 (latest)
+    url: /
+  - id: changelog
+    title: Changelog
+    url: https://github.com/crmne/archspec/releases
+    external: true
