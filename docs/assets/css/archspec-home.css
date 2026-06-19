@@ -89,6 +89,7 @@
   left: 0;
   right: 0;
   padding: 20px 22px;
+  text-align: left;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.45s ease;
@@ -109,6 +110,7 @@
   font-family: var(--vp-font-family-mono);
   font-size: 14px;
   line-height: 1.7;
+  text-align: left;
   white-space: pre;
   overflow-x: auto;
 }
