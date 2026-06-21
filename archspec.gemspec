@@ -15,7 +15,7 @@ Gem::Specification.new do |spec|
   spec.homepage = 'https://archspecrb.dev'
   spec.license = 'MIT'
 
-  spec.required_ruby_version = '>= 3.3'
+  spec.required_ruby_version = '>= 3.1.3'
 
   spec.metadata['homepage_uri'] = spec.homepage
   spec.metadata['source_code_uri'] = 'https://github.com/crmne/archspec'
@@ -31,6 +31,6 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency 'prism', '>= 1.0'
 
-  spec.add_development_dependency 'minitest', '>= 5.20'
+  spec.add_development_dependency 'minitest', '>= 5.20', '< 6'
   spec.add_development_dependency 'rake', '>= 13.0'
 end

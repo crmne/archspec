@@ -1,12 +1,15 @@
 # frozen_string_literal: true
 
 require 'pathname'
+require 'set'
+
+require_relative 'value_object'
 
 module ArchSpec
-  ParseError = Data.define(:message, :location)
-  MethodDefinition = Data.define(:owner, :name, :scope, :location)
+  ParseError = ValueObject.define(:message, :location)
+  MethodDefinition = ValueObject.define(:owner, :name, :scope, :location)
 
-  Suppression = Data.define(:rule, :start_line, :end_line, :reason) do
+  Suppression = ValueObject.define(:rule, :start_line, :end_line, :reason) do
     def matches?(diagnostic)
       (rule.nil? || rule == diagnostic.rule) &&
         diagnostic.location.line >= start_line &&
@@ -68,7 +71,7 @@ module ArchSpec
     end
   end
 
-  Edge = Data.define(:type, :from_path, :from_constant, :to, :location, :confidence)
+  Edge = ValueObject.define(:type, :from_path, :from_constant, :to, :location, :confidence)
 
   class Component
     attr_reader :name, :files, :constants, :file_reasons, :constant_reasons

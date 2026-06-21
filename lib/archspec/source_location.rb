@@ -2,8 +2,10 @@
 
 require 'pathname'
 
+require_relative 'value_object'
+
 module ArchSpec
-  SourceLocation = Data.define(:path, :line, :column) do
+  SourceLocation = ValueObject.define(:path, :line, :column) do
     def self.from_prism(path, location)
       new(path, location.start_line, location.start_column + 1)
     end

@@ -24,7 +24,10 @@ component :dsl, in: %w[
 ]
 component :rule_checks, in: 'lib/archspec/rules/**/*.rb'
 component :formatters, in: 'lib/archspec/formatters/**/*.rb'
-component :support, in: 'lib/archspec/version.rb'
+component :support, in: %w[
+  lib/archspec/value_object.rb
+  lib/archspec/version.rb
+]
 
 library.cannot_call :call
 library.cannot_define :call
