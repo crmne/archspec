@@ -196,8 +196,7 @@ module ArchSpec
           location: SourceLocation.from_prism(path, node.location)
         )
 
-        if node.superclass
-          superclass = constant_reference_name(node.superclass)
+        if node.superclass && (superclass = constant_reference_name(node.superclass))
           constant.superclass = superclass
           graph.add_edge(
             type: :inherits_from,
@@ -318,11 +317,14 @@ module ArchSpec
       end
 
       def add_constant_reference(graph, path, node, current_constant)
+        name = constant_reference_name(node)
+        return unless name
+
         graph.add_edge(
           type: :references_constant,
           from_path: path,
           from_constant: current_constant,
-          to: constant_reference_name(node),
+          to: name,
           location: SourceLocation.from_prism(path, node.location)
         )
       end
@@ -369,7 +371,12 @@ module ArchSpec
       end
 
       def constant_reference_name(node)
+        return unless constant_node?(node)
+
         node.full_name.to_s.sub(/\A::/, '')
+      rescue Prism::ConstantPathNode::DynamicPartsInConstantPathError,
+             Prism::ConstantPathNode::MissingNodesInConstantPathError
+        nil
       end
 
       def constant_node?(node)

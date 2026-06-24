@@ -71,4 +71,43 @@ class AnalyzerTest < ArchSpecTest
       assert_equal 'Chargeable', file.expected_constant
     end
   end
+
+  def test_handles_non_constant_and_dynamic_superclasses
+    with_project do |root|
+      write "#{root}/app/models/money.rb", <<~RUBY
+        class Money < Data.define(:cents)
+        end
+      RUBY
+
+      write "#{root}/app/models/result.rb", <<~RUBY
+        class Result < Struct.new(:ok)
+        end
+      RUBY
+
+      write "#{root}/app/models/widget.rb", <<~RUBY
+        class Widget < Object.const_get("ApplicationRecord")
+        end
+      RUBY
+
+      write "#{root}/app/models/thing.rb", <<~RUBY
+        class Thing < foo::Bar
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+      end
+
+      # A method-call superclass (Data.define/Struct.new/const_get) is a
+      # Prism::CallNode and a dynamic constant path (foo::Bar) raises from
+      # #full_name -- neither should crash the analyzer.
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal %w[Money Result Thing Widget], graph.constants.map(&:name).sort
+      refute(
+        graph.edges.any? { |edge| edge.type == :inherits_from },
+        'non-constant / dynamic superclasses must not produce inherits_from edges'
+      )
+    end
+  end
 end
