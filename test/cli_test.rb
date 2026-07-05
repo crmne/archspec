@@ -159,7 +159,7 @@ class CLITest < ArchSpecTest
       status = Dir.chdir(root) { ArchSpec::CLI.run(['explain', 'app/models/user.rb'], output: output, error: StringIO.new) }
 
       assert_equal 0, status
-      assert_match(/expected constant: User/, output.string)
+      assert_match(/defined constants: User/, output.string)
       assert_match(%r{components:\n    models: matched file pattern app/models/\*\*/\*\.rb}, output.string)
     end
   end

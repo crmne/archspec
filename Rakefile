@@ -19,7 +19,7 @@ namespace :docs do
 end
 
 namespace :torture do
-  %w[discourse mastodon].each do |app|
+  %w[discourse fizzy mastodon].each do |app|
     desc "Run ArchSpec against a pinned #{app} checkout"
     task app.to_sym do
       ruby "test/torture/run.rb #{app}"
@@ -27,7 +27,7 @@ namespace :torture do
   end
 end
 
-desc 'Run ArchSpec against pinned Discourse and Mastodon checkouts'
-task torture: %w[torture:discourse torture:mastodon]
+desc 'Run ArchSpec against pinned Discourse, Fizzy, and Mastodon checkouts'
+task torture: %w[torture:discourse torture:fizzy torture:mastodon]
 
 task default: %i[test architecture]

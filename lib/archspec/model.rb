@@ -18,12 +18,11 @@ module ArchSpec
   end
 
   class SourceFile
-    attr_reader :path, :relative_path, :expected_constant, :parse_errors, :suppressions
+    attr_reader :path, :relative_path, :parse_errors, :suppressions
 
-    def initialize(root:, path:, expected_constant:, parse_errors:, suppressions:)
+    def initialize(root:, path:, parse_errors:, suppressions:)
       @path = path
       @relative_path = Pathname(path).relative_path_from(Pathname(root)).to_s
-      @expected_constant = expected_constant
       @parse_errors = parse_errors
       @suppressions = suppressions
     end
@@ -117,11 +116,10 @@ module ArchSpec
       @components = {}
     end
 
-    def add_file(path:, expected_constant:, parse_errors:, suppressions: [])
+    def add_file(path:, parse_errors:, suppressions: [])
       files[path] = SourceFile.new(
         root: root,
         path: path,
-        expected_constant: expected_constant,
         parse_errors: parse_errors,
         suppressions: suppressions
       )

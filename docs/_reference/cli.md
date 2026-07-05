@@ -48,4 +48,4 @@ bundle exec archspec explain app/models/user.rb
 bundle exec archspec explain Billing::Invoice
 ```
 
-Shows what ArchSpec knows about a file or constant: expected constant, definitions, component assignment reasons, suppressions, and outgoing facts.
+Shows what ArchSpec knows about a file or constant: defined constants, component assignment reasons, suppressions, and outgoing facts.

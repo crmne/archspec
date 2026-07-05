@@ -52,11 +52,10 @@ Everything a rule can check is one of these edge types:
 | `dynamic_feature`          | `send`, `const_get`, `define_method`, `method_missing`, ... |
 
 Alongside edges, the graph keeps each constant's methods and mixins (for
-protocol rules) and each file's expected constant from its path (for the
-Zeitwerk rule: `app/models/user.rb` should define `User`).
+protocol rules).
 
 Run `archspec explain app/models/user.rb` to see the facts for one file.
-It prints the expected constant, component assignments with reasons, and
+It prints the defined constants, component assignments with reasons, and
 every outgoing edge.
 
 ## A Violation, Traced

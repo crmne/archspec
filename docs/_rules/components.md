@@ -1,6 +1,6 @@
 ---
 title: Components
-nav_order: 9
+nav_order: 8
 description: Keep a directory empty on purpose.
 ---
 

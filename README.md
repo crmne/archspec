@@ -117,9 +117,12 @@ architecture :cqrs,
 - **Architectures:** Rails, vanilla Rails, layered, hexagonal, clean, modular monolith, CQRS, and event-driven bundles
 - **Protocols:** required methods such as `resolve`, `perform`, or project-specific interfaces
 - **Objects:** rules against one-shot `Something.new(...).whatever` command objects
-- **Zeitwerk names:** conventional file names defining the expected constants
 - **Empty components:** directories that must stay empty, like `app/services` in vanilla Rails
 - **Suppressions:** narrow local exceptions with a reason
+
+## Checking Zeitwerk Names
+
+ArchSpec does not check Zeitwerk constant names. Zeitwerk does that itself. Add `Zeitwerk::Loader.eager_load_all` (or your loader's `eager_load`) to your test suite or CI. It raises on any file that does not define the constant its path implies, using your real inflector and ignores.
 
 ## Installation
 

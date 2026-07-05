@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require 'prism'
-require 'pathname'
 
 module ArchSpec
   module Analyzer
@@ -15,7 +14,6 @@ module ArchSpec
         result = Prism.parse_file(path)
         graph.add_file(
           path: path,
-          expected_constant: expected_constant_for(path, root, definition.inflections),
           parse_errors: parse_errors_for(path, result.errors),
           suppressions: suppressions_for(result.comments)
         )
@@ -47,38 +45,6 @@ module ArchSpec
       definition.ignore_patterns.flat_map do |pattern|
         Dir.glob(File.absolute_path(pattern, root))
       end.select { |path| File.file?(path) }.map { |path| File.expand_path(path) }.to_set
-    end
-
-    def expected_constant_for(path, root, inflections = {})
-      relative = Pathname(path).relative_path_from(Pathname(root)).to_s
-      stem =
-        case relative
-        when %r{\Aapp/[^/]+/concerns/(.+)\.rb\z}
-          Regexp.last_match(1)
-        when %r{\Aapp/[^/]+/(.+)\.rb\z}
-          Regexp.last_match(1)
-        when %r{\Alib/(.+)\.rb\z}
-          Regexp.last_match(1)
-        when %r{\A(?:packs|engines)/[^/]+/app/[^/]+/concerns/(.+)\.rb\z}
-          Regexp.last_match(1)
-        when %r{\A(?:packs|engines)/[^/]+/app/[^/]+/(.+)\.rb\z}
-          Regexp.last_match(1)
-        else
-          return nil
-        end
-
-      camelize_path(stem, inflections)
-    end
-
-    # Rails-style acronyms: inflections apply to whole path segments first,
-    # then to each snake_case word (inflect "api" => "API" fixes both api.rb
-    # and api_client.rb).
-    def camelize_path(path, inflections = {})
-      path.split('/').map do |part|
-        inflections[part] || part.split('_').map do |word|
-          inflections[word] || (word[0] ? word[0].upcase + word[1..] : word)
-        end.join
-      end.join('::')
     end
 
     def suppressions_for(comments)

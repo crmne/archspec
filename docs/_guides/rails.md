@@ -60,13 +60,13 @@ Architectures are ordinary rules written for conventional Rails paths. Add local
 
 ## Check Names
 
-Use this when the app follows Zeitwerk naming:
+ArchSpec does not check Zeitwerk constant names. Zeitwerk does that itself. Add `Zeitwerk::Loader.eager_load_all` (or your loader's `eager_load`) to your test suite or CI:
 
 ```ruby
-verify_zeitwerk_names!
+Zeitwerk::Loader.eager_load_all
 ```
 
-ArchSpec reports files whose expected constant does not appear in the file.
+It raises on any file that does not define the constant its path implies, using your real inflector and ignores.
 
 ## Engines and Packs
 

@@ -22,7 +22,7 @@ module ArchSpec
     ].freeze
 
     attr_accessor :name, :root_path, :todo_path, :base_dir
-    attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules, :inflections
+    attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules
 
     def initialize(name = nil)
       @name = name
@@ -33,11 +33,6 @@ module ArchSpec
       @ignore_patterns = DEFAULT_IGNORE_PATTERNS.dup
       @component_specs = {}
       @rules = []
-      @inflections = {}
-    end
-
-    def add_inflections(map)
-      @inflections.merge!(map.to_h.transform_keys(&:to_s).transform_values(&:to_s))
     end
 
     def add_source_patterns(patterns)

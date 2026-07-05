@@ -161,7 +161,6 @@ module ArchSpec
       if graph.files.key?(path)
         file = graph.files.fetch(path)
         output.puts file.relative_path
-        output.puts "  expected constant: #{file.expected_constant || '(none)'}"
         output.puts "  defined constants: #{graph.constants_for_path(path).map(&:name).join(', ')}"
         output_parse_errors(output, file)
         output_component_reasons(output, graph.component_assignment_reasons_for_path(path))

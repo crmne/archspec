@@ -49,8 +49,7 @@ jobs:
         run: gem build archspec.gemspec
 
   torture:
-    name: Torture against real apps
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    name: Torture against Fizzy
     runs-on: ubuntu-latest
     env:
       BUNDLE_PATH: vendor/bundle
@@ -64,10 +63,33 @@ jobs:
           ruby-version: "4.0"
           bundler-cache: true
 
-      - name: Run torture tests
+      - name: Run Fizzy torture test
         env:
           ARCHSPEC_TORTURE: "1"
-        run: bundle exec ruby -Itest test/torture_test.rb
+        run: bundle exec ruby -Itest test/torture_test.rb -n test_fizzy
+
+  torture_apps:
+    name: Torture against Discourse and Mastodon
+    # Discourse and Mastodon are large checkouts, so only run them at release
+    # (push to the default branch) and on manual or scheduled runs.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
+    runs-on: ubuntu-latest
+    env:
+      BUNDLE_PATH: vendor/bundle
+      BUNDLE_DISABLE_SHARED_GEMS: "true"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+
+      - name: Run Discourse and Mastodon torture tests
+        env:
+          ARCHSPEC_TORTURE: "1"
+        run: bundle exec ruby -Itest test/torture_test.rb -n "/test_(discourse|mastodon)/"
 
   docs:
     runs-on: ubuntu-latest
@@ -136,7 +158,7 @@ jobs:
 
   release:
     name: Release gem
-    needs: [test, docs]
+    needs: [test, docs, torture, torture_apps]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     uses: ./.github/workflows/release.yml
     permissions:

@@ -14,11 +14,10 @@ description: The Archspec.rb DSL.
 source "app/**/*.rb", "lib/**/*.rb"
 ignore "tmp/**/*", "vendor/**/*"
 todo "archspec_todo.yml"
-inflect "api" => "API"
 ```
 {: data-title="Archspec.rb"}
 
-Todo ids are computed from the rule, path, message, and evidence, not the line number, so entries survive edits that shift code. `inflect` declares acronyms for Zeitwerk name checks.
+Todo ids are computed from the rule, path, message, and evidence, not the line number, so entries survive edits that shift code.
 
 ## Components
 
@@ -89,16 +88,15 @@ Use this when the dependency is better expressed as a framework constant than a 
 
 See [Constant Rules]({% link _rules/constants.md %}).
 
-## Cycles and Names
+## Cycles
 
 ```ruby
 no_cycles!
-verify_zeitwerk_names!
 ```
 
-`no_cycles!` checks component dependency cycles. `verify_zeitwerk_names!` checks file-to-constant naming for conventional Rails paths.
+`no_cycles!` checks component dependency cycles.
 
-See [Cycle Rules]({% link _rules/cycles.md %}) and [Zeitwerk Name Rules]({% link _rules/zeitwerk-names.md %}).
+See [Cycle Rules]({% link _rules/cycles.md %}).
 
 ## Suppressions
 

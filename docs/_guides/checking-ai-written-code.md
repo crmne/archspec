@@ -49,7 +49,7 @@ Most failures should be fixed in the generated code.
 bundle exec archspec explain app/services/create_user.rb
 ```
 
-`explain` shows the expected constant, defined constants, component assignment, suppressions, and outgoing facts. Use it when a failure looks surprising.
+`explain` shows the defined constants, component assignment, suppressions, and outgoing facts. Use it when a failure looks surprising.
 
 ## Do Not Hide New Failures
 

@@ -56,16 +56,6 @@ module ArchSpec
         self.todo_path = path.to_s
       end
 
-      # Declares acronym inflections for Zeitwerk name checks, mirroring your
-      # +config/initializers/inflections.rb+.
-      #
-      #   inflect "api" => "API", "graphql" => "GraphQL"
-      #
-      # +app/models/api_client.rb+ then expects +APIClient+.
-      def inflect(map)
-        add_inflections(map)
-      end
-
       # Yields each subdirectory matching a glob, so you can declare one
       # component per engine or pack without hardcoding their names. Paths
       # resolve against the +Archspec.rb+ directory, not the working directory,
@@ -131,18 +121,6 @@ module ArchSpec
       # Rule id: +dependencies.no_cycles+.
       def no_cycles!(among: nil)
         add_rule(Rules::NoCyclesRule.new(among: among))
-      end
-
-      # Checks that files define the constant their path implies under Zeitwerk.
-      # Pass globs to restrict the check to the autoloaded tree, since Rails
-      # does not autoload +lib+ by default.
-      #
-      #   verify_zeitwerk_names!
-      #   verify_zeitwerk_names! "app/**/*.rb"
-      #
-      # Rule id: +zeitwerk.naming+.
-      def verify_zeitwerk_names!(*only)
-        add_rule(Rules::ZeitwerkNamingRule.new(only: only))
       end
 
       # Adds a custom rule object. A rule responds to +id+ and

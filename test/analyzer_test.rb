@@ -14,10 +14,11 @@ class AnalyzerTest < ArchSpecTest
 
       definition = ArchSpec.define do
         component :controllers, in: 'app/controllers/**/*.rb'
-        verify_zeitwerk_names!
       end
 
-      assert_empty diagnostics_for(definition, root)
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_includes graph.constants.map(&:name), 'Admin::Users::RolesController'
     end
   end
 
@@ -90,41 +91,6 @@ class AnalyzerTest < ArchSpecTest
       assert(graph.edges.any? { |edge| edge.type == :includes && edge.to == 'Billable' })
       assert(graph.edges.any? { |edge| edge.type == :references_constant && edge.to == 'Billing::Invoice' })
       assert_equal [:models], graph.component_names_for_path("#{root}/app/models/user.rb").to_a
-    end
-  end
-
-  def test_expected_constant_uses_rails_paths
-    with_project do |root|
-      write "#{root}/app/services/billing/create_invoice.rb", <<~RUBY
-        module Billing
-          class CreateInvoice
-          end
-        end
-      RUBY
-
-      definition = ArchSpec.define do
-        component :services, in: 'app/services/**/*.rb'
-      end
-
-      graph = ArchSpec::Analyzer.analyze(definition, root: root)
-      file = graph.files.fetch("#{root}/app/services/billing/create_invoice.rb")
-
-      assert_equal 'Billing::CreateInvoice', file.expected_constant
-    end
-  end
-
-  def test_expected_constant_ignores_concerns_directory_in_packs
-    with_project do |root|
-      write "#{root}/packs/billing/app/models/concerns/chargeable.rb", "module Chargeable; end\n"
-
-      definition = ArchSpec.define do
-        component :billing, in: 'packs/billing/**/*.rb'
-      end
-
-      graph = ArchSpec::Analyzer.analyze(definition, root: root)
-      file = graph.files.fetch("#{root}/packs/billing/app/models/concerns/chargeable.rb")
-
-      assert_equal 'Chargeable', file.expected_constant
     end
   end
 end

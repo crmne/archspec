@@ -37,7 +37,7 @@ architecture :rails, controller_api: %i[render redirect_to session cookies flash
 
 ## Strict
 
-`rails_strict` adds Zeitwerk name checks, a cycle check across the Rails components, and a concern independence check on `app/**/concerns/**/*.rb`.
+`rails_strict` adds a cycle check across the Rails components and a concern independence check on `app/**/concerns/**/*.rb`.
 
 ```ruby
 architecture :rails_strict

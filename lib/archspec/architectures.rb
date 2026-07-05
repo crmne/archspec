@@ -14,8 +14,8 @@ module ArchSpec
   # - +:rails+ (aliases +:rails_mvc+, +:rails_way+): conventional MVC that keeps
   #   controller APIs out of models and services. Options +components:+,
   #   +controller_api:+, +share_helpers:+.
-  # - +:rails_strict+: +:rails+ plus Zeitwerk name checks, a cycle check, and a
-  #   concern independence check. Adds option +concerns:+.
+  # - +:rails_strict+: +:rails+ plus a cycle check and a concern independence
+  #   check. Adds option +concerns:+.
   # - +:vanilla_rails+: +:rails+ plus empty-directory rules for the 37signals
   #   style (forbidding +app/services+, +app/forms+, +app/policies+, and more)
   #   and the concern independence check. Options +components:+, +empty:+,
@@ -172,7 +172,6 @@ module ArchSpec
     def rails_strict(dsl, components:, controller_api: CONTROLLER_METHODS, share_helpers: false, concerns: DEFAULT_CONCERNS)
       components = normalize_map(components)
       rails_mvc(dsl, components: components, controller_api: controller_api, share_helpers: share_helpers)
-      dsl.verify_zeitwerk_names!
       dsl.no_cycles!(among: components.keys)
       independent_concerns(dsl, concerns)
     end

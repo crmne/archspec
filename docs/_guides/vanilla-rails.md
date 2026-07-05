@@ -73,12 +73,6 @@ component(:api_controllers, in: "app/controllers/api/**/*.rb")
   .must_be_empty(because: "the same controllers serve HTML and JSON via respond_to")
 ```
 
-Conventional file names define conventional constants:
-
-```ruby
-verify_zeitwerk_names!
-```
-
 ## What ArchSpec Cannot Check
 
 Some vanilla Rails conventions are about design judgment, not file

@@ -107,38 +107,6 @@ class RulesTest < ArchSpecTest
     end
   end
 
-  def test_zeitwerk_rule_reports_mismatched_file_names
-    with_project do |root|
-      write "#{root}/app/models/user.rb", "class Account; end\n"
-
-      definition = ArchSpec.define do
-        component :models, in: 'app/models/**/*.rb'
-        verify_zeitwerk_names!
-      end
-
-      diagnostics = diagnostics_for(definition, root)
-
-      assert_equal 1, diagnostics.size
-      assert_equal 'zeitwerk.naming', diagnostics.first.rule
-      assert_match(/should define User/, diagnostics.first.message)
-    end
-  end
-
-  def test_zeitwerk_rule_honors_inflections
-    with_project do |root|
-      write "#{root}/app/models/api_client.rb", "class APIClient; end\n"
-      write "#{root}/app/models/api.rb", "module API; end\n"
-
-      definition = ArchSpec.define do
-        inflect 'api' => 'API'
-        component :models, in: 'app/models/**/*.rb'
-        verify_zeitwerk_names!
-      end
-
-      assert_empty diagnostics_for(definition, root)
-    end
-  end
-
   def test_disable_next_line_suppresses_one_rule
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY

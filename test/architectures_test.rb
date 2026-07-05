@@ -279,14 +279,14 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
-  def test_rails_strict_architecture_adds_name_and_cycle_checks
+  def test_rails_strict_architecture_adds_cycle_and_concern_checks
     definition = ArchSpec.define do
       architecture :rails_strict
     end
 
     rule_names = definition.rules.map(&:class).map(&:name)
 
-    assert_includes rule_names, 'ArchSpec::Rules::ZeitwerkNamingRule'
     assert_includes rule_names, 'ArchSpec::Rules::NoCyclesRule'
+    assert_includes rule_names, 'ArchSpec::Rules::ConcernIndependenceRule'
   end
 end

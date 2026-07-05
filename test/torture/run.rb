@@ -20,6 +20,10 @@ APPS = {
     url: 'https://github.com/discourse/discourse',
     sha: '4cac48263809d806cee8660c6b1adc6e5d0c9445'
   },
+  'fizzy' => {
+    url: 'https://github.com/basecamp/fizzy',
+    sha: '65bb2f8ff2cc84d9836cd03ba857f3a20552a78a'
+  },
   'mastodon' => {
     url: 'https://github.com/mastodon/mastodon',
     sha: '163f96cee4dea23365bff9b433871e68d20d9ee7'

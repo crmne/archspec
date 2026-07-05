@@ -1,6 +1,6 @@
 ---
 title: Concerns
-nav_order: 10
+nav_order: 9
 description: Keep concerns independent of the classes that include them.
 ---
 
