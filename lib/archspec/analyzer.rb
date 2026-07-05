@@ -141,24 +141,31 @@ module ArchSpec
         attr_accessor: %i[reader writer]
       }.freeze
 
-      def visit(graph, path, node, current_constant: nil, namespace: [], visibility: :public)
+      def visit(graph, path, node, current_constant: nil, namespace: [], visibility: :public, default_scope: :instance)
         return unless node
 
         case node
         when Prism::ProgramNode, Prism::StatementsNode
-          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace, visibility: visibility)
+          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
+                                            visibility: visibility, default_scope: default_scope)
         when Prism::ClassNode
           visit_class(graph, path, node, current_constant: current_constant, namespace: namespace)
         when Prism::ModuleNode
           visit_module(graph, path, node, current_constant: current_constant, namespace: namespace)
+        when Prism::SingletonClassNode
+          visit_singleton_class(graph, path, node, current_constant: current_constant, namespace: namespace,
+                                                   visibility: visibility, default_scope: default_scope)
         when Prism::DefNode
-          visit_def(graph, path, node, current_constant: current_constant, namespace: namespace, visibility: visibility)
+          visit_def(graph, path, node, current_constant: current_constant, namespace: namespace,
+                                       visibility: visibility, default_scope: default_scope)
         when Prism::CallNode
-          visit_call(graph, path, node, current_constant: current_constant, namespace: namespace, visibility: visibility)
+          visit_call(graph, path, node, current_constant: current_constant, namespace: namespace,
+                                        visibility: visibility, default_scope: default_scope)
         when Prism::ConstantPathNode, Prism::ConstantReadNode
           add_constant_reference(graph, path, node, current_constant)
         else
-          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace, visibility: visibility)
+          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
+                                            visibility: visibility, default_scope: default_scope)
         end
       end
 
@@ -210,33 +217,61 @@ module ArchSpec
         visit_constant_body(graph, path, constant, node.body, constant.name.split('::'))
       end
 
+      # A +class << self+ (or +class << SomeConstant+) block defines methods on a
+      # constant's singleton, so they are class methods, and +private+ inside it
+      # applies to them. Walk the body with +default_scope: :class+ against the
+      # target constant. An unknown target (+class << variable+) still has its
+      # body visited for edges, but no methods are attributed.
+      def visit_singleton_class(graph, path, node, current_constant:, namespace:, visibility:, default_scope:)
+        target = singleton_target(node.expression, current_constant)
+        constant = target && graph.constants_named(target).find { |candidate| candidate.path == path }
+
+        if constant
+          visit_constant_body(graph, path, constant, node.body, namespace, default_scope: :class)
+        else
+          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
+                                            visibility: visibility, default_scope: default_scope)
+        end
+      end
+
+      def singleton_target(expression, current_constant)
+        return current_constant if expression.is_a?(Prism::SelfNode)
+
+        constant_reference_name(expression) if constant_node?(expression)
+      end
+
       # Walks a class or module body in source order, tracking method visibility
       # so +private+/+protected+ and their inline and symbol-list forms mark the
-      # methods they cover. Every statement is still handed to +visit+, so all
-      # other facts (calls, references, mixins) are recorded exactly as before.
-      def visit_constant_body(graph, path, constant, body, namespace)
+      # methods they cover. +default_scope+ is +:class+ inside a singleton class,
+      # so bare +def+s there are class methods. Every statement is still handed to
+      # +visit+, so all other facts (calls, references, mixins) are recorded
+      # exactly as before.
+      def visit_constant_body(graph, path, constant, body, namespace, default_scope: :instance)
         return unless body
 
         unless body.is_a?(Prism::StatementsNode)
-          return visit(graph, path, body, current_constant: constant.name, namespace: namespace)
+          return visit(graph, path, body, current_constant: constant.name, namespace: namespace,
+                                          default_scope: default_scope)
         end
 
         visibility = :public
         body.body.each do |statement|
           if (modifier = visibility_modifier(statement))
-            visibility = apply_visibility_modifier(graph, path, constant, statement, namespace, visibility, modifier)
+            visibility = apply_visibility_modifier(graph, path, constant, statement, namespace, visibility, modifier,
+                                                   default_scope)
           else
-            visit(graph, path, statement, current_constant: constant.name, namespace: namespace, visibility: visibility)
+            visit(graph, path, statement, current_constant: constant.name, namespace: namespace,
+                                          visibility: visibility, default_scope: default_scope)
           end
         end
       end
 
-      def visit_def(graph, path, node, current_constant:, namespace:, visibility: :public)
+      def visit_def(graph, path, node, current_constant:, namespace:, visibility: :public, default_scope: :instance)
         if current_constant && (constant = graph.constants_named(current_constant).find do |candidate|
           candidate.path == path
         end)
           location = SourceLocation.from_prism(path, node.location)
-          if node.receiver
+          if node.receiver || default_scope == :class
             constant.add_class_method(node.name, location: location, visibility: visibility)
           else
             constant.add_instance_method(node.name, location: location, visibility: visibility)
@@ -257,10 +292,10 @@ module ArchSpec
         visit_children(graph, path, node, current_constant: current_constant, namespace: namespace)
       end
 
-      def visit_call(graph, path, node, current_constant:, namespace:, visibility: :public)
+      def visit_call(graph, path, node, current_constant:, namespace:, visibility: :public, default_scope: :instance)
         unless node.message
-          return visit_children(graph, path, node, current_constant: current_constant,
-                                                   namespace: namespace, visibility: visibility)
+          return visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
+                                                   visibility: visibility, default_scope: default_scope)
         end
 
         message = node.message.to_sym
@@ -286,7 +321,7 @@ module ArchSpec
           )
         end
 
-        record_generated_methods(graph, path, node, message, current_constant, location, visibility)
+        record_generated_methods(graph, path, node, message, current_constant, location, visibility, default_scope)
 
         if (edge_type = MIXIN_MESSAGES[message])
           constant_arguments(node).each do |constant_name|
@@ -326,7 +361,8 @@ module ArchSpec
           )
         end
 
-        visit_children(graph, path, node, current_constant: current_constant, namespace: namespace, visibility: visibility)
+        visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
+                                          visibility: visibility, default_scope: default_scope)
       end
 
       def add_constant_reference(graph, path, node, current_constant)
@@ -342,22 +378,28 @@ module ArchSpec
         )
       end
 
-      def visit_children(graph, path, node, current_constant:, namespace:, visibility: :public)
+      def visit_children(graph, path, node, current_constant:, namespace:, visibility: :public, default_scope: :instance)
         node.child_nodes.compact.each do |child|
-          visit(graph, path, child, current_constant: current_constant, namespace: namespace, visibility: visibility)
+          visit(graph, path, child, current_constant: current_constant, namespace: namespace,
+                                    visibility: visibility, default_scope: default_scope)
         end
       end
 
+      # Maps a visibility call to [visibility, forced_scope]. A nil forced_scope
+      # means the call follows the context (instance methods in a class body,
+      # class methods inside +class << self+); +*_class_method+ always targets
+      # class methods.
       VISIBILITY_MODIFIERS = {
-        private: %i[private instance],
-        protected: %i[protected instance],
-        public: %i[public instance],
-        private_class_method: %i[private class],
-        public_class_method: %i[public class]
+        private: [:private, nil],
+        protected: [:protected, nil],
+        public: [:public, nil],
+        private_class_method: [:private, :class],
+        public_class_method: [:public, :class]
       }.freeze
 
-      # The [visibility, scope] a bare visibility call sets, or nil when the node
-      # is not one. Only receiverless calls count, so +obj.private+ is ignored.
+      # The [visibility, forced_scope] a bare visibility call sets, or nil when
+      # the node is not one. Only receiverless calls count, so +obj.private+ is
+      # ignored.
       def visibility_modifier(node)
         return unless node.is_a?(Prism::CallNode) && node.receiver.nil?
 
@@ -368,24 +410,29 @@ module ArchSpec
       # statements that follow it. A bare +private+ changes that default; the
       # inline (+private def foo+) and symbol-list (+private :foo+) forms mark
       # only the methods they name and leave the default unchanged.
-      def apply_visibility_modifier(graph, path, constant, node, namespace, current, spec)
-        visibility, scope = spec
+      def apply_visibility_modifier(graph, path, constant, node, namespace, current, spec, default_scope)
+        visibility, forced_scope = spec
+        scope = forced_scope || default_scope
         arguments = node.arguments&.arguments || []
         definitions = arguments.select { |argument| argument.is_a?(Prism::DefNode) }
         names = arguments.select { |argument| argument.is_a?(Prism::SymbolNode) || argument.is_a?(Prism::StringNode) }
 
         if definitions.any?
-          visit(graph, path, node, current_constant: constant.name, namespace: namespace, visibility: visibility)
+          visit(graph, path, node, current_constant: constant.name, namespace: namespace,
+                                   visibility: visibility, default_scope: default_scope)
           current
         elsif names.any?
           names.each { |name| constant.set_visibility(name.unescaped.to_sym, scope, visibility) }
-          visit(graph, path, node, current_constant: constant.name, namespace: namespace, visibility: current)
+          visit(graph, path, node, current_constant: constant.name, namespace: namespace,
+                                   visibility: current, default_scope: default_scope)
           current
-        elsif scope == :instance
-          visit(graph, path, node, current_constant: constant.name, namespace: namespace, visibility: visibility)
+        elsif forced_scope.nil?
+          visit(graph, path, node, current_constant: constant.name, namespace: namespace,
+                                   visibility: visibility, default_scope: default_scope)
           visibility
         else
-          visit(graph, path, node, current_constant: constant.name, namespace: namespace, visibility: current)
+          visit(graph, path, node, current_constant: constant.name, namespace: namespace,
+                                   visibility: current, default_scope: default_scope)
           current
         end
       end
@@ -408,7 +455,7 @@ module ArchSpec
 
       # attr_* and unprefixed delegate calls define instance methods; without
       # them, a class calling its own reader looks like a foreign call.
-      def record_generated_methods(graph, path, node, message, current_constant, location, visibility)
+      def record_generated_methods(graph, path, node, message, current_constant, location, visibility, default_scope)
         return unless current_constant && node.receiver.nil?
         return unless ATTR_MESSAGES.key?(message) || message == :delegate
 
@@ -418,10 +465,11 @@ module ArchSpec
         names = symbol_arguments(node)
         return if message == :delegate && keyword_argument?(node, :prefix)
 
+        adder = default_scope == :class ? :add_class_method : :add_instance_method
         names.each do |name|
           kinds = ATTR_MESSAGES.fetch(message, %i[reader])
-          constant.add_instance_method(name, location: location, visibility: visibility) if kinds.include?(:reader)
-          constant.add_instance_method(:"#{name}=", location: location, visibility: visibility) if kinds.include?(:writer)
+          constant.public_send(adder, name, location: location, visibility: visibility) if kinds.include?(:reader)
+          constant.public_send(adder, :"#{name}=", location: location, visibility: visibility) if kinds.include?(:writer)
         end
       end
 

@@ -98,6 +98,37 @@ class AnalyzerTest < ArchSpecTest
     end
   end
 
+  def test_singleton_class_defs_are_class_methods_with_visibility
+    with_project do |root|
+      write "#{root}/app/models/agent.rb", <<~RUBY
+        class Agent
+          def instance_pub; end
+
+          class << self
+            def create; end
+
+            private
+
+            def with_rails_chat_record; end
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      methods = graph.constants_named('Agent').first.method_definitions.each_with_object({}) do |method, map|
+        map[method.name] = [method.scope, method.visibility]
+      end
+
+      assert_equal %i[instance public], methods[:instance_pub]
+      assert_equal %i[class public], methods[:create]
+      assert_equal %i[class private], methods[:with_rails_chat_record]
+    end
+  end
+
   def test_builds_graph_from_direct_prism_parse
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY

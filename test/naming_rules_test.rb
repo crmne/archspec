@@ -165,6 +165,53 @@ class NamingRulesTest < ArchSpecTest
     end
   end
 
+  def test_private_singleton_method_does_not_trip_instance_rule
+    with_project do |root|
+      write "#{root}/app/models/agent.rb", <<~RUBY
+        class Agent
+          class << self
+            def create
+              with_rails_chat_record
+            end
+
+            private
+
+            def with_rails_chat_record; end
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.methods.matching(/\Awith_/).forbidden
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_class_scoped_rule_catches_public_singleton_method
+    with_project do |root|
+      write "#{root}/app/models/agent.rb", <<~RUBY
+        class Agent
+          class << self
+            def get_config; end
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.methods(scope: :class).matching(/\Aget_/).forbidden
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/Agent must not define #get_config/, diagnostics.first.message)
+    end
+  end
+
   def test_scope_class_selects_class_methods
     with_project do |root|
       write "#{root}/app/models/report.rb", <<~RUBY
