@@ -107,10 +107,16 @@ module ArchSpec
       #   architecture :hexagonal
       #   architecture :modular_monolith, components: { ... }, allow: { ... }
       #
+      # +preset+ is an alias. Use whichever word fits: +architecture+ reads well
+      # for structural bundles like +:rails+, +preset+ for convention packs like
+      # +:ruby_conventions+.
+      #
       # See ArchSpec::Architectures for every preset and its options.
       def architecture(name, **options)
         Architectures.apply(name, self, **options)
       end
+
+      alias preset architecture
 
       # Forbids dependency cycles between components. Pass +among:+ to limit the
       # check to a subset; omit it to check every declared component.

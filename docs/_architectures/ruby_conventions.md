@@ -9,8 +9,10 @@ description: Generic Ruby naming idioms, applied project-wide.
 Ruby Conventions bundles the generic Ruby naming idioms and applies them to every method in the project.
 
 ```ruby
-architecture :ruby_conventions
+preset :ruby_conventions
 ```
+
+`preset` is an alias for `architecture`, and reads better for a convention pack. Either works.
 
 This checks:
 

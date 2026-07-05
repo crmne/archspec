@@ -11,6 +11,8 @@ Architectures are rule bundles.
 
 They define conventional components and apply dependency rules between them. They do not add a second analysis engine.
 
+`preset` is an alias for `architecture`. Use whichever word fits: `architecture :rails` for a structural bundle, `preset :ruby_conventions` for a convention pack.
+
 Available architectures:
 
 - [Rails]({% link _architectures/rails.md %})

@@ -316,6 +316,21 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
+  def test_preset_is_an_alias_for_architecture
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; def get_name; @name; end; end\n"
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        preset :ruby_conventions
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert(diagnostics.any? { |diagnostic| diagnostic.rule == 'naming.forbidden' })
+    end
+  end
+
   def test_ruby_conventions_composes_with_rails
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY
