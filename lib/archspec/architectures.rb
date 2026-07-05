@@ -11,30 +11,30 @@ module ArchSpec
   # Every preset accepts overrides for its directories, so you can keep the
   # shape while pointing at your own paths. The presets are:
   #
-  # +:rails+ (aliases +:rails_mvc+, +:rails_way+):: Conventional MVC. Keeps
-  #   controller APIs out of models and services. Options: +components:+,
+  # - +:rails+ (aliases +:rails_mvc+, +:rails_way+): conventional MVC that keeps
+  #   controller APIs out of models and services. Options +components:+,
   #   +controller_api:+, +share_helpers:+.
-  # +:rails_strict+:: +:rails+ plus Zeitwerk name checks, a cycle check, and a
-  #   concern independence check. Options add +concerns:+.
-  # +:vanilla_rails+:: +:rails+ plus empty-directory rules for the 37signals
-  #   style, forbidding +app/services+, +app/forms+, +app/policies+, and more,
-  #   and the concern independence check. Options: +components:+, +empty:+,
+  # - +:rails_strict+: +:rails+ plus Zeitwerk name checks, a cycle check, and a
+  #   concern independence check. Adds option +concerns:+.
+  # - +:vanilla_rails+: +:rails+ plus empty-directory rules for the 37signals
+  #   style (forbidding +app/services+, +app/forms+, +app/policies+, and more)
+  #   and the concern independence check. Options +components:+, +empty:+,
   #   +controller_api:+, +share_helpers:+, +concerns:+.
-  # +:layered+ (alias +:rails_layered+):: Ordered layers that may only depend
-  #   inward, with a cycle check. Option: +layers:+ (order matters).
-  # +:hexagonal+ (alias +:rails_hexagonal+):: Ports and adapters, keeping the
-  #   domain away from adapters. Options: +application:+, +domain:+, +ports:+,
+  # - +:layered+ (alias +:rails_layered+): ordered layers that may only depend
+  #   inward, with a cycle check. Option +layers:+ (order matters).
+  # - +:hexagonal+ (alias +:rails_hexagonal+): ports and adapters, keeping the
+  #   domain away from adapters. Options +application:+, +domain:+, +ports:+,
   #   +adapters:+.
-  # +:clean+ (alias +:rails_clean+):: Clean architecture layers. Options:
+  # - +:clean+ (alias +:rails_clean+): clean architecture layers. Options
   #   +frameworks:+, +interface_adapters:+, +use_cases:+, +entities:+.
-  # +:modular_monolith+ (alias +:bounded_contexts+):: Named packages with
-  #   per-package allowlists and optional public APIs. Options: +components:+
+  # - +:modular_monolith+ (alias +:bounded_contexts+): named packages with
+  #   per-package allowlists and optional public APIs. Options +components:+
   #   (required), +allow:+, +public:+.
-  # +:cqrs+ (alias +:rails_cqrs+):: Separates commands from queries and keeps
-  #   writes out of queries. Options: +commands:+, +queries:+, +read_models:+,
+  # - +:cqrs+ (alias +:rails_cqrs+): separates commands from queries and keeps
+  #   writes out of queries. Options +commands:+, +queries:+, +read_models:+,
   #   +mutating_methods:+.
-  # +:event_driven+ (alias +:rails_event_driven+):: Events, publishers, and
-  #   subscribers. Options: +events:+, +publishers:+, +subscribers:+.
+  # - +:event_driven+ (alias +:rails_event_driven+): events, publishers, and
+  #   subscribers. Options +events:+, +publishers:+, +subscribers:+.
   #
   # See the guides at https://archspecrb.dev/architectures/ for each in depth.
   module Architectures
