@@ -14,5 +14,7 @@
   url: /configuration/
   collections:
     - reference
+- title: API
+  url: /api/
 - title: Blog
   url: https://paolino.me

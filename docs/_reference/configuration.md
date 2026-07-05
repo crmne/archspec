@@ -13,9 +13,12 @@ description: The Archspec.rb DSL.
 ```ruby
 source "app/**/*.rb", "lib/**/*.rb"
 ignore "tmp/**/*", "vendor/**/*"
-baseline ".archspec_todo.yml"
+todo "archspec_todo.yml"
+inflect "api" => "API"
 ```
 {: data-title="Archspec.rb"}
+
+Todo ids are computed from the rule, path, message, and evidence, not the line number, so entries survive edits that shift code. `inflect` declares acronyms for Zeitwerk name checks.
 
 ## Components
 
@@ -26,6 +29,14 @@ component :billing,     namespace: "Billing"
 ```
 
 `component`, `layer`, and `role` are aliases. Use the word that matches the architecture you are describing.
+
+Declare one component per subdirectory with `each_directory`, which is handy for engines and packs:
+
+```ruby
+each_directory "packs/*" do |name, path|
+  component name, in: "#{path}/**/*.rb"
+end
+```
 
 ## Architectures
 
@@ -44,9 +55,10 @@ Architectures define components and rules together. See [Architectures]({% link 
 ```ruby
 controllers.can_use :models, :services
 models.cannot_use :controllers
+shared_kernel.can_only_be_used_by :billing, :catalog
 ```
 
-`can_use` is an allowlist for other declared components. `cannot_use` forbids specific components. See [Dependency Rules]({% link _rules/dependencies.md %}).
+`can_use` is an allowlist for what a component may depend on. `cannot_use` forbids specific components. `can_only_be_used_by` is the inverse of `can_use`: it limits who may depend on the component. See [Dependency Rules]({% link _rules/dependencies.md %}).
 
 ## Method Rules
 

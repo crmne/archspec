@@ -15,7 +15,7 @@ module ArchSpec
         result = Prism.parse_file(path)
         graph.add_file(
           path: path,
-          expected_constant: expected_constant_for(path, root),
+          expected_constant: expected_constant_for(path, root, definition.inflections),
           parse_errors: parse_errors_for(path, result.errors),
           suppressions: suppressions_for(result.comments)
         )
@@ -49,7 +49,7 @@ module ArchSpec
       end.select { |path| File.file?(path) }.map { |path| File.expand_path(path) }.to_set
     end
 
-    def expected_constant_for(path, root)
+    def expected_constant_for(path, root, inflections = {})
       relative = Pathname(path).relative_path_from(Pathname(root)).to_s
       stem =
         case relative
@@ -67,12 +67,17 @@ module ArchSpec
           return nil
         end
 
-      camelize_path(stem)
+      camelize_path(stem, inflections)
     end
 
-    def camelize_path(path)
+    # Rails-style acronyms: inflections apply to whole path segments first,
+    # then to each snake_case word (inflect "api" => "API" fixes both api.rb
+    # and api_client.rb).
+    def camelize_path(path, inflections = {})
       path.split('/').map do |part|
-        part.split('_').map { |word| word[0] ? word[0].upcase + word[1..] : word }.join
+        inflections[part] || part.split('_').map do |word|
+          inflections[word] || (word[0] ? word[0].upcase + word[1..] : word)
+        end.join
       end.join('::')
     end
 
@@ -164,6 +169,12 @@ module ArchSpec
         extend: :extends
       }.freeze
 
+      ATTR_MESSAGES = {
+        attr_reader: %i[reader],
+        attr_writer: %i[writer],
+        attr_accessor: %i[reader writer]
+      }.freeze
+
       def visit(graph, path, node, current_constant: nil, namespace: [])
         return unless node
 
@@ -197,15 +208,25 @@ module ArchSpec
         )
 
         if node.superclass
-          superclass = constant_reference_name(node.superclass)
-          constant.superclass = superclass
-          graph.add_edge(
-            type: :inherits_from,
-            from_path: path,
-            from_constant: constant.name,
-            to: superclass,
-            location: SourceLocation.from_prism(path, node.superclass.location)
-          )
+          superclass = constant_reference_name(node.superclass) if constant_node?(node.superclass)
+
+          if superclass
+            constant.superclass = superclass
+            graph.add_edge(
+              type: :inherits_from,
+              from_path: path,
+              from_constant: constant.name,
+              to: superclass,
+              location: SourceLocation.from_prism(path, node.superclass.location)
+            )
+          else
+            # Dynamic superclass (Struct.new, DelegateClass(...)): no
+            # inherits_from edge, but constants inside still count as
+            # references, and ancestry stays marked unresolved.
+            constant.superclass = node.superclass.slice
+            visit(graph, path, node.superclass, current_constant: constant.name,
+                                                namespace: constant.name.split('::'))
+          end
         end
 
         visit(graph, path, node.body, current_constant: constant.name, namespace: constant.name.split('::'))
@@ -277,6 +298,8 @@ module ArchSpec
           )
         end
 
+        record_generated_methods(graph, path, node, message, current_constant, location)
+
         if (edge_type = MIXIN_MESSAGES[message])
           constant_arguments(node).each do |constant_name|
             if current_constant && (constant = graph.constants_named(current_constant).find do |candidate|
@@ -300,7 +323,8 @@ module ArchSpec
           from_path: path,
           from_constant: current_constant,
           to: message,
-          location: location
+          location: location,
+          receiver: receiver_kind(node)
         )
 
         if DYNAMIC_MESSAGES.include?(message)
@@ -318,11 +342,14 @@ module ArchSpec
       end
 
       def add_constant_reference(graph, path, node, current_constant)
+        name = constant_reference_name(node)
+        return unless name
+
         graph.add_edge(
           type: :references_constant,
           from_path: path,
           from_constant: current_constant,
-          to: constant_reference_name(node),
+          to: name,
           location: SourceLocation.from_prism(path, node.location)
         )
       end
@@ -349,27 +376,76 @@ module ArchSpec
         end || []
       end
 
+      # attr_* and unprefixed delegate calls define instance methods; without
+      # them, a class calling its own reader looks like a foreign call.
+      def record_generated_methods(graph, path, node, message, current_constant, location)
+        return unless current_constant && node.receiver.nil?
+        return unless ATTR_MESSAGES.key?(message) || message == :delegate
+
+        constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path }
+        return unless constant
+
+        names = symbol_arguments(node)
+        return if message == :delegate && keyword_argument?(node, :prefix)
+
+        names.each do |name|
+          kinds = ATTR_MESSAGES.fetch(message, %i[reader])
+          constant.add_instance_method(name, location: location) if kinds.include?(:reader)
+          constant.add_instance_method(:"#{name}=", location: location) if kinds.include?(:writer)
+        end
+      end
+
+      def symbol_arguments(node)
+        node.arguments&.arguments&.filter_map do |argument|
+          argument.unescaped.to_sym if argument.is_a?(Prism::SymbolNode) || argument.is_a?(Prism::StringNode)
+        end || []
+      end
+
+      def keyword_argument?(node, name)
+        node.arguments&.arguments&.any? do |argument|
+          argument.is_a?(Prism::KeywordHashNode) && argument.elements.any? do |element|
+            element.is_a?(Prism::AssocNode) && element.key.is_a?(Prism::SymbolNode) &&
+              element.key.unescaped.to_sym == name
+          end
+        end
+      end
+
+      def receiver_kind(node)
+        receiver = node.receiver
+        return :none if receiver.nil? || receiver.is_a?(Prism::SelfNode)
+        return :constant if constant_node?(receiver)
+
+        :other
+      end
+
       def instantiates_and_invokes(node)
         receiver = node.receiver
         return unless receiver.is_a?(Prism::CallNode) && receiver.message&.to_sym == :new
 
-        name = constant_node?(receiver.receiver) ? constant_reference_name(receiver.receiver) : receiver.receiver&.slice
+        receiver_node = receiver.receiver
+        name = (constant_reference_name(receiver_node) if constant_node?(receiver_node)) || receiver_node&.slice
         "#{name}##{node.message}"
       end
 
+      # class Users::RolesController inside module Admin defines
+      # Admin::Users::RolesController, so compact paths join the namespace too.
       def qualified_constant_name(node, namespace)
         raw = constant_reference_name(node)
         absolute = node.respond_to?(:full_name_parts) && node.full_name_parts.first == :""
 
-        if absolute || raw.include?('::') || namespace.empty?
+        if absolute || namespace.empty?
           raw
         else
           "#{namespace.join('::')}::#{raw}"
         end
       end
 
+      # nil when the path has dynamic parts (self.class::FOO): there is no
+      # static name to check against.
       def constant_reference_name(node)
         node.full_name.to_s.sub(/\A::/, '')
+      rescue Prism::ConstantPathNode::DynamicPartsInConstantPathError
+        nil
       end
 
       def constant_node?(node)

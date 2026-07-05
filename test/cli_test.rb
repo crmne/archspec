@@ -58,6 +58,77 @@ class CLITest < ArchSpecTest
     end
   end
 
+  def test_check_scopes_output_to_given_paths
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        component :controllers, in: "app/controllers/**/*.rb"
+        models.cannot_use :controllers
+      RUBY
+
+      write "#{root}/app/models/user.rb", "class User; UsersController; end\n"
+      write "#{root}/app/models/account.rb", "class Account; UsersController; end\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+
+      output = StringIO.new
+      status = Dir.chdir(root) do
+        ArchSpec::CLI.run(['check', 'app/models/account.rb'], output: output, error: StringIO.new)
+      end
+
+      assert_equal 1, status
+      assert_match(/account\.rb/, output.string)
+      refute_match(/user\.rb:/, output.string)
+
+      clean_output = StringIO.new
+      clean_status = Dir.chdir(root) do
+        ArchSpec::CLI.run(['check', 'app/controllers'], output: clean_output, error: StringIO.new)
+      end
+
+      assert_equal 0, clean_status
+    end
+  end
+
+  def test_check_rejects_paths_with_update_todo
+    with_project do |root|
+      write "#{root}/Archspec.rb", "component :models, in: \"app/models/**/*.rb\"\n"
+      write "#{root}/app/models/user.rb", "class User; end\n"
+
+      error = StringIO.new
+      status = Dir.chdir(root) do
+        ArchSpec::CLI.run(['check', '--update-todo', 'app/models'], output: StringIO.new, error: error)
+      end
+
+      assert_equal 1, status
+      assert_match(/Cannot combine/, error.string)
+    end
+  end
+
+  def test_check_updates_todo_file
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        component :controllers, in: "app/controllers/**/*.rb"
+        models.cannot_use :controllers
+        todo "archspec_todo.yml"
+      RUBY
+      write "#{root}/app/models/user.rb", "class User; UsersController; end\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+
+      output = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['check', '--update-todo'], output: output, error: StringIO.new) }
+
+      assert_equal 0, status
+      assert_match(/Updated archspec_todo\.yml with 1 violations/, output.string)
+      assert_path_exists "#{root}/archspec_todo.yml"
+
+      recheck = StringIO.new
+      recheck_status = Dir.chdir(root) { ArchSpec::CLI.run(['check'], output: recheck, error: StringIO.new) }
+
+      assert_equal 0, recheck_status
+      assert_match(/ArchSpec passed/, recheck.string)
+    end
+  end
+
   def test_json_format
     with_project do |root|
       write "#{root}/Archspec.rb", <<~RUBY

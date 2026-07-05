@@ -3,7 +3,11 @@
 require 'yaml'
 
 module ArchSpec
-  class Baseline
+  # A file of accepted existing violations. ArchSpec still checks the files
+  # these come from, but subtracts the recorded violations so you can adopt it
+  # in an existing app and burn the list down over time. Matched by
+  # ArchSpec::Diagnostic#fingerprint, so entries survive edits that shift lines.
+  class Todo
     def self.empty(root: nil)
       new(Set.new, root: root)
     end

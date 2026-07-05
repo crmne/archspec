@@ -4,14 +4,15 @@ module ArchSpec
   module Evaluator
     extend self
 
-    def evaluate(definition, graph, baseline: Baseline.empty)
+    def evaluate(definition, graph, todo: Todo.empty)
       (parser_diagnostics(graph) + definition.rules.flat_map { |rule| rule.evaluate(graph) })
         .reject { |diagnostic| graph.suppressed?(diagnostic) }
-        .reject { |diagnostic| baseline.include?(diagnostic) }
+        .reject { |diagnostic| todo.include?(diagnostic) }
         .sort_by do |diagnostic|
         [diagnostic.location.path, diagnostic.location.line, diagnostic.rule,
-         diagnostic.message]
+         diagnostic.message, diagnostic.evidence]
       end
+        .uniq { |diagnostic| [diagnostic.rule, diagnostic.message, diagnostic.location.path, diagnostic.location.line] }
     end
 
     private

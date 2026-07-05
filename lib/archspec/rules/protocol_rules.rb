@@ -2,16 +2,23 @@
 
 module ArchSpec
   module Rules
+    # Backs ArchSpec::DSL::ComponentProxy#cannot_call. Flags calls to the named
+    # methods, optionally only bare implicit-+self+ calls.
     class CannotCallRule
-      attr_reader :source, :method_names
+      attr_reader :source, :method_names, :receiver
 
-      def initialize(source, methods)
+      def initialize(source, methods, receiver: :any)
+        unless %i[any none].include?(receiver)
+          raise Error, "cannot_call receiver: must be :any or :none, got #{receiver.inspect}"
+        end
+
         @source = source.to_sym
         @method_names = Array(methods).flatten.map(&:to_sym)
+        @receiver = receiver
       end
 
       def merge_key
-        [self.class, source]
+        [self.class, source, receiver]
       end
 
       def merge!(other)
@@ -27,7 +34,9 @@ module ArchSpec
         graph.edges.filter_map do |edge|
           next unless edge.type == :calls_named_method
           next unless method_names.include?(edge.to.to_sym)
+          next if receiver == :none && edge.receiver != :none
           next unless graph.component_names_for_path(edge.from_path).include?(source)
+          next if own_method_call?(graph, edge)
 
           Diagnostic.new(
             rule: id,
@@ -37,8 +46,22 @@ module ArchSpec
           )
         end
       end
+
+      private
+
+      # A receiverless call to a method the class itself defines (directly,
+      # inherited, or via attr_*/delegate) is a call to its own API.
+      def own_method_call?(graph, edge)
+        return false unless edge.receiver == :none && edge.from_constant
+
+        methods, = graph.effective_instance_methods(edge.from_constant)
+        methods.include?(edge.to.to_sym)
+      end
     end
 
+    # Backs ArchSpec::DSL::ComponentProxy#must_implement. Flags classes in the
+    # component that do not implement the method, counting inherited and
+    # mixed-in methods.
     class MustImplementRule
       attr_reader :source, :method_name
 
@@ -57,13 +80,15 @@ module ArchSpec
 
       def evaluate(graph)
         constants_for(graph).filter_map do |constant|
-          next if constant.instance_methods.include?(method_name)
+          methods, unresolved = graph.effective_instance_methods(constant.name)
+          next if methods.include?(method_name)
 
           Diagnostic.new(
             rule: id,
             message: "#{constant.name} must implement ##{method_name}",
             location: constant.location,
-            evidence: "#{constant.name} methods: #{constant.instance_methods.to_a.sort.join(', ')}"
+            evidence: ProtocolEvidence.for(constant, methods, unresolved),
+            confidence: unresolved.empty? ? :high : :medium
           )
         end
       end
@@ -71,12 +96,12 @@ module ArchSpec
       private
 
       def constants_for(graph)
-        graph.components.fetch(source).constants.flat_map { |name| graph.constants_named(name) }.select(&:class?)
-      rescue KeyError
-        []
+        ProtocolEvidence.constants_for(graph, source)
       end
     end
 
+    # Backs ArchSpec::DSL::ComponentProxy#must_implement_one_of. Flags classes
+    # that implement none of the named methods.
     class MustImplementOneOfRule
       attr_reader :source, :method_names
 
@@ -100,13 +125,15 @@ module ArchSpec
 
       def evaluate(graph)
         constants_for(graph).filter_map do |constant|
-          next if method_names.any? { |method_name| constant.instance_methods.include?(method_name) }
+          methods, unresolved = graph.effective_instance_methods(constant.name)
+          next if method_names.any? { |method_name| methods.include?(method_name) }
 
           Diagnostic.new(
             rule: id,
             message: "#{constant.name} must implement one of #{method_names.map { |name| "##{name}" }.join(', ')}",
             location: constant.location,
-            evidence: "#{constant.name} methods: #{constant.instance_methods.to_a.sort.join(', ')}"
+            evidence: ProtocolEvidence.for(constant, methods, unresolved),
+            confidence: unresolved.empty? ? :high : :medium
           )
         end
       end
@@ -114,12 +141,32 @@ module ArchSpec
       private
 
       def constants_for(graph)
-        graph.components.fetch(source).constants.flat_map { |name| graph.constants_named(name) }.select(&:class?)
-      rescue KeyError
-        []
+        ProtocolEvidence.constants_for(graph, source)
       end
     end
 
+    # Builds the shared "methods: ..." evidence string for the protocol rules
+    # and resolves the classes in a component. Internal helper.
+    module ProtocolEvidence
+      module_function
+
+      def constants_for(graph, source)
+        component = graph.components[source]
+        return [] unless component
+
+        component.constants.flat_map { |name| graph.constants_named(name) }.select(&:class?).uniq(&:name)
+      end
+
+      def for(constant, methods, unresolved)
+        evidence = "#{constant.name} methods: #{methods.empty? ? '(none)' : methods.to_a.sort.join(', ')}"
+        return evidence if unresolved.empty?
+
+        "#{evidence}; unresolved ancestors: #{unresolved.to_a.sort.join(', ')}"
+      end
+    end
+
+    # Backs ArchSpec::DSL::ComponentProxy#cannot_define. Flags method
+    # definitions in the component matching the named methods.
     class CannotDefineMethodRule
       attr_reader :source, :method_names
 
@@ -155,6 +202,8 @@ module ArchSpec
       end
     end
 
+    # Backs ArchSpec::DSL::ComponentProxy#cannot_instantiate_and_invoke. Flags
+    # the one-shot <tt>Thing.new(...).call</tt> pattern.
     class CannotInstantiateAndInvokeRule
       attr_reader :source
 

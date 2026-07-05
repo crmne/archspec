@@ -24,6 +24,84 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
+  def test_rails_strict_flags_concern_referencing_its_includer
+    with_project do |root|
+      write "#{root}/app/models/concerns/chargeable.rb", <<~RUBY
+        module Chargeable
+          def charge
+            Order.sum(:total)
+          end
+        end
+      RUBY
+      write "#{root}/app/models/order.rb", <<~RUBY
+        class Order < ApplicationRecord
+          include Chargeable
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        architecture :rails_strict
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert(diagnostics.any? do |diagnostic|
+        diagnostic.rule == 'concerns.independence' &&
+          diagnostic.message == 'Chargeable must not reference its includer Order'
+      end)
+    end
+  end
+
+  def test_rails_share_helpers_allows_models_to_use_helpers
+    with_project do |root|
+      write "#{root}/app/models/report.rb", "class Report; MoneyHelper; end\n"
+      write "#{root}/app/helpers/money_helper.rb", "module MoneyHelper; end\n"
+
+      strict = ArchSpec.define { architecture :rails }
+      relaxed = ArchSpec.define { architecture :rails, share_helpers: true }
+
+      assert(diagnostics_for(strict, root).any? { |d| d.message =~ /models must not depend on helpers/ })
+      assert_empty diagnostics_for(relaxed, root).select { |d| d.rule.start_with?('dependencies') }
+    end
+  end
+
+  def test_modular_monolith_public_option_enforces_privacy
+    with_project do |root|
+      write "#{root}/packs/billing/app/public/billing/invoicer.rb", <<~RUBY
+        module Billing
+          class Invoicer; end
+        end
+      RUBY
+      write "#{root}/packs/billing/app/models/billing/ledger.rb", <<~RUBY
+        module Billing
+          class Ledger; end
+        end
+      RUBY
+      write "#{root}/packs/catalog/app/models/product.rb", <<~RUBY
+        class Product
+          Billing::Invoicer
+          Billing::Ledger
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        source 'packs/*/app/**/*.rb'
+        architecture :modular_monolith,
+                     components: {
+                       billing: 'packs/billing/**/*.rb',
+                       catalog: 'packs/catalog/**/*.rb'
+                     },
+                     allow: { catalog: %i[billing] },
+                     public: { billing: 'packs/billing/app/public/**/*.rb' }
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal ['dependencies.privacy'], diagnostics.map(&:rule)
+      assert_match(/Billing::Ledger is private to billing/, diagnostics.first.message)
+    end
+  end
+
   def test_layered_architecture_enforces_inward_dependencies
     with_project do |root|
       write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"

@@ -2,6 +2,8 @@
 
 module ArchSpec
   module Rules
+    # Backs ArchSpec::DSL::ComponentProxy#must_be_empty. Flags every file in a
+    # component that is meant to hold none.
     class MustBeEmptyRule
       attr_reader :source, :because
 

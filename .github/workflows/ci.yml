@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: ["main", "master"]
   workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
 
 permissions:
   contents: read
@@ -46,6 +48,27 @@ jobs:
       - name: Build gem
         run: gem build archspec.gemspec
 
+  torture:
+    name: Torture against real apps
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      BUNDLE_PATH: vendor/bundle
+      BUNDLE_DISABLE_SHARED_GEMS: "true"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+
+      - name: Run torture tests
+        env:
+          ARCHSPEC_TORTURE: "1"
+        run: bundle exec ruby -Itest test/torture_test.rb
+
   docs:
     runs-on: ubuntu-latest
     permissions:
@@ -57,7 +80,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Ruby
+      - name: Set up Ruby for API docs (root Gemfile)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Set up Ruby for Jekyll build (docs Gemfile)
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
@@ -79,6 +108,9 @@ jobs:
           fi
         env:
           PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+
+      - name: Build API docs (RDoc) into /api/
+        run: docs/bin/build-api.sh docs/_site/api
 
       - name: Upload Pages artifact
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')

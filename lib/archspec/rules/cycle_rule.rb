@@ -2,6 +2,8 @@
 
 module ArchSpec
   module Rules
+    # Backs ArchSpec::DSL::Context#no_cycles!. Flags dependency cycles between
+    # components, reporting each cycle once in a canonical order.
     class NoCyclesRule
       attr_reader :components
 

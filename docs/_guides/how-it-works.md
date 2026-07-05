@@ -34,7 +34,7 @@ glob files -> parse -> extract facts -> assign components -> evaluate rules
    and constants by namespace. A file can belong to several components; the
    `explain` command shows why. (`Graph.assign_components`)
 5. **Evaluate.** Every rule reads the graph and emits diagnostics, which are
-   then filtered through suppressions and the baseline, sorted, and printed.
+   then filtered through suppressions and the todo file, sorted, and printed.
    (`Evaluator.evaluate`)
 
 ## The Facts

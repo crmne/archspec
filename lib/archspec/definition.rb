@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 module ArchSpec
+  # The result of evaluating an +Archspec.rb+ file: the project settings,
+  # declared components, and rules. ArchSpec::DSL::Context is mixed into an
+  # instance to provide the DSL, and the analyzer and evaluator read it to run
+  # the checks. Build one with ArchSpec.define.
   class Definition
     DEFAULT_SOURCE_PATTERNS = [
       'app/**/*.rb',
@@ -17,17 +21,23 @@ module ArchSpec
       'vendor/**/*'
     ].freeze
 
-    attr_accessor :name, :root_path, :baseline_path
-    attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules
+    attr_accessor :name, :root_path, :todo_path, :base_dir
+    attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules, :inflections
 
     def initialize(name = nil)
       @name = name
       @root_path = '.'
-      @baseline_path = nil
+      @todo_path = nil
+      @base_dir = nil
       @source_patterns = []
       @ignore_patterns = DEFAULT_IGNORE_PATTERNS.dup
       @component_specs = {}
       @rules = []
+      @inflections = {}
+    end
+
+    def add_inflections(map)
+      @inflections.merge!(map.to_h.transform_keys(&:to_s).transform_values(&:to_s))
     end
 
     def add_source_patterns(patterns)
@@ -54,8 +64,11 @@ module ArchSpec
       rules << rule
     end
 
-    def absolute_root(base_dir = Dir.pwd)
-      File.expand_path(root_path, base_dir)
+    # The directory file patterns resolve against: root_path expanded from the
+    # directory the Archspec.rb was loaded from (base_dir), or the working
+    # directory when built without a file.
+    def absolute_root(base = base_dir || Dir.pwd)
+      File.expand_path(root_path, base)
     end
 
     def analysis_patterns

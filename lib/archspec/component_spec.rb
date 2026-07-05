@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 module ArchSpec
+  # How a component selects its members: by file glob, by namespace, or by
+  # explicit constant name. Created by ArchSpec::DSL::Context#component. The
+  # analyzer uses it to assign files and constants to the component.
   class ComponentSpec
     attr_reader :name, :file_patterns, :namespaces, :constants
 

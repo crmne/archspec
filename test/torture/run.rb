@@ -1,0 +1,94 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Runs ArchSpec against a large open source Rails app pinned to a known
+# commit, then compares per-rule diagnostic counts against a snapshot.
+#
+#   ruby test/torture/run.rb discourse
+#   ruby test/torture/run.rb mastodon --update
+
+$LOAD_PATH.unshift File.expand_path('../../lib', __dir__)
+
+require 'archspec'
+require 'fileutils'
+require 'json'
+require 'stringio'
+require 'yaml'
+
+APPS = {
+  'discourse' => {
+    url: 'https://github.com/discourse/discourse',
+    sha: '4cac48263809d806cee8660c6b1adc6e5d0c9445'
+  },
+  'mastodon' => {
+    url: 'https://github.com/mastodon/mastodon',
+    sha: '163f96cee4dea23365bff9b433871e68d20d9ee7'
+  }
+}.freeze
+
+app_name = ARGV.first
+update = ARGV.include?('--update')
+abort "Usage: ruby test/torture/run.rb #{APPS.keys.join('|')} [--update]" unless APPS.key?(app_name)
+
+app = APPS.fetch(app_name)
+repo_root = File.expand_path('../..', __dir__)
+checkout = File.join(repo_root, 'tmp', 'torture', app_name)
+config_source = File.join(__dir__, app_name, 'Archspec.rb')
+expected_path = File.join(__dir__, app_name, 'expected.yml')
+
+unless Dir.exist?(File.join(checkout, '.git'))
+  FileUtils.mkdir_p(checkout)
+  system('git', 'init', '--quiet', checkout, exception: true)
+  system('git', '-C', checkout, 'remote', 'add', 'origin', app.fetch(:url), exception: true)
+end
+
+head = `git -C #{checkout} rev-parse HEAD 2>/dev/null`.strip
+unless head == app.fetch(:sha)
+  system('git', '-C', checkout, 'fetch', '--quiet', '--depth', '1', 'origin', app.fetch(:sha), exception: true)
+  system('git', '-C', checkout, 'checkout', '--quiet', app.fetch(:sha), exception: true)
+end
+
+FileUtils.cp(config_source, File.join(checkout, 'Archspec.rb'))
+
+output = StringIO.new
+started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+status = Dir.chdir(checkout) { ArchSpec::CLI.run(['check', '--format', 'json'], output: output, error: $stderr) }
+elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+abort "archspec crashed on #{app_name} (exit #{status})" unless [0, 1].include?(status)
+
+report = JSON.parse(output.string)
+counts = report.fetch('violations').group_by { |violation| violation.fetch('rule') }
+               .transform_values(&:size).sort.to_h
+
+puts format('%s @ %s: %d files, %d constants, %d facts in %.1fs',
+            app_name, app.fetch(:sha)[0, 12], report.fetch('files'),
+            report.fetch('constants'), report.fetch('facts'), elapsed)
+counts.each { |rule, count| puts format('  %-40s %d', rule, count) }
+puts '  no violations' if counts.empty?
+
+if update
+  File.write(expected_path, { 'sha' => app.fetch(:sha), 'rules' => counts }.to_yaml)
+  puts "wrote #{expected_path}"
+  exit 0
+end
+
+unless File.exist?(expected_path)
+  puts "no snapshot at #{expected_path}; run with --update to record one"
+  exit 0
+end
+
+expected = YAML.safe_load_file(expected_path)
+abort 'snapshot SHA does not match pinned SHA; re-record with --update' if expected.fetch('sha') != app.fetch(:sha)
+
+if expected.fetch('rules') == counts
+  puts 'matches snapshot'
+else
+  puts 'MISMATCH against snapshot:'
+  (expected.fetch('rules').keys | counts.keys).sort.each do |rule|
+    was = expected.fetch('rules').fetch(rule, 0)
+    now = counts.fetch(rule, 0)
+    puts format('  %-40s %d -> %d', rule, was, now) if was != now
+  end
+  exit 1
+end

@@ -67,7 +67,7 @@ Keep a hexagonal core away from adapters:
 architecture :hexagonal
 ```
 
-Check a modular monolith:
+Check a modular monolith, and make packs go through a public API:
 
 ```ruby
 architecture :modular_monolith,
@@ -79,6 +79,9 @@ architecture :modular_monolith,
   allow: {
     billing: %i[shared],
     catalog: %i[shared]
+  },
+  public: {
+    billing: "packs/billing/app/public/**/*.rb"
   }
 ```
 
@@ -106,7 +109,9 @@ architecture :cqrs,
 
 ## What It Checks
 
-- **Dependencies:** allowed and forbidden references between components
+- **Dependencies:** allowed and forbidden references between components, in both directions
+- **Privacy:** other components must go through a component's public API
+- **Concerns:** a concern must not depend on the classes that include it
 - **Layers:** dependency direction and cycles
 - **Rails:** controller APIs kept out of models and services
 - **Architectures:** Rails, vanilla Rails, layered, hexagonal, clean, modular monolith, CQRS, and event-driven bundles
@@ -150,7 +155,7 @@ bundle exec archspec check
 bundle exec archspec init
 bundle exec archspec check
 bundle exec archspec check --format json
-bundle exec archspec check --update-baseline
+bundle exec archspec check --update-todo
 bundle exec archspec explain app/models/user.rb
 ```
 
@@ -161,11 +166,14 @@ facts ArchSpec found.
 
 Generated code should pass the same architecture checks as hand-written code.
 
-After an AI-assisted change:
+After an AI-assisted change, check the whole project, or just the files that changed:
 
 ```sh
 bundle exec archspec check
+bundle exec archspec check app/models/user.rb app/services
 ```
+
+Passing paths still analyzes the project so dependencies resolve, but reports only violations in those paths. This keeps the loop tight after each edit.
 
 If it fails, read the evidence before changing the spec:
 
@@ -179,16 +187,17 @@ If it fails, read the evidence before changing the spec:
 Most failures should be fixed in the generated code. Update the spec only when
 the architecture decision itself has changed.
 
-## Baselines and Suppressions
+## Todo and Suppressions
 
-Use a baseline when adopting ArchSpec in an existing app:
+Use a todo file when adopting ArchSpec in an existing app. It records the current
+violations so they stop failing the build, leaving a list to burn down:
 
 ```ruby
-baseline ".archspec_todo.yml"
+todo "archspec_todo.yml"
 ```
 
 ```sh
-bundle exec archspec check --update-baseline
+bundle exec archspec check --update-todo
 ```
 
 Use local suppressions for deliberate exceptions:
@@ -208,6 +217,12 @@ This repository checks its own architecture:
 
 ```sh
 bundle exec rake architecture
+```
+
+It also runs against pinned checkouts of large real-world Rails apps to catch crashes and false positives before they ship:
+
+```sh
+bundle exec rake torture
 ```
 
 ## License

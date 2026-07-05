@@ -1,6 +1,42 @@
 # frozen_string_literal: true
 
 module ArchSpec
+  # Bundled architecture presets. Each applies a set of components and rules in
+  # one call, invoked from the DSL through
+  # ArchSpec::DSL::Context#architecture:
+  #
+  #   architecture :rails
+  #   architecture :layered, layers: { ... }
+  #
+  # Every preset accepts overrides for its directories, so you can keep the
+  # shape while pointing at your own paths. The presets are:
+  #
+  # +:rails+ (aliases +:rails_mvc+, +:rails_way+):: Conventional MVC. Keeps
+  #   controller APIs out of models and services. Options: +components:+,
+  #   +controller_api:+, +share_helpers:+.
+  # +:rails_strict+:: +:rails+ plus Zeitwerk name checks, a cycle check, and a
+  #   concern independence check. Options add +concerns:+.
+  # +:vanilla_rails+:: +:rails+ plus empty-directory rules for the 37signals
+  #   style, forbidding +app/services+, +app/forms+, +app/policies+, and more,
+  #   and the concern independence check. Options: +components:+, +empty:+,
+  #   +controller_api:+, +share_helpers:+, +concerns:+.
+  # +:layered+ (alias +:rails_layered+):: Ordered layers that may only depend
+  #   inward, with a cycle check. Option: +layers:+ (order matters).
+  # +:hexagonal+ (alias +:rails_hexagonal+):: Ports and adapters, keeping the
+  #   domain away from adapters. Options: +application:+, +domain:+, +ports:+,
+  #   +adapters:+.
+  # +:clean+ (alias +:rails_clean+):: Clean architecture layers. Options:
+  #   +frameworks:+, +interface_adapters:+, +use_cases:+, +entities:+.
+  # +:modular_monolith+ (alias +:bounded_contexts+):: Named packages with
+  #   per-package allowlists and optional public APIs. Options: +components:+
+  #   (required), +allow:+, +public:+.
+  # +:cqrs+ (alias +:rails_cqrs+):: Separates commands from queries and keeps
+  #   writes out of queries. Options: +commands:+, +queries:+, +read_models:+,
+  #   +mutating_methods:+.
+  # +:event_driven+ (alias +:rails_event_driven+):: Events, publishers, and
+  #   subscribers. Options: +events:+, +publishers:+, +subscribers:+.
+  #
+  # See the guides at https://archspecrb.dev/architectures/ for each in depth.
   module Architectures
     extend self
 
@@ -54,6 +90,8 @@ module ArchSpec
       view_components: ['app/components/**/*.rb', 'use helpers and ERB partials']
     }.freeze
 
+    DEFAULT_CONCERNS = 'app/**/concerns/**/*.rb'
+
     CONTROLLER_METHODS = %i[render redirect_to params session cookies flash].freeze
     MUTATING_METHODS = %i[
       create create!
@@ -65,17 +103,34 @@ module ArchSpec
       upsert upsert!
     ].freeze
 
+    # Applies the named preset to +dsl+, forwarding +options+ to it. Raises
+    # ArchSpec::Error for an unknown name. Called by
+    # ArchSpec::DSL::Context#architecture, so you rarely call it directly.
     def apply(name, dsl, **options)
       case name.to_sym
       when :rails, :rails_mvc, :rails_way
-        rails_mvc(dsl, components: options.fetch(:components, DEFAULT_RAILS_MVC))
+        rails_mvc(
+          dsl,
+          components: options.fetch(:components, DEFAULT_RAILS_MVC),
+          controller_api: options.fetch(:controller_api, CONTROLLER_METHODS),
+          share_helpers: options.fetch(:share_helpers, false)
+        )
       when :rails_strict
-        rails_strict(dsl, components: options.fetch(:components, DEFAULT_RAILS_MVC))
+        rails_strict(
+          dsl,
+          components: options.fetch(:components, DEFAULT_RAILS_MVC),
+          controller_api: options.fetch(:controller_api, CONTROLLER_METHODS),
+          share_helpers: options.fetch(:share_helpers, false),
+          concerns: options.fetch(:concerns, DEFAULT_CONCERNS)
+        )
       when :vanilla_rails
         vanilla_rails(
           dsl,
           components: options.fetch(:components, DEFAULT_RAILS_MVC),
-          empty: options.fetch(:empty, VANILLA_RAILS_EMPTY)
+          empty: options.fetch(:empty, VANILLA_RAILS_EMPTY),
+          controller_api: options.fetch(:controller_api, CONTROLLER_METHODS),
+          share_helpers: options.fetch(:share_helpers, false),
+          concerns: options.fetch(:concerns, DEFAULT_CONCERNS)
         )
       when :layered, :rails_layered
         layered(dsl, layers: options.fetch(:layers, DEFAULT_LAYERED))
@@ -84,7 +139,12 @@ module ArchSpec
       when :clean, :rails_clean
         clean(dsl, **with_defaults(DEFAULT_CLEAN, options))
       when :modular_monolith, :bounded_contexts
-        modular_monolith(dsl, components: options.fetch(:components), allow: options.fetch(:allow, {}))
+        modular_monolith(
+          dsl,
+          components: options.fetch(:components),
+          allow: options.fetch(:allow, {}),
+          public: options.fetch(:public, {})
+        )
       when :cqrs, :rails_cqrs
         cqrs(dsl, **with_defaults(DEFAULT_CQRS, options))
       when :event_driven, :rails_event_driven
@@ -94,30 +154,38 @@ module ArchSpec
       end
     end
 
-    def rails_mvc(dsl, components:)
+    def rails_mvc(dsl, components:, controller_api: CONTROLLER_METHODS, share_helpers: false)
       components = normalize_map(components)
       define_components(dsl, components)
 
+      forbidden = share_helpers ? %i[controllers] : %i[controllers helpers]
       proxy_for(dsl, :controllers).can_use(*components.keys & %i[models services helpers mailers jobs])
-      proxy_for(dsl, :models).cannot_use(*components.keys & %i[controllers helpers])
-      proxy_for(dsl, :services).cannot_use(*components.keys & %i[controllers helpers])
-      proxy_for(dsl, :models).cannot_call(*CONTROLLER_METHODS)
-      proxy_for(dsl, :services).cannot_call(*CONTROLLER_METHODS)
+      proxy_for(dsl, :models).cannot_use(*components.keys & forbidden)
+      proxy_for(dsl, :services).cannot_use(*components.keys & forbidden)
+
+      return if controller_api.empty?
+
+      proxy_for(dsl, :models).cannot_call(*controller_api, receiver: :none)
+      proxy_for(dsl, :services).cannot_call(*controller_api, receiver: :none)
     end
 
-    def rails_strict(dsl, components:)
+    def rails_strict(dsl, components:, controller_api: CONTROLLER_METHODS, share_helpers: false, concerns: DEFAULT_CONCERNS)
       components = normalize_map(components)
-      rails_mvc(dsl, components: components)
+      rails_mvc(dsl, components: components, controller_api: controller_api, share_helpers: share_helpers)
       dsl.verify_zeitwerk_names!
       dsl.no_cycles!(among: components.keys)
+      independent_concerns(dsl, concerns)
     end
 
-    def vanilla_rails(dsl, components:, empty:)
-      rails_mvc(dsl, components: components)
+    def vanilla_rails(dsl, components:, empty:, controller_api: CONTROLLER_METHODS, share_helpers: false,
+                      concerns: DEFAULT_CONCERNS)
+      rails_mvc(dsl, components: components, controller_api: controller_api, share_helpers: share_helpers)
 
       empty.each do |name, (pattern, reason)|
         dsl.component(name, in: pattern).must_be_empty(because: reason)
       end
+
+      independent_concerns(dsl, concerns)
     end
 
     def layered(dsl, layers:)
@@ -161,13 +229,16 @@ module ArchSpec
       )
     end
 
-    def modular_monolith(dsl, components:, allow: {})
+    def modular_monolith(dsl, components:, allow: {}, public: {})
       components = normalize_map(components)
       define_components(dsl, components)
 
       components.each_key do |name|
         allowed = Array(allow[name] || allow[name.to_s])
         proxy_for(dsl, name).can_use(*allowed)
+
+        patterns = Array(public[name] || public[name.to_s])
+        proxy_for(dsl, name).public_api(*patterns) if patterns.any?
       end
 
       dsl.no_cycles!(among: components.keys)
@@ -225,6 +296,12 @@ module ArchSpec
 
     def proxy_for(dsl, name)
       DSL::ComponentProxy.new(dsl, name)
+    end
+
+    def independent_concerns(dsl, pattern)
+      return unless pattern
+
+      dsl.component(:concerns, in: pattern).cannot_reference_includers
     end
   end
 end

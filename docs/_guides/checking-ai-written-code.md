@@ -10,7 +10,7 @@ After reading this guide, you will know:
 
 - Why architecture checks matter for generated code.
 - How to use ArchSpec after an AI-assisted change.
-- When to update the spec, baseline, or code.
+- When to update the spec, todo file, or code.
 
 ## The Rule
 
@@ -53,17 +53,17 @@ bundle exec archspec explain app/services/create_user.rb
 
 ## Do Not Hide New Failures
 
-Baselines are for adopting ArchSpec in an existing app:
+The todo file is for adopting ArchSpec in an existing app:
 
 ```ruby
-baseline ".archspec_todo.yml"
+todo "archspec_todo.yml"
 ```
 
 ```sh
-bundle exec archspec check --update-baseline
+bundle exec archspec check --update-todo
 ```
 
-Do not update the baseline to accept new generated code. Fix the code, or change the rule intentionally.
+Do not update the todo file to accept new generated code. Fix the code, or change the rule intentionally.
 
 ## Local Suppressions
 

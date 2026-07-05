@@ -3,6 +3,10 @@
 require 'digest'
 
 module ArchSpec
+  # One reported violation: the rule id, a message, the source location, the
+  # evidence ArchSpec found, and a confidence. Formatters and the todo file read
+  # these. Its #fingerprint is the stable id used to match todo entries and
+  # suppress specific findings.
   class Diagnostic
     attr_reader :rule, :message, :location, :evidence, :confidence
 
@@ -14,11 +18,13 @@ module ArchSpec
       @confidence = confidence
     end
 
+    # Line numbers stay out of the fingerprint so todo entries survive edits
+    # that only shift code around.
     def fingerprint(root: nil)
       path = root ? location.relative_path(root) : location.path
 
       Digest::SHA256.hexdigest(
-        [rule, message, path, location.line, evidence].join("\0")
+        [rule, message, path, evidence].join("\0")
       )[0, 24]
     end
 

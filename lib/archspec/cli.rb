@@ -3,6 +3,15 @@
 require 'optparse'
 
 module ArchSpec
+  # The <tt>archspec</tt> command line. Backs the +exe/archspec+ executable and
+  # dispatches the +init+, +check+, +explain+, and +version+ subcommands.
+  #
+  #   archspec init
+  #   archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
+  #   archspec explain PATH_OR_CONSTANT
+  #
+  # #run returns the process exit status: 0 when clean, 1 when violations are
+  # found.
   module CLI
     extend self
 
@@ -52,30 +61,33 @@ module ArchSpec
       options = {
         config: CONFIG_FILE,
         format: 'text',
-        update_baseline: false
+        update_todo: false
       }
 
       parser = OptionParser.new do |opts|
         opts.on('--config PATH') { |value| options[:config] = value }
         opts.on('--format FORMAT') { |value| options[:format] = value }
-        opts.on('--update-baseline') { options[:update_baseline] = true }
+        opts.on('--update-todo') { options[:update_todo] = true }
       end
       parser.parse!(argv)
 
+      raise Error, 'Cannot combine --update-todo with path arguments.' if options[:update_todo] && argv.any?
+
       definition, root = load_definition(options[:config])
       graph = Analyzer.analyze(definition, root: root)
-      baseline_path = baseline_path_for(definition, root)
-      baseline = options[:update_baseline] ? Baseline.empty(root: root) : Baseline.load(baseline_path, root: root)
-      diagnostics = Evaluator.evaluate(definition, graph, baseline: baseline)
+      todo_path = todo_path_for(definition, root)
+      todo = options[:update_todo] ? Todo.empty(root: root) : Todo.load(todo_path, root: root)
+      diagnostics = Evaluator.evaluate(definition, graph, todo: todo)
+      diagnostics = scope_to_paths(diagnostics, argv, root)
 
-      if options[:update_baseline]
-        unless baseline_path
+      if options[:update_todo]
+        unless todo_path
           raise Error,
-                "No baseline configured. Add `baseline \".archspec_todo.yml\"` to #{options[:config]}."
+                "No todo configured. Add `todo \"archspec_todo.yml\"` to #{options[:config]}."
         end
 
-        Baseline.write(baseline_path, diagnostics, root: root)
-        output.puts "Updated #{Pathname(baseline_path).relative_path_from(Pathname(root))} with #{diagnostics.size} violations."
+        Todo.write(todo_path, diagnostics, root: root)
+        output.puts "Updated #{Pathname(todo_path).relative_path_from(Pathname(root))} with #{diagnostics.size} violations."
         return 0
       end
 
@@ -104,18 +116,32 @@ module ArchSpec
 
       ArchSpec.last_definition = nil
       absolute_config = File.expand_path(config_path)
+      config_dir = File.dirname(absolute_config)
       definition = Definition.new
+      definition.base_dir = config_dir
       definition.extend(DSL::Context)
       definition.instance_eval(File.read(absolute_config), absolute_config)
       definition = ArchSpec.last_definition || definition
+      definition.base_dir ||= config_dir
 
-      [definition, definition.absolute_root(File.dirname(absolute_config))]
+      [definition, definition.absolute_root(config_dir)]
     end
 
-    def baseline_path_for(definition, root)
-      return unless definition.baseline_path
+    def scope_to_paths(diagnostics, paths, root)
+      return diagnostics if paths.empty?
 
-      File.expand_path(definition.baseline_path, root)
+      expanded = paths.map { |path| File.expand_path(path, root) }
+      diagnostics.select do |diagnostic|
+        expanded.any? do |path|
+          diagnostic.location.path == path || diagnostic.location.path.start_with?("#{path}/")
+        end
+      end
+    end
+
+    def todo_path_for(definition, root)
+      return unless definition.todo_path
+
+      File.expand_path(definition.todo_path, root)
     end
 
     def formatter_for(name)
@@ -205,7 +231,7 @@ module ArchSpec
       <<~TEXT
         Usage:
           archspec init [PATH] [--force]
-          archspec check [--config PATH] [--format text|json] [--update-baseline]
+          archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
           archspec explain PATH_OR_CONSTANT [--config PATH]
           archspec version
       TEXT

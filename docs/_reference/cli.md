@@ -25,13 +25,21 @@ bundle exec archspec check --format json
 
 Runs all rules. The command exits non-zero when violations are found.
 
-## baseline
+Pass paths to report only violations in those files or directories. ArchSpec still analyzes the whole project, so cross-file dependencies resolve, but output is scoped to what you touched:
 
 ```sh
-bundle exec archspec check --update-baseline
+bundle exec archspec check app/models/user.rb app/services
 ```
 
-Writes the current violations to the configured baseline. Use this for existing apps, not for accepting new regressions.
+This is the fast loop after an agent or a person edits a few files. It cannot be combined with `--update-todo`.
+
+## todo
+
+```sh
+bundle exec archspec check --update-todo
+```
+
+Writes the current violations to the configured todo file. Use this for existing apps, not for accepting new regressions.
 
 ## explain
 

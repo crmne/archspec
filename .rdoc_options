@@ -1,0 +1,19 @@
+---
+title: ArchSpec API
+main_page: ArchSpec
+exclude:
+  - lib/archspec/analyzer\.rb$
+  - lib/archspec/model\.rb$
+  - lib/archspec/evaluator\.rb$
+  - lib/archspec/todo\.rb$
+  - lib/archspec/value_object\.rb$
+  - lib/archspec/source_location\.rb$
+  - lib/archspec/formatters/
+footer_content:
+  Documentation:
+    Guides: https://archspecrb.dev
+    Rules: https://archspecrb.dev/rules/
+  Resources:
+    GitHub: https://github.com/crmne/archspec
+    Issues: https://github.com/crmne/archspec/issues
+    Releases: https://github.com/crmne/archspec/releases

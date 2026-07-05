@@ -3,6 +3,62 @@
 require 'test_helper'
 
 class AnalyzerTest < ArchSpecTest
+  def test_compact_class_paths_join_the_enclosing_namespace
+    with_project do |root|
+      write "#{root}/app/controllers/admin/users/roles_controller.rb", <<~RUBY
+        module Admin
+          class Users::RolesController
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :controllers, in: 'app/controllers/**/*.rb'
+        verify_zeitwerk_names!
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_dynamic_superclasses_and_constant_paths_do_not_crash
+    with_project do |root|
+      write "#{root}/app/models/spot.rb", <<~RUBY
+        class Spot < Struct.new(:x, :y)
+          def locate
+            self.class::ORIGIN
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_each_directory_declares_a_component_per_subdirectory
+    with_project do |root|
+      write "#{root}/engines/billing/app/models/invoice.rb", "class Invoice; end\n"
+      write "#{root}/engines/catalog/app/models/product.rb", "class Product; end\n"
+      write "#{root}/engines/README.md", "not a ruby dir but should be skipped fine\n"
+
+      definition = ArchSpec.define do
+        self.base_dir = root
+        source 'engines/*/app/**/*.rb'
+        each_directory 'engines/*' do |name, path|
+          component name, in: "#{path}/**/*.rb"
+        end
+      end
+
+      assert_equal %i[billing catalog], definition.component_specs.keys.sort
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      assert_includes graph.component_names_for_path("#{root}/engines/billing/app/models/invoice.rb"), :billing
+    end
+  end
+
   def test_builds_graph_from_direct_prism_parse
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY

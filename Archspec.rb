@@ -10,7 +10,7 @@ component :analysis, in: %w[
   lib/archspec/evaluator.rb
 ]
 component :domain, in: %w[
-  lib/archspec/baseline.rb
+  lib/archspec/todo.rb
   lib/archspec/component_spec.rb
   lib/archspec/definition.rb
   lib/archspec/diagnostic.rb

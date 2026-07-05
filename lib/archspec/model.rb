@@ -71,7 +71,7 @@ module ArchSpec
     end
   end
 
-  Edge = ValueObject.define(:type, :from_path, :from_constant, :to, :location, :confidence)
+  Edge = ValueObject.define(:type, :from_path, :from_constant, :to, :location, :confidence, :receiver)
 
   class Component
     attr_reader :name, :files, :constants, :file_reasons, :constant_reasons
@@ -103,6 +103,8 @@ module ArchSpec
       prepends
       extends
     ].freeze
+
+    RESOLVED_ROOTS = %w[Object BasicObject].freeze
 
     attr_reader :root, :files, :constants, :edges, :components
 
@@ -136,8 +138,8 @@ module ArchSpec
       constant
     end
 
-    def add_edge(type:, from_path:, from_constant:, to:, location:, confidence: :high)
-      edges << Edge.new(type, from_path, from_constant, normalize_constant(to), location, confidence)
+    def add_edge(type:, from_path:, from_constant:, to:, location:, confidence: :high, receiver: nil)
+      edges << Edge.new(type, from_path, from_constant, normalize_constant(to), location, confidence, receiver)
     end
 
     def constants_named(name)
@@ -223,6 +225,39 @@ module ArchSpec
 
       candidates << normalized
       candidates.find { |candidate| constants_named(candidate).any? } || normalized
+    end
+
+    # Instance methods a constant responds to, walking resolvable superclasses
+    # and include/prepend mixins. Returns [methods, unresolved ancestor names];
+    # a non-empty second element means the answer is incomplete.
+    def effective_instance_methods(name, visited = Set.new)
+      normalized = normalize_constant(name)
+      return [Set.new, Set.new] if visited.include?(normalized)
+
+      visited.add(normalized)
+      return [Set.new, Set.new] if RESOLVED_ROOTS.include?(normalized)
+
+      nodes = constants_named(normalized)
+      return [Set.new, Set[normalized]] if nodes.empty?
+
+      methods = Set.new
+      unresolved = Set.new
+
+      nodes.each do |node|
+        methods.merge(node.instance_methods)
+
+        ancestors = node.mixins[:include].to_a + node.mixins[:prepend].to_a
+        ancestors << node.superclass if node.superclass
+
+        ancestors.each do |ancestor|
+          resolved_name = resolve_constant_reference(ancestor, node.name)
+          ancestor_methods, ancestor_unresolved = effective_instance_methods(resolved_name, visited)
+          methods.merge(ancestor_methods)
+          unresolved.merge(ancestor_unresolved)
+        end
+      end
+
+      [methods, unresolved]
     end
 
     def component_dependency_pairs(only: nil)

@@ -28,6 +28,35 @@ Rule id: `dependencies.forbid`
 
 `cannot_use` is narrower. References to listed components fail; other declared dependencies are allowed unless another rule forbids them.
 
+## Allow Only These Consumers
+
+```ruby
+shared_kernel.can_only_be_used_by :billing, :catalog
+```
+
+Rule id: `dependencies.consumers`
+
+The inverse of `can_use`. Where `can_use` limits who a component may depend on, `can_only_be_used_by` limits who may depend on it. A reference from any other component fails. Use it to protect a shared kernel or a component with a deliberately narrow audience. The component may still reference itself.
+
+## Public API
+
+```ruby
+billing.public_api "packs/billing/app/public/**/*.rb"
+```
+
+Rule id: `dependencies.privacy`
+
+`public_api` marks part of a component as its front door. References from outside the component must resolve to a constant defined in a public file. Everything else in the component becomes private, and outside references to it fail.
+
+Name the public surface by constant or namespace when it does not map to a directory:
+
+```ruby
+billing.public_api constants: "Billing::Api"
+billing.public_api namespace: "Billing::Public"
+```
+
+`constants` matches exact names. `namespace` matches a name and everything under it. Code inside the component may still reach its own private constants.
+
 ## What Counts
 
 ArchSpec checks visible dependency edges:
