@@ -2,13 +2,5 @@ current: v0.3.0
 latest: v0.3.0
 items:
   - id: v0.3.0
-    title: v0.3.0 (latest)
+    title: v0.3.0
     url: /
-  - id: v0.2.0
-    title: v0.2.0
-    url: https://github.com/crmne/archspec/releases/tag/v0.2.0
-    external: true
-  - id: changelog
-    title: Changelog
-    url: https://github.com/crmne/archspec/releases
-    external: true
