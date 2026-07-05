@@ -289,4 +289,52 @@ class ArchitecturesTest < ArchSpecTest
     assert_includes rule_names, 'ArchSpec::Rules::NoCyclesRule'
     assert_includes rule_names, 'ArchSpec::Rules::ConcernIndependenceRule'
   end
+
+  def test_ruby_conventions_bans_get_set_and_is_prefixes
+    with_project do |root|
+      write "#{root}/app/models/user.rb", <<~RUBY
+        class User
+          def get_name; @name; end
+          def set_name(value); @name = value; end
+          def is_admin; role == :admin; end
+          def has_role?(role); end
+          def name; @name; end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        architecture :ruby_conventions
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      flagged = diagnostics.map { |diagnostic| diagnostic.message[/#\w+/] }.sort
+      assert_equal ['#get_name', '#is_admin', '#set_name'], flagged
+      assert(diagnostics.all? { |diagnostic| diagnostic.rule == 'naming.forbidden' })
+      assert(diagnostics.all? { |diagnostic| diagnostic.confidence == :high })
+    end
+  end
+
+  def test_ruby_conventions_composes_with_rails
+    with_project do |root|
+      write "#{root}/app/models/user.rb", <<~RUBY
+        class User
+          def get_name; @name; end
+          UsersController
+        end
+      RUBY
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+
+      definition = ArchSpec.define do
+        architecture :rails
+        architecture :ruby_conventions
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert(diagnostics.any? { |diagnostic| diagnostic.rule == 'naming.forbidden' })
+      assert(diagnostics.any? { |diagnostic| diagnostic.message.match?(/models must not depend on controllers/) })
+    end
+  end
 end

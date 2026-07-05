@@ -60,6 +60,44 @@ class AnalyzerTest < ArchSpecTest
     end
   end
 
+  def test_tracks_method_visibility_across_declaration_forms
+    with_project do |root|
+      write "#{root}/app/models/user.rb", <<~RUBY
+        class User
+          def pub; end
+          private def inline; end
+          def after_inline; end
+          private
+          def bare_private; end
+          public
+          def repub; end
+          private :repub
+          private
+          attr_reader :priv_attr
+          def self.klass; end
+          private_class_method :klass
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      visibility = graph.constants_named('User').first.method_definitions.each_with_object({}) do |method, map|
+        map[[method.name, method.scope]] = method.visibility
+      end
+
+      assert_equal :public, visibility[[:pub, :instance]]
+      assert_equal :private, visibility[[:inline, :instance]]
+      assert_equal :public, visibility[[:after_inline, :instance]]
+      assert_equal :private, visibility[[:bare_private, :instance]]
+      assert_equal :private, visibility[[:repub, :instance]]
+      assert_equal :private, visibility[[:priv_attr, :instance]]
+      assert_equal :private, visibility[[:klass, :class]]
+    end
+  end
+
   def test_builds_graph_from_direct_prism_parse
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY

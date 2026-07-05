@@ -21,5 +21,6 @@ Available architectures:
 - [Modular Monolith]({% link _architectures/modular-monolith.md %})
 - [CQRS]({% link _architectures/cqrs.md %})
 - [Event Driven]({% link _architectures/event-driven.md %})
+- [Ruby Conventions]({% link _architectures/ruby_conventions.md %})
 
 Use an architecture when your app already follows a clear folder or namespace convention. Use primitive [rules]({% link _rules/index.md %}) when the shape is custom.

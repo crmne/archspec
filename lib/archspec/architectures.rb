@@ -35,6 +35,9 @@ module ArchSpec
   #   +mutating_methods:+.
   # - +:event_driven+ (alias +:rails_event_driven+): events, publishers, and
   #   subscribers. Options +events:+, +publishers:+, +subscribers:+.
+  # - +:ruby_conventions+: generic Ruby naming idioms (no +get_+/+set_+, no +is_+
+  #   prefix), applied project-wide. Adds no components, so it composes with any
+  #   other architecture. No options.
   #
   # See the guides at https://archspecrb.dev/architectures/ for each in depth.
   module Architectures
@@ -149,6 +152,8 @@ module ArchSpec
         cqrs(dsl, **with_defaults(DEFAULT_CQRS, options))
       when :event_driven, :rails_event_driven
         event_driven(dsl, **with_defaults(DEFAULT_EVENT_DRIVEN, options))
+      when :ruby_conventions
+        ruby_conventions(dsl)
       else
         raise Error, "Unknown ArchSpec architecture: #{name.inspect}"
       end
@@ -264,7 +269,27 @@ module ArchSpec
       dsl.no_cycles!(among: roles.keys)
     end
 
+    # Applies the generic Ruby naming idioms project-wide: no +get_+/+set_+
+    # accessors and no +is_+ predicate prefix. Adds no components, so it composes
+    # with any other architecture. Project-specific conventions (the +with_x+ /
+    # +without_x+ pairing, the +supports_*?+ ban) stay opt-in through the
+    # +methods.matching(...)+ primitives.
+    def ruby_conventions(dsl)
+      forbid_name(dsl, /\A(get|set)_/, 'use attr_ readers and writers or plain names, not get_/set_')
+      forbid_name(dsl, /\Ais_/, 'name predicates with a trailing ? and no is_ prefix (has_ is fine)')
+    end
+
     private
+
+    def forbid_name(dsl, regex, reason)
+      dsl.rule(
+        Rules::NamingRule.new(
+          source: nil,
+          selector: Rules::Naming::NameSelector.new(regex),
+          constraint: Rules::Naming::Forbidden.new(because: reason)
+        )
+      )
+    end
 
     def with_defaults(defaults, options)
       defaults.merge(options)

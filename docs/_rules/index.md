@@ -24,6 +24,7 @@ ArchSpec reports the rule id, file, line, message, evidence, confidence, and sta
 
 - [Dependencies]({% link _rules/dependencies.md %})
 - [Methods]({% link _rules/methods.md %})
+- [Naming]({% link _rules/naming.md %})
 - [Protocols]({% link _rules/protocols.md %})
 - [Objects]({% link _rules/objects.md %})
 - [Constants]({% link _rules/constants.md %})

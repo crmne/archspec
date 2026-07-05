@@ -114,8 +114,9 @@ architecture :cqrs,
 - **Concerns:** a concern must not depend on the classes that include it
 - **Layers:** dependency direction and cycles
 - **Rails:** controller APIs kept out of models and services
-- **Architectures:** Rails, vanilla Rails, layered, hexagonal, clean, modular monolith, CQRS, and event-driven bundles
+- **Architectures:** Rails, vanilla Rails, layered, hexagonal, clean, modular monolith, CQRS, event-driven, and Ruby conventions bundles
 - **Protocols:** required methods such as `resolve`, `perform`, or project-specific interfaces
+- **Naming:** conventions on a component's public API, such as banning `get_`/`set_` or pairing `with_x` with `without_x`
 - **Objects:** rules against one-shot `Something.new(...).whatever` command objects
 - **Empty components:** directories that must stay empty, like `app/services` in vanilla Rails
 - **Suppressions:** narrow local exceptions with a reason

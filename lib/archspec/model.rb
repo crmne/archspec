@@ -7,7 +7,7 @@ require_relative 'value_object'
 
 module ArchSpec
   ParseError = ValueObject.define(:message, :location)
-  MethodDefinition = ValueObject.define(:owner, :name, :scope, :location)
+  MethodDefinition = ValueObject.define(:owner, :name, :scope, :location, :visibility)
 
   Suppression = ValueObject.define(:rule, :start_line, :end_line, :reason) do
     def matches?(diagnostic)
@@ -55,18 +55,27 @@ module ArchSpec
       kind == :module
     end
 
-    def add_instance_method(name, location:)
+    def add_instance_method(name, location:, visibility: :public)
       instance_methods.add(name.to_sym)
-      method_definitions << MethodDefinition.new(self.name, name.to_sym, :instance, location)
+      method_definitions << MethodDefinition.new(self.name, name.to_sym, :instance, location, visibility)
     end
 
-    def add_class_method(name, location:)
+    def add_class_method(name, location:, visibility: :public)
       class_methods.add(name.to_sym)
-      method_definitions << MethodDefinition.new(self.name, name.to_sym, :class, location)
+      method_definitions << MethodDefinition.new(self.name, name.to_sym, :class, location, visibility)
     end
 
     def add_mixin(kind, name)
       mixins.fetch(kind).add(name)
+    end
+
+    # Rewrites the visibility of already-recorded definitions, for the
+    # <tt>private :foo, :bar</tt> form that names methods defined earlier.
+    def set_visibility(name, scope, visibility)
+      name = name.to_sym
+      method_definitions.map! do |definition|
+        definition.name == name && definition.scope == scope ? definition.with(visibility: visibility) : definition
+      end
     end
   end
 
@@ -153,6 +162,12 @@ module ArchSpec
       return [] unless component
 
       component.constants.flat_map { |constant_name| constants_named(constant_name) }.flat_map(&:method_definitions)
+    end
+
+    # Every method definition in the graph, across all constants. Used by
+    # project-wide naming rules that are not scoped to one component.
+    def method_definitions
+      constants.flat_map(&:method_definitions)
     end
 
     def assign_components(component_specs)

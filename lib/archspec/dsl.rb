@@ -307,6 +307,24 @@ module ArchSpec
         self
       end
 
+      # Starts a naming-convention rule over the component's defined, public
+      # methods. Select the methods with +matching+, then assert something about
+      # them. Every check is name-based and exact.
+      #
+      #   models.methods.matching(/\A(get|set)_/).forbidden
+      #   chat.methods.matching(/\Awith_(?<base>.+)/).requires("without_%{base}")
+      #   chat.methods.matching(/\Awith_(?<b>.+)/).requires("%{b}", on: agent, scope: :class)
+      #
+      # Pass <tt>scope: :class</tt> to select class methods instead of instance
+      # methods. See ArchSpec::Rules::Naming::Selected for the constraints
+      # (+forbidden+, +requires+). Rule ids: +naming.forbidden+, +naming.requires+.
+      #
+      # This shadows +Object#methods+ on the proxy, which is only ever used as a
+      # short-lived DSL handle.
+      def methods(scope: :instance)
+        Rules::Naming::Builder.new(self, scope: scope)
+      end
+
       private
 
       def add_rule(rule)
