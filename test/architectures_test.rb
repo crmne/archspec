@@ -52,6 +52,34 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
+  def test_vanilla_rails_allows_controllers_to_include_concerns
+    with_project do |root|
+      write "#{root}/app/controllers/concerns/authentication.rb", <<~RUBY
+        module Authentication
+          def current_user
+            User.find_by(id: session[:user_id])
+          end
+        end
+      RUBY
+      write "#{root}/app/controllers/application_controller.rb", <<~RUBY
+        class ApplicationController < ActionController::Base
+          include Authentication
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        architecture :vanilla_rails
+      end
+
+      dependency_diagnostics = diagnostics_for(definition, root).select do |diagnostic|
+        diagnostic.rule.start_with?('dependencies')
+      end
+
+      assert_empty dependency_diagnostics,
+        'controllers may include concerns in vanilla Rails'
+    end
+  end
+
   def test_rails_share_helpers_allows_models_to_use_helpers
     with_project do |root|
       write "#{root}/app/models/report.rb", "class Report; MoneyHelper; end\n"

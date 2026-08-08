@@ -326,6 +326,8 @@ module ArchSpec
       return unless pattern
 
       dsl.component(:concerns, in: pattern).cannot_reference_includers
+      # Controllers carry an allowlist, so let them include concerns too.
+      proxy_for(dsl, :controllers).can_use(:concerns)
     end
   end
 end
