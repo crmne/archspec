@@ -33,5 +33,5 @@ The checks are name-based and exact, reported at `high` confidence.
 Project-specific conventions stay opt-in through the [naming rules]({% link _rules/naming.md %}), which is where the `with_x` / `without_x` pairing, the `supports_*?` ban, and cross-component correspondences live:
 
 ```ruby
-chat.methods.matching(/\Awith_(?<base>.+)/).requires("without_%{base}")
+chat.method_names.matching(/\Awith_(?<base>.+)/).requires("without_%{base}")
 ```

@@ -38,4 +38,4 @@ rule_checks.cannot_use :analysis, :cli, :dsl, :formatters
 formatters.cannot_use :analysis, :cli, :dsl, :rule_checks
 dsl.cannot_use :analysis, :cli, :formatters
 
-no_cycles! among: %i[public_api cli analysis domain dsl rule_checks formatters support]
+no_cycles among: %i[public_api cli analysis domain dsl rule_checks formatters support]

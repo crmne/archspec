@@ -45,7 +45,7 @@ class RulesTest < ArchSpecTest
         component :controllers, in: 'app/controllers/**/*.rb'
         component :models, in: 'app/models/**/*.rb'
         component :jobs, in: 'app/jobs/**/*.rb'
-        controllers.can_use :models
+        controllers.can_only_use :models
       end
 
       diagnostics = diagnostics_for(definition, root)
@@ -96,7 +96,7 @@ class RulesTest < ArchSpecTest
         source 'app/**/*.rb'
         component :a, in: 'app/a/**/*.rb'
         component :b, in: 'app/b/**/*.rb'
-        no_cycles!
+        no_cycles
       end
 
       diagnostics = diagnostics_for(definition, root)

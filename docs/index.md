@@ -12,7 +12,7 @@ hero:
       link: /rules/dependencies/
       code: |
         ```ruby
-        controllers.can_use :models, :services
+        controllers.can_only_use :models, :services
         models.cannot_use :controllers
         services.cannot_call :render, :redirect_to
         ```
@@ -55,7 +55,7 @@ hero:
         component :billing, in: "packs/billing/**/*.rb"
         component :catalog, in: "packs/catalog/**/*.rb"
 
-        billing.can_use :catalog
+        billing.can_only_use :catalog
         ```
   actions:
     - theme: brand

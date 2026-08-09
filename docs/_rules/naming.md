@@ -15,13 +15,13 @@ Rules judge a component's own **defined, public** methods. Inherited methods, me
 `matching` selects methods whose name matches a regex:
 
 ```ruby
-models.methods.matching(/\A(get|set)_/)
+models.method_names.matching(/\A(get|set)_/)
 ```
 
 Pass `scope: :class` to select class methods instead of instance methods:
 
 ```ruby
-models.methods(scope: :class).matching(/\Afind_/)
+models.method_names(scope: :class).matching(/\Afind_/)
 ```
 
 A named capture in the regex, such as `(?<base>.+)`, is available to `requires`.
@@ -29,7 +29,7 @@ A named capture in the regex, such as `(?<base>.+)`, is available to `requires`.
 ## Forbid Names
 
 ```ruby
-models.methods.matching(/\A(get|set)_/).forbidden(because: "use attr readers or plain names")
+models.method_names.matching(/\A(get|set)_/).forbidden(because: "use attr readers or plain names")
 ```
 
 Rule id: `naming.forbidden`
@@ -39,7 +39,7 @@ Every selected method fails. Use it to ban a naming style outright. The `because
 ## Require a Sibling
 
 ```ruby
-chat.methods.matching(/\Awith_(?<base>.+)/).requires("without_%{base}")
+chat.method_names.matching(/\Awith_(?<base>.+)/).requires("without_%{base}")
 ```
 
 Rule id: `naming.requires`
@@ -49,7 +49,7 @@ For each selected method, a sibling named by the template must exist. The templa
 The sibling is looked up in the same component by default. Pass `on:` to require it in another component, and `scope:` to require it as a class method:
 
 ```ruby
-chat.methods.matching(/\Awith_(?<base>.+)/).requires("%{base}", on: agent, scope: :class)
+chat.method_names.matching(/\Awith_(?<base>.+)/).requires("%{base}", on: agent, scope: :class)
 ```
 
 This reads: every `with_x` instance method on `chat` must have a matching `x` class method on `agent`. The sibling counts whatever its visibility.
@@ -57,7 +57,7 @@ This reads: every `with_x` instance method on `chat` must have a matching `x` cl
 Other pairings follow the same shape:
 
 ```ruby
-accounts.methods.matching(/(?<base>.+)!\z/).requires("%{base}")
+accounts.method_names.matching(/(?<base>.+)!\z/).requires("%{base}")
 ```
 
 ## Allowlisting
@@ -65,7 +65,7 @@ accounts.methods.matching(/(?<base>.+)!\z/).requires("%{base}")
 Every rule takes `except:`, a reviewed list of method names to skip:
 
 ```ruby
-models.methods.matching(/\Ais_/).forbidden(except: %i[is_a is_haml])
+models.method_names.matching(/\Ais_/).forbidden(except: %i[is_a is_haml])
 ```
 
 Keep the list in `Archspec.rb` where it is reviewed, rather than reaching for an inline suppression.

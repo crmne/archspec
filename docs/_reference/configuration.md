@@ -52,12 +52,12 @@ Architectures define components and rules together. See [Architectures]({% link 
 ## Dependency Rules
 
 ```ruby
-controllers.can_use :models, :services
+controllers.can_only_use :models, :services
 models.cannot_use :controllers
 shared_kernel.can_only_be_used_by :billing, :catalog
 ```
 
-`can_use` is an allowlist for what a component may depend on. `cannot_use` forbids specific components. `can_only_be_used_by` is the inverse of `can_use`: it limits who may depend on the component. See [Dependency Rules]({% link _rules/dependencies.md %}).
+`can_only_use` is an allowlist for what a component may depend on. `cannot_use` forbids specific components. `can_only_be_used_by` is the inverse of `can_only_use`: it limits who may depend on the component. See [Dependency Rules]({% link _rules/dependencies.md %}).
 
 ## Method Rules
 
@@ -91,10 +91,10 @@ See [Constant Rules]({% link _rules/constants.md %}).
 ## Cycles
 
 ```ruby
-no_cycles!
+no_cycles
 ```
 
-`no_cycles!` checks component dependency cycles.
+`no_cycles` checks component dependency cycles.
 
 See [Cycle Rules]({% link _rules/cycles.md %}).
 

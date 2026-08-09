@@ -92,7 +92,7 @@ component :controllers, in: "app/controllers/**/*.rb"
 component :models, in: "app/models/**/*.rb"
 component :services, in: "app/services/**/*.rb"
 
-controllers.can_use :models, :services
+controllers.can_only_use :models, :services
 models.cannot_use :controllers
 services.cannot_call :render, :redirect_to, :params, :session
 services.cannot_instantiate_and_invoke

@@ -41,7 +41,7 @@ module ArchSpec
       end
     end
 
-    # Backs ArchSpec::DSL::ComponentProxy#can_use. Flags references from the
+    # Backs ArchSpec::DSL::ComponentProxy#can_only_use. Flags references from the
     # source to any component outside its allowlist.
     class AllowDependenciesRule < DependencyRule
       def id

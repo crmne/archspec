@@ -87,18 +87,12 @@ module ArchSpec
       #
       # Returns an ArchSpec::DSL::ComponentProxy for attaching rules. The
       # component is also available by name later in the file.
-      #
-      # +layer+ and +role+ are aliases. Use whichever word fits the
-      # architecture you are describing.
       def component(name, in: nil, namespace: nil, constants: nil)
         add_component(
           ComponentSpec.new(name, files: binding.local_variable_get(:in), namespace: namespace, constants: constants)
         )
         ComponentProxy.new(self, name)
       end
-
-      alias layer component
-      alias role component
 
       # Applies a bundled architecture preset, defining its components and
       # rules together.
@@ -121,11 +115,11 @@ module ArchSpec
       # Forbids dependency cycles between components. Pass +among:+ to limit the
       # check to a subset; omit it to check every declared component.
       #
-      #   no_cycles!
-      #   no_cycles! among: %i[billing catalog shared]
+      #   no_cycles
+      #   no_cycles among: %i[billing catalog shared]
       #
       # Rule id: +dependencies.no_cycles+.
-      def no_cycles!(among: nil)
+      def no_cycles(among: nil)
         add_rule(Rules::NoCyclesRule.new(among: among))
       end
 
@@ -160,23 +154,20 @@ module ArchSpec
         @name = name.to_sym
       end
 
-      # Allowlists the components this one may depend on. A reference to any
-      # other declared component fails.
+      # Allowlists the components this one may depend on: only the listed
+      # components are permitted, and a reference to any other declared
+      # component fails. The mirror image of #can_only_be_used_by.
       #
-      #   controllers.can_use :models, :services
+      #   controllers.can_only_use :models, :services
       #
-      # +only_depend_on+ and +must_only_depend_on+ are aliases.
       # Rule id: +dependencies.allow+.
-      def can_use(*targets)
+      def can_only_use(*targets)
         add_rule(Rules::AllowDependenciesRule.new(name, targets))
         self
       end
 
-      alias only_depend_on can_use
-      alias must_only_depend_on can_use
-
-      # Forbids depending on the named components. Narrower than #can_use: only
-      # the listed components fail, other dependencies are left alone.
+      # Forbids depending on the named components. Narrower than #can_only_use:
+      # only the listed components fail, other dependencies are left alone.
       #
       #   models.cannot_use :controllers, :helpers
       #
@@ -187,7 +178,7 @@ module ArchSpec
       end
 
       # Allowlists the components that may reference this one, the inverse of
-      # #can_use. A reference from any other component fails. Use it to protect
+      # #can_only_use. A reference from any other component fails. Use it to protect
       # a shared kernel or a component with a deliberately narrow audience.
       #
       #   shared_kernel.can_only_be_used_by :billing, :catalog
@@ -317,17 +308,14 @@ module ArchSpec
       # methods. Select the methods with +matching+, then assert something about
       # them. Every check is name-based and exact.
       #
-      #   models.methods.matching(/\A(get|set)_/).forbidden
-      #   chat.methods.matching(/\Awith_(?<base>.+)/).requires("without_%{base}")
-      #   chat.methods.matching(/\Awith_(?<b>.+)/).requires("%{b}", on: agent, scope: :class)
+      #   models.method_names.matching(/\A(get|set)_/).forbidden
+      #   chat.method_names.matching(/\Awith_(?<base>.+)/).requires("without_%{base}")
+      #   chat.method_names.matching(/\Awith_(?<b>.+)/).requires("%{b}", on: agent, scope: :class)
       #
       # Pass <tt>scope: :class</tt> to select class methods instead of instance
       # methods. See ArchSpec::Rules::Naming::Selected for the constraints
       # (+forbidden+, +requires+). Rule ids: +naming.forbidden+, +naming.requires+.
-      #
-      # This shadows +Object#methods+ on the proxy, which is only ever used as a
-      # short-lived DSL handle.
-      def methods(scope: :instance)
+      def method_names(scope: :instance)
         Rules::Naming::Builder.new(self, scope: scope)
       end
 

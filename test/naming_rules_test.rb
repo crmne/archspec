@@ -14,7 +14,7 @@ class NamingRulesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         component :models, in: 'app/models/**/*.rb'
-        models.methods.matching(/\A(get|set)_/).forbidden(because: 'use plain names')
+        models.method_names.matching(/\A(get|set)_/).forbidden(because: 'use plain names')
       end
 
       diagnostics = diagnostics_for(definition, root)
@@ -37,7 +37,7 @@ class NamingRulesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         component :models, in: 'app/models/**/*.rb'
-        models.methods.matching(/\Ais_/).forbidden(except: [:is_admin])
+        models.method_names.matching(/\Ais_/).forbidden(except: [:is_admin])
       end
 
       diagnostics = diagnostics_for(definition, root)
@@ -66,7 +66,7 @@ class NamingRulesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         component :models, in: 'app/models/**/*.rb'
-        models.methods.matching(/\Aget_/).forbidden
+        models.method_names.matching(/\Aget_/).forbidden
       end
 
       assert_empty diagnostics_for(definition, root)
@@ -85,7 +85,7 @@ class NamingRulesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         component :models, in: 'app/models/**/*.rb'
-        models.methods.matching(/\Awith_(?<base>.+)/).requires('without_%{base}')
+        models.method_names.matching(/\Awith_(?<base>.+)/).requires('without_%{base}')
       end
 
       diagnostics = diagnostics_for(definition, root)
@@ -107,7 +107,7 @@ class NamingRulesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         component :models, in: 'app/models/**/*.rb'
-        models.methods.matching(/\Awith_(?<base>.+)/).requires('without_%{base}')
+        models.method_names.matching(/\Awith_(?<base>.+)/).requires('without_%{base}')
       end
 
       assert_empty diagnostics_for(definition, root)
@@ -126,7 +126,7 @@ class NamingRulesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         component :models, in: 'app/models/**/*.rb'
-        models.methods.matching(/(?<base>.+)!\z/).requires('%{base}')
+        models.method_names.matching(/(?<base>.+)!\z/).requires('%{base}')
       end
 
       diagnostics = diagnostics_for(definition, root)
@@ -155,7 +155,7 @@ class NamingRulesTest < ArchSpecTest
         source 'app/**/*.rb'
         component :chat, in: 'app/chat/**/*.rb'
         component :agent, in: 'app/agent/**/*.rb'
-        chat.methods.matching(/\Awith_(?<b>.+)/).requires('%{b}', on: agent, scope: :class)
+        chat.method_names.matching(/\Awith_(?<b>.+)/).requires('%{b}', on: agent, scope: :class)
       end
 
       diagnostics = diagnostics_for(definition, root)
@@ -183,7 +183,7 @@ class NamingRulesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         component :models, in: 'app/models/**/*.rb'
-        models.methods.matching(/\Awith_/).forbidden
+        models.method_names.matching(/\Awith_/).forbidden
       end
 
       assert_empty diagnostics_for(definition, root)
@@ -202,7 +202,7 @@ class NamingRulesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         component :models, in: 'app/models/**/*.rb'
-        models.methods(scope: :class).matching(/\Aget_/).forbidden
+        models.method_names(scope: :class).matching(/\Aget_/).forbidden
       end
 
       diagnostics = diagnostics_for(definition, root)
@@ -223,7 +223,7 @@ class NamingRulesTest < ArchSpecTest
 
       definition = ArchSpec.define do
         component :models, in: 'app/models/**/*.rb'
-        models.methods(scope: :class).matching(/\Aget_/).forbidden
+        models.method_names(scope: :class).matching(/\Aget_/).forbidden
       end
 
       diagnostics = diagnostics_for(definition, root)

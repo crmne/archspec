@@ -60,9 +60,9 @@ end
 
 component :shared, in: "engines/shared/**/*.rb"
 
-billing.can_use :shared
-catalog.can_use :shared
-no_cycles!
+billing.can_only_use :shared
+catalog.can_only_use :shared
+no_cycles
 ```
 
 `Archspec.rb` is plain Ruby, so you keep full control: skip a directory, rename a component, or attach different rules per package inside the block.

@@ -11,12 +11,12 @@ Use dependency rules when one component should or should not reference another c
 ## Allow Only These Components
 
 ```ruby
-controllers.can_use :models, :services
+controllers.can_only_use :models, :services
 ```
 
 Rule id: `dependencies.allow`
 
-`can_use` is an allowlist. References from `controllers` to any other declared component fail.
+`can_only_use` is an allowlist. References from `controllers` to any other declared component fail.
 
 ## Forbid Specific Components
 
@@ -36,7 +36,7 @@ shared_kernel.can_only_be_used_by :billing, :catalog
 
 Rule id: `dependencies.consumers`
 
-The inverse of `can_use`. Where `can_use` limits who a component may depend on, `can_only_be_used_by` limits who may depend on it. A reference from any other component fails. Use it to protect a shared kernel or a component with a deliberately narrow audience. The component may still reference itself.
+The inverse of `can_only_use`. Where `can_only_use` limits who a component may depend on, `can_only_be_used_by` limits who may depend on it. A reference from any other component fails. Use it to protect a shared kernel or a component with a deliberately narrow audience. The component may still reference itself.
 
 ## Public API
 

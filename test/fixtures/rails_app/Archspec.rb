@@ -7,4 +7,4 @@ component :commands, in: 'app/commands/**/*.rb'
 commands.must_implement :call
 commands.cannot_call :render, :redirect_to, :params, :session
 
-no_cycles!
+no_cycles
