@@ -453,24 +453,35 @@ module ArchSpec
         end || []
       end
 
-      # attr_* and unprefixed delegate calls define instance methods; without
-      # them, a class calling its own reader looks like a foreign call.
+      # attr_*, Rails attribute, and unprefixed delegate calls define methods;
+      # without them, a class calling its own reader looks like a foreign call.
       def record_generated_methods(graph, path, node, message, current_constant, location, visibility, default_scope)
         return unless current_constant && node.receiver.nil?
-        return unless ATTR_MESSAGES.key?(message) || message == :delegate
+        return unless ATTR_MESSAGES.key?(message) || %i[attribute delegate].include?(message)
 
         constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path }
         return unless constant
 
-        names = symbol_arguments(node)
+        names = generated_method_names(constant, node, message)
         return if message == :delegate && keyword_argument?(node, :prefix)
 
         adder = default_scope == :class ? :add_class_method : :add_instance_method
         names.each do |name|
-          kinds = ATTR_MESSAGES.fetch(message, %i[reader])
+          kinds = message == :attribute ? %i[reader writer] : ATTR_MESSAGES.fetch(message, %i[reader])
           constant.public_send(adder, name, location: location, visibility: visibility) if kinds.include?(:reader)
           constant.public_send(adder, :"#{name}=", location: location, visibility: visibility) if kinds.include?(:writer)
         end
+      end
+
+      # Active Record and Active Model take one attribute name followed by an
+      # optional type, which may itself be a symbol. CurrentAttributes instead
+      # accepts any number of names, so retain every literal name there.
+      def generated_method_names(constant, node, message)
+        names = symbol_arguments(node)
+        return names unless message == :attribute
+        return names if constant.superclass == 'ActiveSupport::CurrentAttributes'
+
+        names.first(1)
       end
 
       def symbol_arguments(node)

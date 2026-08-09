@@ -129,6 +129,29 @@ class AnalyzerTest < ArchSpecTest
     end
   end
 
+  def test_tracks_methods_generated_by_rails_attribute_macros
+    with_project do |root|
+      write "#{root}/app/models/current.rb", <<~RUBY
+        class Current < ActiveSupport::CurrentAttributes
+          attribute :session, :user
+        end
+
+        class Product < ApplicationRecord
+          attribute :price, :decimal
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal %i[session session= user user=], graph.constants_named('Current').first.instance_methods.to_a.sort
+      assert_equal %i[price price=], graph.constants_named('Product').first.instance_methods.to_a.sort
+    end
+  end
+
   def test_builds_graph_from_direct_prism_parse
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY

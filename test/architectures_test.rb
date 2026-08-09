@@ -344,6 +344,29 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
+  def test_ruby_conventions_checks_class_methods_too
+    with_project do |root|
+      write "#{root}/app/models/user.rb", <<~RUBY
+        class User
+          def self.get_name; end
+
+          class << self
+            def is_admin?; end
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        architecture :ruby_conventions
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal %w[get_name is_admin?], diagnostics.map { |diagnostic| diagnostic.evidence[/method (\S+)/, 1] }.sort
+      assert(diagnostics.all? { |diagnostic| diagnostic.evidence.include?('class method') })
+    end
+  end
+
   def test_preset_is_an_alias_for_architecture
     with_project do |root|
       write "#{root}/app/models/user.rb", "class User; def get_name; @name; end; end\n"

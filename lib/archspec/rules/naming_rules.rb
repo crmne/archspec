@@ -6,9 +6,9 @@ module ArchSpec
   module Rules
     # Backs the +methods.matching(...)+ DSL. One rule pairs a selector (which
     # methods it judges) with a constraint (what must hold of them). It judges a
-    # component's defined, public methods, or every defined method in the project
-    # when +source+ is nil. Every finding is name-based and exact, so confidence
-    # is always +:high+.
+    # component's defined, public methods in the requested scope, or every such
+    # method in the project when +source+ is nil. Every finding is name-based and
+    # exact, so confidence is always +:high+.
     class NamingRule
       attr_reader :source, :selector, :scope, :except
 

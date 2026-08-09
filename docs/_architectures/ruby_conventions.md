@@ -6,7 +6,7 @@ description: Generic Ruby naming idioms, applied project-wide.
 
 # Ruby Conventions
 
-Ruby Conventions bundles the generic Ruby naming idioms and applies them to every method in the project.
+Ruby Conventions bundles the generic Ruby naming idioms and applies them to every public instance and class method in the project.
 
 ```ruby
 preset :ruby_conventions

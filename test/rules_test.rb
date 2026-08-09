@@ -202,6 +202,27 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_cannot_call_treats_current_attributes_attribute_as_own_api
+    with_project do |root|
+      write "#{root}/app/models/current.rb", <<~RUBY
+        class Current < ActiveSupport::CurrentAttributes
+          attribute :session, :user
+
+          def identity
+            session.identity
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.cannot_call :session, receiver: :none
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
   def test_cannot_call_matches_any_receiver_by_default
     with_project do |root|
       write "#{root}/app/queries/user_query.rb", <<~RUBY

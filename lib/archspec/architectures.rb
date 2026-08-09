@@ -273,20 +273,23 @@ module ArchSpec
     # accessors and no +is_+ predicate prefix. Adds no components, so it composes
     # with any other architecture. Project-specific conventions (the +with_x+ /
     # +without_x+ pairing, the +supports_*?+ ban) stay opt-in through the
-    # +methods.matching(...)+ primitives.
+    # +method_names.matching(...)+ primitives.
     def ruby_conventions(dsl)
-      forbid_name(dsl, /\A(get|set)_/, 'use attr_ readers and writers or plain names, not get_/set_')
-      forbid_name(dsl, /\Ais_/, 'name predicates with a trailing ? and no is_ prefix (has_ is fine)')
+      %i[instance class].each do |scope|
+        forbid_name(dsl, /\A(get|set)_/, 'use attr_ readers and writers or plain names, not get_/set_', scope: scope)
+        forbid_name(dsl, /\Ais_/, 'name predicates with a trailing ? and no is_ prefix (has_ is fine)', scope: scope)
+      end
     end
 
     private
 
-    def forbid_name(dsl, regex, reason)
+    def forbid_name(dsl, regex, reason, scope:)
       dsl.rule(
         Rules::NamingRule.new(
           source: nil,
           selector: Rules::Naming::NameSelector.new(regex),
-          constraint: Rules::Naming::Forbidden.new(because: reason)
+          constraint: Rules::Naming::Forbidden.new(because: reason),
+          scope: scope
         )
       )
     end

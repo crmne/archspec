@@ -50,7 +50,7 @@ module ArchSpec
       private
 
       # A receiverless call to a method the class itself defines (directly,
-      # inherited, or via attr_*/delegate) is a call to its own API.
+      # inherited, or via attr_*/attribute/delegate) is a call to its own API.
       def own_method_call?(graph, edge)
         return false unless edge.receiver == :none && edge.from_constant
 

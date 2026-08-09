@@ -198,7 +198,8 @@ module ArchSpec
       #   services.cannot_call :render, :params, receiver: :none
       #
       # A bare call to a method the component defines, inherits, or generates
-      # with +attr_*+ or +delegate+ is treated as its own API and not flagged.
+      # with +attr_*+, Rails +attribute+, or +delegate+ is treated as its own API
+      # and not flagged.
       # Rule id: +methods.forbid+.
       def cannot_call(*methods, receiver: :any)
         add_rule(Rules::CannotCallRule.new(name, methods, receiver: receiver))
