@@ -1,11 +1,12 @@
 # ArchSpec
 
-Architecture linter for Ruby and Rails.
+Static analysis for your architecture. A linter for Ruby and Rails boundaries.
 
 ArchSpec turns your application's architecture into executable checks. Declare
 your components, dependencies, and boundaries in one file, then check every
-change in CI, whether a person or a coding agent wrote it. It reads Ruby source
-with Prism and never boots the app.
+change in CI, whether a person or a coding agent wrote it. It is plain static
+analysis: it reads Ruby source with Prism, never boots the app, and no AI is
+involved in checking your code.
 
 It maps conventional Rails files to constants and checks the structural rules
 you write down: components, layers, constant references, inheritance, mixins,

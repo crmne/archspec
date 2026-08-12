@@ -1,12 +1,12 @@
 ---
 layout: home
 title: Architecture linter for Ruby and Rails
-description: Architecture linter for Ruby and Rails, a Packwerk alternative. Declare your components, dependencies, and boundaries in one file and check them in CI.
+description: Static analysis architecture linter for Ruby and Rails, a Packwerk alternative. Declare your components, dependencies, and boundaries in one file and check them in CI.
 permalink: /
 hero:
   name: ArchSpec
   text: Executable architecture specifications for Ruby and Rails
-  tagline: Guarantee your agents and your team follow your conventions. ArchSpec turns them into checks that run in CI on every change.
+  tagline: Guarantee your agents and your team follow your conventions. ArchSpec turns them into static analysis checks that run in CI on every change. No AI involved, just Prism.
   code_panel:
     - title: Boundaries
       link: /rules/dependencies/
