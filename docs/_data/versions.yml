@@ -1,6 +1,8 @@
 current: v1.0.0.rc1
-latest: v1.0.0.rc1
 items:
   - id: v1.0.0.rc1
     title: v1.0.0.rc1
     url: /
+  - title: Releases
+    url: https://github.com/crmne/archspec/releases
+    external: true
