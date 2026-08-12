@@ -81,7 +81,9 @@ module ArchSpec
             when 'next-line'
               suppressions << Suppression.new(rule, line + 1, line + 1, reason)
             else
-              active[rule] << [line + 1, reason]
+              # The block form covers its own line too, so a trailing
+              # `# archspec:disable RULE` works like RuboCop's.
+              active[rule] << [line, reason]
             end
           elsif (match = text.match(ENABLE_PATTERN))
             rule = normalize_rule(match[1])
@@ -141,43 +143,49 @@ module ArchSpec
         attr_accessor: %i[reader writer]
       }.freeze
 
-      def visit(graph, path, node, current_constant: nil, namespace: [], visibility: :public, default_scope: :instance)
+      def visit(graph, path, node, current_constant: nil, namespace: [], nesting: [], visibility: :public,
+                default_scope: :instance)
         return unless node
 
         case node
         when Prism::ProgramNode, Prism::StatementsNode
-          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
+          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace, nesting: nesting,
                                             visibility: visibility, default_scope: default_scope)
         when Prism::ClassNode
-          visit_class(graph, path, node, current_constant: current_constant, namespace: namespace)
+          visit_class(graph, path, node, current_constant: current_constant, namespace: namespace, nesting: nesting)
         when Prism::ModuleNode
-          visit_module(graph, path, node, current_constant: current_constant, namespace: namespace)
+          visit_module(graph, path, node, current_constant: current_constant, namespace: namespace, nesting: nesting)
         when Prism::SingletonClassNode
           visit_singleton_class(graph, path, node, current_constant: current_constant, namespace: namespace,
-                                                   visibility: visibility, default_scope: default_scope)
+                                                   nesting: nesting, visibility: visibility,
+                                                   default_scope: default_scope)
         when Prism::DefNode
           visit_def(graph, path, node, current_constant: current_constant, namespace: namespace,
-                                       visibility: visibility, default_scope: default_scope)
+                                       nesting: nesting, visibility: visibility, default_scope: default_scope)
         when Prism::CallNode
           visit_call(graph, path, node, current_constant: current_constant, namespace: namespace,
-                                        visibility: visibility, default_scope: default_scope)
+                                        nesting: nesting, visibility: visibility, default_scope: default_scope)
         when Prism::ConstantPathNode, Prism::ConstantReadNode
-          add_constant_reference(graph, path, node, current_constant)
+          add_constant_reference(graph, path, node, current_constant, nesting)
         else
-          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
+          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace, nesting: nesting,
                                             visibility: visibility, default_scope: default_scope)
         end
       end
 
       private
 
-      def visit_class(graph, path, node, current_constant:, namespace:)
+      def visit_class(graph, path, node, current_constant:, namespace:, nesting:)
         name = qualified_constant_name(node.constant_path, namespace)
+        return visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
+                                                 nesting: nesting) unless name
+
         constant = graph.add_constant(
           name: name,
           kind: :class,
           path: path,
-          location: SourceLocation.from_prism(path, node.location)
+          location: SourceLocation.from_prism(path, node.location),
+          nesting: nesting
         )
 
         if node.superclass
@@ -190,31 +198,38 @@ module ArchSpec
               from_path: path,
               from_constant: constant.name,
               to: superclass,
-              location: SourceLocation.from_prism(path, node.superclass.location)
+              location: SourceLocation.from_prism(path, node.superclass.location),
+              lexical_nesting: nesting
             )
           else
             # Dynamic superclass (Struct.new, DelegateClass(...)): no
             # inherits_from edge, but constants inside still count as
             # references, and ancestry stays marked unresolved.
             constant.superclass = node.superclass.slice
-            visit(graph, path, node.superclass, current_constant: constant.name,
-                                                namespace: constant.name.split('::'))
+            visit(graph, path, node.superclass, current_constant: constant.name, namespace: namespace,
+                                                nesting: nesting)
           end
         end
 
-        visit_constant_body(graph, path, constant, node.body, constant.name.split('::'))
+        visit_constant_body(graph, path, constant, node.body, constant.name.split('::'),
+                            nesting: [constant.name] + nesting)
       end
 
-      def visit_module(graph, path, node, current_constant:, namespace:)
+      def visit_module(graph, path, node, current_constant:, namespace:, nesting:)
         name = qualified_constant_name(node.constant_path, namespace)
+        return visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
+                                                 nesting: nesting) unless name
+
         constant = graph.add_constant(
           name: name,
           kind: :module,
           path: path,
-          location: SourceLocation.from_prism(path, node.location)
+          location: SourceLocation.from_prism(path, node.location),
+          nesting: nesting
         )
 
-        visit_constant_body(graph, path, constant, node.body, constant.name.split('::'))
+        visit_constant_body(graph, path, constant, node.body, constant.name.split('::'),
+                            nesting: [constant.name] + nesting)
       end
 
       # A +class << self+ (or +class << SomeConstant+) block defines methods on a
@@ -222,15 +237,15 @@ module ArchSpec
       # applies to them. Walk the body with +default_scope: :class+ against the
       # target constant. An unknown target (+class << variable+) still has its
       # body visited for edges, but no methods are attributed.
-      def visit_singleton_class(graph, path, node, current_constant:, namespace:, visibility:, default_scope:)
+      def visit_singleton_class(graph, path, node, current_constant:, namespace:, nesting:, visibility:, default_scope:)
         target = singleton_target(node.expression, current_constant)
         constant = target && graph.constants_named(target).find { |candidate| candidate.path == path }
 
         if constant
-          visit_constant_body(graph, path, constant, node.body, namespace, default_scope: :class)
+          visit_constant_body(graph, path, constant, node.body, namespace, nesting: nesting, default_scope: :class)
         else
-          visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
-                                            visibility: visibility, default_scope: default_scope)
+          visit_children(graph, path, node, current_constant: nil, namespace: namespace,
+                                            nesting: nesting, visibility: visibility, default_scope: :class)
         end
       end
 
@@ -246,11 +261,11 @@ module ArchSpec
       # so bare +def+s there are class methods. Every statement is still handed to
       # +visit+, so all other facts (calls, references, mixins) are recorded
       # exactly as before.
-      def visit_constant_body(graph, path, constant, body, namespace, default_scope: :instance)
+      def visit_constant_body(graph, path, constant, body, namespace, nesting:, default_scope: :instance)
         return unless body
 
         unless body.is_a?(Prism::StatementsNode)
-          return visit(graph, path, body, current_constant: constant.name, namespace: namespace,
+          return visit(graph, path, body, current_constant: constant.name, namespace: namespace, nesting: nesting,
                                           default_scope: default_scope)
         end
 
@@ -258,16 +273,18 @@ module ArchSpec
         body.body.each do |statement|
           if (modifier = visibility_modifier(statement))
             visibility = apply_visibility_modifier(graph, path, constant, statement, namespace, visibility, modifier,
-                                                   default_scope)
+                                                   default_scope, nesting)
           else
             visit(graph, path, statement, current_constant: constant.name, namespace: namespace,
-                                          visibility: visibility, default_scope: default_scope)
+                                          nesting: nesting, visibility: visibility, default_scope: default_scope)
           end
         end
       end
 
-      def visit_def(graph, path, node, current_constant:, namespace:, visibility: :public, default_scope: :instance)
-        if current_constant && (constant = graph.constants_named(current_constant).find do |candidate|
+      def visit_def(graph, path, node, current_constant:, namespace:, nesting:, visibility: :public,
+                    default_scope: :instance)
+        owner = method_definition_owner(graph, node, current_constant, nesting)
+        if owner && (constant = graph.constants_named(owner).find do |candidate|
           candidate.path == path
         end)
           location = SourceLocation.from_prism(path, node.location)
@@ -289,13 +306,24 @@ module ArchSpec
           )
         end
 
-        visit_children(graph, path, node, current_constant: current_constant, namespace: namespace)
+        visit_children(graph, path, node, current_constant: current_constant, namespace: namespace, nesting: nesting)
       end
 
-      def visit_call(graph, path, node, current_constant:, namespace:, visibility: :public, default_scope: :instance)
+      def method_definition_owner(graph, node, current_constant, nesting)
+        return current_constant unless node.receiver
+        return current_constant if node.receiver.is_a?(Prism::SelfNode)
+        return unless constant_node?(node.receiver)
+
+        name = constant_reference_name(node.receiver)
+        graph.resolve_constant_reference(name, current_constant, lexical_nesting: nesting) if name
+      end
+
+      def visit_call(graph, path, node, current_constant:, namespace:, nesting:, visibility: :public,
+                     default_scope: :instance)
         unless node.message
           return visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
-                                                   visibility: visibility, default_scope: default_scope)
+                                                   nesting: nesting, visibility: visibility,
+                                                   default_scope: default_scope)
         end
 
         message = node.message.to_sym
@@ -336,7 +364,8 @@ module ArchSpec
               from_path: path,
               from_constant: current_constant,
               to: constant_name,
-              location: location
+              location: location,
+              lexical_nesting: nesting
             )
           end
         end
@@ -361,11 +390,11 @@ module ArchSpec
           )
         end
 
-        visit_children(graph, path, node, current_constant: current_constant, namespace: namespace,
+        visit_children(graph, path, node, current_constant: current_constant, namespace: namespace, nesting: nesting,
                                           visibility: visibility, default_scope: default_scope)
       end
 
-      def add_constant_reference(graph, path, node, current_constant)
+      def add_constant_reference(graph, path, node, current_constant, nesting)
         name = constant_reference_name(node)
         return unless name
 
@@ -374,14 +403,16 @@ module ArchSpec
           from_path: path,
           from_constant: current_constant,
           to: name,
-          location: SourceLocation.from_prism(path, node.location)
+          location: SourceLocation.from_prism(path, node.location),
+          lexical_nesting: nesting
         )
       end
 
-      def visit_children(graph, path, node, current_constant:, namespace:, visibility: :public, default_scope: :instance)
+      def visit_children(graph, path, node, current_constant:, namespace:, nesting:, visibility: :public,
+                         default_scope: :instance)
         node.child_nodes.compact.each do |child|
           visit(graph, path, child, current_constant: current_constant, namespace: namespace,
-                                    visibility: visibility, default_scope: default_scope)
+                                    nesting: nesting, visibility: visibility, default_scope: default_scope)
         end
       end
 
@@ -410,7 +441,7 @@ module ArchSpec
       # statements that follow it. A bare +private+ changes that default; the
       # inline (+private def foo+) and symbol-list (+private :foo+) forms mark
       # only the methods they name and leave the default unchanged.
-      def apply_visibility_modifier(graph, path, constant, node, namespace, current, spec, default_scope)
+      def apply_visibility_modifier(graph, path, constant, node, namespace, current, spec, default_scope, nesting)
         visibility, forced_scope = spec
         scope = forced_scope || default_scope
         arguments = node.arguments&.arguments || []
@@ -419,20 +450,21 @@ module ArchSpec
 
         if definitions.any?
           visit(graph, path, node, current_constant: constant.name, namespace: namespace,
-                                   visibility: visibility, default_scope: default_scope)
+                                   nesting: nesting, visibility: visibility, default_scope: default_scope)
           current
         elsif names.any?
           names.each { |name| constant.set_visibility(name.unescaped.to_sym, scope, visibility) }
           visit(graph, path, node, current_constant: constant.name, namespace: namespace,
-                                   visibility: current, default_scope: default_scope)
+                                   nesting: nesting, visibility: current, default_scope: default_scope)
           current
-        elsif forced_scope.nil?
+        elsif arguments.empty? && forced_scope.nil?
           visit(graph, path, node, current_constant: constant.name, namespace: namespace,
-                                   visibility: visibility, default_scope: default_scope)
+                                   nesting: nesting, visibility: visibility, default_scope: default_scope)
           visibility
         else
           visit(graph, path, node, current_constant: constant.name, namespace: namespace,
-                                   visibility: current, default_scope: default_scope)
+                                   nesting: nesting, visibility: forced_scope.nil? ? visibility : current,
+                                   default_scope: default_scope)
           current
         end
       end
@@ -461,10 +493,9 @@ module ArchSpec
 
         constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path }
         return unless constant
+        return if message == :delegate && truthy_keyword_argument?(node, :prefix)
 
         names = generated_method_names(constant, node, message)
-        return if message == :delegate && keyword_argument?(node, :prefix)
-
         adder = default_scope == :class ? :add_class_method : :add_instance_method
         names.each do |name|
           kinds = message == :attribute ? %i[reader writer] : ATTR_MESSAGES.fetch(message, %i[reader])
@@ -479,7 +510,9 @@ module ArchSpec
       def generated_method_names(constant, node, message)
         names = symbol_arguments(node)
         return names unless message == :attribute
-        return names if constant.superclass == 'ActiveSupport::CurrentAttributes'
+
+        superclass = constant.superclass.to_s.sub(/\A::/, '')
+        return names if superclass == 'ActiveSupport::CurrentAttributes'
 
         names.first(1)
       end
@@ -490,11 +523,13 @@ module ArchSpec
         end || []
       end
 
-      def keyword_argument?(node, name)
+      def truthy_keyword_argument?(node, name)
         node.arguments&.arguments&.any? do |argument|
           argument.is_a?(Prism::KeywordHashNode) && argument.elements.any? do |element|
             element.is_a?(Prism::AssocNode) && element.key.is_a?(Prism::SymbolNode) &&
-              element.key.unescaped.to_sym == name
+              element.key.unescaped.to_sym == name &&
+              !element.value.is_a?(Prism::FalseNode) &&
+              !element.value.is_a?(Prism::NilNode)
           end
         end
       end
@@ -512,7 +547,11 @@ module ArchSpec
         return unless receiver.is_a?(Prism::CallNode) && receiver.message&.to_sym == :new
 
         receiver_node = receiver.receiver
-        name = (constant_reference_name(receiver_node) if constant_node?(receiver_node)) || receiver_node&.slice
+        return unless constant_node?(receiver_node)
+
+        name = constant_reference_name(receiver_node)
+        return unless name
+
         "#{name}##{node.message}"
       end
 
@@ -520,7 +559,9 @@ module ArchSpec
       # Admin::Users::RolesController, so compact paths join the namespace too.
       def qualified_constant_name(node, namespace)
         raw = constant_reference_name(node)
-        absolute = node.respond_to?(:full_name_parts) && node.full_name_parts.first == :""
+        return unless raw
+
+        absolute = node.is_a?(Prism::ConstantPathNode) && node.parent.nil?
 
         if absolute || namespace.empty?
           raw
@@ -532,8 +573,11 @@ module ArchSpec
       # nil when the path has dynamic parts (self.class::FOO): there is no
       # static name to check against.
       def constant_reference_name(node)
-        node.full_name.to_s.sub(/\A::/, '')
-      rescue Prism::ConstantPathNode::DynamicPartsInConstantPathError
+        return unless constant_node?(node)
+
+        node.full_name.to_s
+      rescue Prism::ConstantPathNode::DynamicPartsInConstantPathError,
+             Prism::ConstantPathNode::MissingNodesInConstantPathError
         nil
       end
 

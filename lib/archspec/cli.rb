@@ -16,15 +16,20 @@ module ArchSpec
     extend self
 
     CONFIG_FILE = 'Archspec.rb'
+    USAGE_ERROR_STATUS = 64
     TEMPLATE = <<~RUBY
       architecture :rails
     RUBY
+
+    class UsageError < Error; end
 
     def run(argv, output: $stdout, error: $stderr)
       argv = argv.dup
       command = argv.shift || 'check'
 
       case command
+      when 'help', '--help', '-h'
+        help(argv, output)
       when 'init'
         init(argv, output)
       when 'check'
@@ -32,13 +37,17 @@ module ArchSpec
       when 'explain'
         explain(argv, output)
       when 'version', '--version', '-v'
+        raise UsageError, "Unexpected argument: #{argv.first}" if argv.any?
+
         output.puts ArchSpec::VERSION
         0
       else
-        error.puts "Unknown command: #{command}"
-        error.puts usage
-        64
+        raise UsageError, "Unknown command: #{command}"
       end
+    rescue OptionParser::ParseError, UsageError => e
+      error.puts e.message
+      error.puts usage(command)
+      USAGE_ERROR_STATUS
     rescue Error => e
       error.puts e.message
       1
@@ -46,33 +55,73 @@ module ArchSpec
 
     private
 
+    def help(argv, output)
+      subject = argv.shift
+      raise UsageError, "Unexpected argument: #{argv.first}" if argv.any?
+      if subject && !%w[init check explain version].include?(subject)
+        raise UsageError, "Unknown command: #{subject}"
+      end
+
+      output.puts usage(subject)
+      0
+    end
+
     def init(argv, output)
-      force = argv.delete('--force')
+      options = { force: false, help: false }
+      parser = OptionParser.new do |opts|
+        opts.banner = usage('init').strip
+        opts.on('--force', 'Overwrite an existing file') { options[:force] = true }
+        opts.on('-h', '--help', 'Show this help') { options[:help] = true }
+      end
+      parser.parse!(argv)
+
+      if options[:help]
+        output.puts parser
+        return 0
+      end
+
+      raise UsageError, "Unexpected argument: #{argv[1]}" if argv.length > 1
+
       path = argv.shift || CONFIG_FILE
 
-      raise Error, "#{path} already exists. Use --force to overwrite it." if File.exist?(path) && !force
+      if File.exist?(path) && !options[:force]
+        raise Error, "#{path} already exists. Use --force to overwrite it."
+      end
 
       File.write(path, TEMPLATE)
       output.puts "Created #{path}"
       0
+    rescue SystemCallError => e
+      raise Error, "Could not create #{path}: #{e.message}"
     end
 
     def check(argv, output)
       options = {
         config: CONFIG_FILE,
         format: 'text',
-        update_todo: false
+        update_todo: false,
+        help: false
       }
 
       parser = OptionParser.new do |opts|
-        opts.on('--config PATH') { |value| options[:config] = value }
-        opts.on('--format FORMAT') { |value| options[:format] = value }
-        opts.on('--update-todo') { options[:update_todo] = true }
+        opts.banner = usage('check').strip
+        opts.on('--config PATH', 'Use a different architecture file') { |value| options[:config] = value }
+        opts.on('--format FORMAT', 'Output text or json') { |value| options[:format] = value }
+        opts.on('--update-todo', 'Replace the configured todo with current violations') do
+          options[:update_todo] = true
+        end
+        opts.on('-h', '--help', 'Show this help') { options[:help] = true }
       end
       parser.parse!(argv)
 
+      if options[:help]
+        output.puts parser
+        return 0
+      end
+
       raise Error, 'Cannot combine --update-todo with path arguments.' if options[:update_todo] && argv.any?
 
+      formatter = formatter_for(options[:format])
       definition, root = load_definition(options[:config])
       graph = Analyzer.analyze(definition, root: root)
       todo_path = todo_path_for(definition, root)
@@ -86,24 +135,35 @@ module ArchSpec
                 "No todo configured. Add `todo \"archspec_todo.yml\"` to #{options[:config]}."
         end
 
-        Todo.write(todo_path, diagnostics, root: root)
-        output.puts "Updated #{Pathname(todo_path).relative_path_from(Pathname(root))} with #{diagnostics.size} violations."
+        # Syntax errors are never an accepted baseline; they must be fixed.
+        accepted = diagnostics.reject { |diagnostic| diagnostic.rule == 'parser.syntax' }
+        Todo.write(todo_path, accepted, root: root)
+        label = accepted.size == 1 ? 'violation' : 'violations'
+        output.puts "Updated #{Pathname(todo_path).relative_path_from(Pathname(root))} with #{accepted.size} #{label}."
         return 0
       end
 
-      formatter_for(options[:format]).print(output, graph: graph, diagnostics: diagnostics)
+      formatter.print(output, graph: graph, diagnostics: diagnostics)
       diagnostics.empty? ? 0 : 1
     end
 
     def explain(argv, output)
-      options = { config: CONFIG_FILE }
+      options = { config: CONFIG_FILE, help: false }
       parser = OptionParser.new do |opts|
-        opts.on('--config PATH') { |value| options[:config] = value }
+        opts.banner = usage('explain').strip
+        opts.on('--config PATH', 'Use a different architecture file') { |value| options[:config] = value }
+        opts.on('-h', '--help', 'Show this help') { options[:help] = true }
       end
       parser.parse!(argv)
 
+      if options[:help]
+        output.puts parser
+        return 0
+      end
+
       subject = argv.shift
-      raise Error, 'Usage: archspec explain PATH_OR_CONSTANT' unless subject
+      raise UsageError, 'Missing PATH_OR_CONSTANT.' unless subject
+      raise UsageError, "Unexpected argument: #{argv.first}" if argv.any?
 
       definition, root = load_definition(options[:config])
       graph = Analyzer.analyze(definition, root: root)
@@ -114,17 +174,23 @@ module ArchSpec
     def load_definition(config_path)
       raise Error, "Missing #{config_path}. Run `archspec init` first." unless File.exist?(config_path)
 
-      ArchSpec.last_definition = nil
       absolute_config = File.expand_path(config_path)
-      config_dir = File.dirname(absolute_config)
       definition = Definition.new
-      definition.base_dir = config_dir
+      definition.base_dir = File.dirname(absolute_config)
       definition.extend(DSL::Context)
       definition.instance_eval(File.read(absolute_config), absolute_config)
-      definition = ArchSpec.last_definition || definition
-      definition.base_dir ||= config_dir
 
-      [definition, definition.absolute_root(config_dir)]
+      if definition.component_specs.empty? && definition.rules.empty?
+        raise Error, "#{config_path} declared no components or rules. The file's top level is already " \
+                     'the DSL; do not wrap declarations in ArchSpec.define.'
+      end
+
+      [definition, definition.absolute_root]
+    rescue Error
+      raise
+    rescue SyntaxError, LoadError, StandardError => e
+      detail = e.message.lines.first&.strip || e.class.name
+      raise Error, "Could not load #{config_path}: #{detail}"
     end
 
     def scope_to_paths(diagnostics, paths, root)
@@ -151,18 +217,32 @@ module ArchSpec
       when 'json'
         Formatters::JSON
       else
-        raise Error, "Unknown format: #{name.inspect}"
+        raise UsageError, "Unknown format: #{name.inspect}"
       end
     end
 
-    def usage
-      <<~TEXT
-        Usage:
-          archspec init [PATH] [--force]
-          archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
-          archspec explain PATH_OR_CONSTANT [--config PATH]
-          archspec version
-      TEXT
+    def usage(command = nil)
+      case command.to_s
+      when 'init'
+        'Usage: archspec init [PATH] [--force]'
+      when 'check'
+        'Usage: archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]'
+      when 'explain'
+        'Usage: archspec explain PATH_OR_CONSTANT [--config PATH]'
+      when 'version'
+        'Usage: archspec version'
+      when ''
+        <<~TEXT
+          Usage:
+            archspec init [PATH] [--force]
+            archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
+            archspec explain PATH_OR_CONSTANT [--config PATH]
+            archspec version
+            archspec help [COMMAND]
+        TEXT
+      else
+        usage
+      end
     end
   end
 end

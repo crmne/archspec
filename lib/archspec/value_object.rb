@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 module ArchSpec
+  # A frozen value type with positional or keyword construction and #with,
+  # mirroring Ruby 3.2's Data.define. Deliberately hand-rolled: the gem
+  # supports Ruby 3.1, where Data does not exist. Do not replace this with
+  # Data until the required Ruby version reaches 3.2.
   module ValueObject
     def self.define(*members, &block)
       klass = Struct.new(*members) do

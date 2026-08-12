@@ -232,4 +232,51 @@ class NamingRulesTest < ArchSpecTest
       assert_match(/Report must not define #get_totals/, diagnostics.first.message)
     end
   end
+
+  def test_naming_rules_reject_invalid_selectors_and_scopes
+    scope_error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.method_names(scope: :singleton).matching(/.*/).forbidden
+      end
+    end
+    selector_error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.method_names.matching('get_').forbidden
+      end
+    end
+    required_scope_error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.method_names.matching(/.*/).requires('required', scope: :singleton)
+      end
+    end
+
+    assert_match(/scope: must be :instance or :class/, scope_error.message)
+    assert_match(/expects a Regexp/, selector_error.message)
+    assert_match(/requires scope:/, required_scope_error.message)
+  end
+
+  def test_requires_rejects_an_unknown_target_component
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.method_names.matching(/.*/).requires('required', on: :modelz)
+      end
+    end
+
+    assert_match(/references unknown component: modelz/, error.message)
+  end
+
+  def test_requires_rejects_unknown_capture_names
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.method_names.matching(/\Awith_(?<base>.+)/).requires('without_%{typo}')
+      end
+    end
+
+    assert_match(/invalid requires template.*typo/, error.message)
+  end
 end

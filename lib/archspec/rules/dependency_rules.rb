@@ -29,7 +29,7 @@ module ArchSpec
       private
 
       def relevant_edges(graph)
-        graph.dependency_edges.select { |edge| graph.component_names_for_path(edge.from_path).include?(source) }
+        graph.dependency_edges.select { |edge| graph.source_components_for(edge).include?(source) }
       end
 
       def target_components(graph, edge)
@@ -115,7 +115,7 @@ module ArchSpec
         graph.dependency_edges.flat_map do |edge|
           next [] unless graph.target_components_for(edge).include?(source)
 
-          offenders = graph.component_names_for_path(edge.from_path).reject do |component|
+          offenders = graph.source_components_for(edge).reject do |component|
             component == source || consumers.include?(component)
           end
 
@@ -164,9 +164,9 @@ module ArchSpec
 
       def evaluate(graph)
         graph.dependency_edges.filter_map do |edge|
-          next unless graph.component_names_for_path(edge.from_path).include?(source)
+          next unless graph.source_components_for(edge).include?(source)
 
-          referenced = graph.resolve_constant_reference(edge.to, edge.from_constant)
+          referenced = graph.resolve_edge_constant(edge)
           next unless constants.any? { |constant| referenced == constant || referenced.start_with?("#{constant}::") }
 
           Diagnostic.new(

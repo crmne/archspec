@@ -5,14 +5,12 @@ module ArchSpec
     extend self
 
     def evaluate(definition, graph, todo: Todo.empty)
-      (parser_diagnostics(graph) + definition.rules.flat_map { |rule| rule.evaluate(graph) })
-        .reject { |diagnostic| graph.suppressed?(diagnostic) }
-        .reject { |diagnostic| todo.include?(diagnostic) }
-        .sort_by do |diagnostic|
-        [diagnostic.location.path, diagnostic.location.line, diagnostic.rule,
-         diagnostic.message, diagnostic.evidence]
-      end
-        .uniq { |diagnostic| [diagnostic.rule, diagnostic.message, diagnostic.location.path, diagnostic.location.line] }
+      diagnostics = parser_diagnostics(graph) + definition.rules.flat_map { |rule| rule.evaluate(graph) }
+
+      diagnostics
+        .reject { |diagnostic| graph.suppressed?(diagnostic) || todo.include?(diagnostic) }
+        .sort_by { |d| [d.location.path, d.location.line, d.rule, d.message, d.evidence] }
+        .uniq { |d| [d.rule, d.message, d.location.path, d.location.line] }
     end
 
     private

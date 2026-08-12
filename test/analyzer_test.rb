@@ -24,11 +24,35 @@ class AnalyzerTest < ArchSpecTest
 
   def test_dynamic_superclasses_and_constant_paths_do_not_crash
     with_project do |root|
-      write "#{root}/app/models/spot.rb", <<~RUBY
-        class Spot < Struct.new(:x, :y)
-          def locate
-            self.class::ORIGIN
-          end
+      {
+        money: 'class Money < Data.define(:cents); end',
+        result: 'class Result < Struct.new(:ok); end',
+        widget: 'class Widget < Object.const_get("ApplicationRecord"); end',
+        thing: 'class Thing < superclass::Base; end',
+        spot: 'class Spot; self.class::ORIGIN; end'
+      }.each do |name, source|
+        write "#{root}/app/models/#{name}.rb", "#{source}\n"
+      end
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal %w[Money Result Spot Thing Widget], graph.constants.map(&:name).sort
+      refute graph.edges.any? { |edge| edge.type == :inherits_from }
+    end
+  end
+
+  def test_incomplete_constant_paths_become_parse_diagnostics_instead_of_crashes
+    with_project do |root|
+      write "#{root}/app/models/broken.rb", <<~RUBY
+        class Broken
+          Foo::
+        end
+
+        class AlsoBroken::
         end
       RUBY
 
@@ -36,7 +60,85 @@ class AnalyzerTest < ArchSpecTest
         component :models, in: 'app/models/**/*.rb'
       end
 
-      assert_empty diagnostics_for(definition, root)
+      diagnostics = diagnostics_for(definition, root)
+
+      assert diagnostics.any?
+      assert diagnostics.all? { |diagnostic| diagnostic.rule == 'parser.syntax' }
+    end
+  end
+
+  def test_resolves_constants_from_the_recorded_lexical_nesting
+    with_project do |root|
+      write "#{root}/app/orders/order.rb", <<~RUBY
+        module Domain
+          class Order
+            Entry
+          end
+        end
+      RUBY
+      write "#{root}/app/entries/entry.rb", "class Domain::Order::Entry; end\n"
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        component :orders, in: 'app/orders/**/*.rb'
+        component :entries, in: 'app/entries/**/*.rb'
+        orders.cannot_use :entries
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/Entry/, diagnostics.first.evidence)
+    end
+  end
+
+  def test_absolute_constant_references_do_not_resolve_lexically
+    with_project do |root|
+      write "#{root}/app/global/user.rb", "class User; end\n"
+      write "#{root}/app/domain/user.rb", "class Domain::User; end\n"
+      write "#{root}/app/domain/service.rb", <<~RUBY
+        class Domain::Service
+          ::User
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        component :global, in: 'app/global/**/*.rb'
+        component :domain, in: 'app/domain/**/*.rb'
+        domain.cannot_use :global
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/::User/, diagnostics.first.evidence)
+    end
+  end
+
+  def test_superclasses_resolve_in_the_enclosing_lexical_nesting
+    with_project do |root|
+      write "#{root}/app/base/base.rb", "class Domain::Base; end\n"
+      write "#{root}/app/children/child.rb", <<~RUBY
+        module Domain
+          class Child < Base
+          end
+        end
+      RUBY
+      write "#{root}/app/nested/base.rb", "class Domain::Child::Base; end\n"
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        component :base, in: 'app/base/**/*.rb'
+        component :children, in: 'app/children/**/*.rb'
+        component :nested, in: 'app/nested/**/*.rb'
+        children.cannot_use :base, :nested
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/children must not depend on base/, diagnostics.first.message)
     end
   end
 
@@ -60,6 +162,110 @@ class AnalyzerTest < ArchSpecTest
     end
   end
 
+  def test_ignore_patterns_remove_files_even_when_a_component_matches_them
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/app/models/legacy/account.rb", "class Legacy::Account; end\n"
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        ignore 'app/models/legacy/**/*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal ['User'], graph.constants.map(&:name)
+      assert_equal ["#{root}/app/models/user.rb"], graph.files.keys
+    end
+  end
+
+  def test_records_require_and_dynamic_feature_facts
+    with_project do |root|
+      write "#{root}/lib/loader.rb", <<~RUBY
+        require "json"
+        require_relative "support"
+        Kernel.require "set"
+        Object.const_get("User")
+      RUBY
+
+      definition = ArchSpec.define { source 'lib/**/*.rb' }
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert graph.edges.any? { |edge| edge.type == :requires && edge.to == 'json' }
+      assert graph.edges.any? { |edge| edge.type == :requires_relative && edge.to == 'support' }
+      refute graph.edges.any? { |edge| edge.type == :requires && edge.to == 'set' }
+      assert(graph.edges.any? do |edge|
+        edge.type == :dynamic_feature && edge.to == 'const_get' &&
+          edge.confidence == :unknown_due_to_dynamic_feature
+      end)
+    end
+  end
+
+  def test_constant_selectors_do_not_claim_unmatched_constants_in_the_same_file
+    with_project do |root|
+      write "#{root}/app/models/mixed.rb", <<~RUBY
+        class Before; end
+        class Selected; end
+        class After; end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :selected, constants: 'Selected'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      component = graph.components.fetch(:selected)
+
+      assert_equal ['Selected'], component.constants.to_a
+      assert_equal ["#{root}/app/models/mixed.rb"], component.files.to_a
+    end
+  end
+
+  def test_namespace_selectors_claim_the_namespace_and_its_children
+    with_project do |root|
+      write "#{root}/app/models/mixed.rb", <<~RUBY
+        module Billing
+          class Invoice; end
+        end
+        class Other; end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :billing, namespace: 'Billing'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal %w[Billing Billing::Invoice], graph.components.fetch(:billing).constants.to_a.sort
+    end
+  end
+
+  def test_constant_selectors_only_attribute_matching_constants_edges
+    with_project do |root|
+      write "#{root}/app/models/mixed.rb", <<~RUBY
+        class Selected
+          Forbidden
+        end
+        class Other
+          Forbidden
+        end
+      RUBY
+      write "#{root}/app/forbidden/forbidden.rb", "class Forbidden; end\n"
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        component :selected, constants: 'Selected'
+        component :forbidden, in: 'app/forbidden/**/*.rb'
+        selected.cannot_use :forbidden
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/Selected references_constant Forbidden/, diagnostics.first.evidence)
+    end
+  end
+
   def test_tracks_method_visibility_across_declaration_forms
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY
@@ -67,6 +273,8 @@ class AnalyzerTest < ArchSpecTest
           def pub; end
           private def inline; end
           def after_inline; end
+          private attr_reader :inline_private_attr
+          def after_private_attr; end
           private
           def bare_private; end
           public
@@ -74,6 +282,8 @@ class AnalyzerTest < ArchSpecTest
           private :repub
           private
           attr_reader :priv_attr
+          public attr_reader :inline_public_attr
+          def after_inline_attr; end
           def self.klass; end
           private_class_method :klass
         end
@@ -91,9 +301,13 @@ class AnalyzerTest < ArchSpecTest
       assert_equal :public, visibility[[:pub, :instance]]
       assert_equal :private, visibility[[:inline, :instance]]
       assert_equal :public, visibility[[:after_inline, :instance]]
+      assert_equal :private, visibility[[:inline_private_attr, :instance]]
+      assert_equal :public, visibility[[:after_private_attr, :instance]]
       assert_equal :private, visibility[[:bare_private, :instance]]
       assert_equal :private, visibility[[:repub, :instance]]
       assert_equal :private, visibility[[:priv_attr, :instance]]
+      assert_equal :public, visibility[[:inline_public_attr, :instance]]
+      assert_equal :private, visibility[[:after_inline_attr, :instance]]
       assert_equal :private, visibility[[:klass, :class]]
     end
   end
@@ -129,10 +343,35 @@ class AnalyzerTest < ArchSpecTest
     end
   end
 
+  def test_methods_defined_on_other_or_unknown_singletons_are_not_attributed_to_the_enclosing_class
+    with_project do |root|
+      write "#{root}/app/models/owner.rb", <<~RUBY
+        class Owner
+          def Other.get_config; end
+
+          target = Object.new
+          class << target
+            def get_state; end
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      owner = graph.constants_named('Owner').first
+
+      assert_empty owner.instance_methods
+      assert_empty owner.class_methods
+    end
+  end
+
   def test_tracks_methods_generated_by_rails_attribute_macros
     with_project do |root|
       write "#{root}/app/models/current.rb", <<~RUBY
-        class Current < ActiveSupport::CurrentAttributes
+        class Current < ::ActiveSupport::CurrentAttributes
           attribute :session, :user
         end
 

@@ -41,12 +41,6 @@ architecture :modular_monolith,
 
 `catalog` may depend on `billing`, but only on constants defined under `billing`'s public files. See [Public API]({% link _rules/dependencies.md %}).
 
-Alias:
-
-```ruby
-architecture :bounded_contexts, components: { ... }, allow: { ... }
-```
-
 ArchSpec also adds a cycle check across the declared components.
 
 ## Engines and Packs

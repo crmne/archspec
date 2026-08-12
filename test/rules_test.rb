@@ -161,6 +161,32 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_trailing_disable_comment_suppresses_its_own_line
+    with_project do |root|
+      write "#{root}/app/models/user.rb", <<~RUBY
+        class User
+          UsersController # archspec:disable dependencies.forbid -- accepted boundary
+          # archspec:enable dependencies.forbid
+          OtherController
+        end
+      RUBY
+
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+      write "#{root}/app/controllers/other_controller.rb", "class OtherController; end\n"
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :controllers, in: 'app/controllers/**/*.rb'
+        models.cannot_use :controllers
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/OtherController/, diagnostics.first.evidence)
+    end
+  end
+
   def test_parse_errors_are_reported
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY
@@ -288,6 +314,46 @@ class RulesTest < ArchSpecTest
       assert_equal 1, diagnostics.size
       assert_equal 'objects.instantiate_and_invoke_forbid', diagnostics.first.rule
       assert_match(/services must not instantiate and immediately invoke UserBuilder#build/, diagnostics.first.message)
+    end
+  end
+
+  def test_instantiate_and_invoke_ignores_new_called_on_a_variable
+    with_project do |root|
+      write "#{root}/app/services/create_user.rb", <<~RUBY
+        class CreateUser
+          def run(factory)
+            factory.new.call
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :services, in: 'app/services/**/*.rb'
+        services.cannot_instantiate_and_invoke
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_delegate_with_false_prefix_is_treated_as_an_own_method
+    with_project do |root|
+      write "#{root}/app/services/export.rb", <<~RUBY
+        class Export
+          delegate :render, to: :renderer, prefix: false
+
+          def run
+            render
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :services, in: 'app/services/**/*.rb'
+        services.cannot_call :render, receiver: :none
+      end
+
+      assert_empty diagnostics_for(definition, root)
     end
   end
 
@@ -423,6 +489,53 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_repeated_consumer_allowlists_merge
+    with_project do |root|
+      write "#{root}/app/kernel/money.rb", "class Money; end\n"
+      write "#{root}/app/billing/invoice.rb", "class Invoice; Money; end\n"
+      write "#{root}/app/catalog/price.rb", "class Price; Money; end\n"
+      write "#{root}/app/reporting/report.rb", "class Report; Money; end\n"
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        component :kernel, in: 'app/kernel/**/*.rb'
+        component :billing, in: 'app/billing/**/*.rb'
+        component :catalog, in: 'app/catalog/**/*.rb'
+        component :reporting, in: 'app/reporting/**/*.rb'
+        kernel.can_only_be_used_by :billing
+        kernel.can_only_be_used_by :catalog
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/not reporting/, diagnostics.first.message)
+    end
+  end
+
+  def test_forbidden_constants_match_absolute_names_and_children
+    with_project do |root|
+      write "#{root}/app/models/user.rb", <<~RUBY
+        class User
+          ::ActionController::Base
+          ActionView
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.cannot_reference_constants 'ActionController'
+        models.cannot_reference_constants 'ActionView'
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 2, diagnostics.size
+      assert_equal ['models must not reference ActionController::Base',
+                    'models must not reference ActionView'], diagnostics.map(&:message).sort
+    end
+  end
+
   def test_public_api_flags_outside_references_to_private_constants
     with_project do |root|
       write "#{root}/packs/billing/app/public/billing/invoicer.rb", <<~RUBY
@@ -516,5 +629,45 @@ class RulesTest < ArchSpecTest
 
       assert_empty diagnostics_for(definition, root)
     end
+  end
+
+  def test_must_implement_one_of_requires_a_method_name
+    all_error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :services, in: 'app/services/**/*.rb'
+        services.must_implement
+      end
+    end
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :services, in: 'app/services/**/*.rb'
+        services.must_implement_one_of
+      end
+    end
+
+    assert_match(/must_implement requires at least one method/, all_error.message)
+    assert_match(/requires at least one method/, error.message)
+  end
+
+  def test_dependency_rules_reject_unknown_components
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.cannot_use :controlers
+      end
+    end
+
+    assert_match(/models\.cannot_use references unknown component: controlers/, error.message)
+  end
+
+  def test_cycle_rules_reject_unknown_components
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        no_cycles among: %i[models controlers]
+      end
+    end
+
+    assert_match(/no_cycles references unknown component: controlers/, error.message)
   end
 end

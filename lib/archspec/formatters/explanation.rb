@@ -25,10 +25,15 @@ module ArchSpec
         print_parse_errors(output, file)
         print_component_reasons(output, graph.component_assignment_reasons_for_path(path))
         print_suppressions(output, file)
-        output.puts '  outgoing facts:'
 
-        graph.edges.select { |edge| edge.from_path == path }.each do |edge|
-          output.puts "    #{edge.type} #{edge.to} at #{edge.location.line}:#{edge.location.column}"
+        facts = graph.edges.select { |edge| edge.from_path == path }
+        if facts.empty?
+          output.puts '  outgoing facts: (none)'
+        else
+          output.puts '  outgoing facts:'
+          facts.each do |edge|
+            output.puts "    #{edge.type} #{edge.to} at #{edge.location.line}:#{edge.location.column}"
+          end
         end
       end
 
@@ -40,7 +45,10 @@ module ArchSpec
           output.puts constant.name
           output.puts "  kind: #{constant.kind}"
           output.puts "  file: #{constant.location.relative_path(graph.root)}:#{constant.location.line}"
-          print_component_reasons(output, graph.component_assignment_reasons_for_constant(constant.name))
+          print_component_reasons(
+            output,
+            graph.component_assignment_reasons_for_constant(constant.name, path: constant.path)
+          )
           output.puts "  superclass: #{constant.superclass || '(none)'}"
           output.puts "  instance methods: #{constant.instance_methods.to_a.sort.join(', ')}"
           output.puts "  class methods: #{constant.class_methods.to_a.sort.join(', ')}"

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative 'archspec/error'
 require_relative 'archspec/version'
 require_relative 'archspec/value_object'
 require_relative 'archspec/source_location'
@@ -43,15 +44,7 @@ require_relative 'archspec/cli'
 #
 # You can also build a definition in plain Ruby with ArchSpec.define.
 module ArchSpec
-  # Raised for configuration and usage errors, such as an unknown architecture
-  # name or a malformed rule option.
-  class Error < StandardError; end
-
   class << self
-    # The definition produced by the most recent ArchSpec.define call, or by
-    # evaluating an +Archspec.rb+ file. The CLI reads this after loading config.
-    attr_accessor :last_definition
-
     # Builds an architecture definition from a block of DSL calls.
     #
     #   ArchSpec.define do
@@ -60,16 +53,17 @@ module ArchSpec
     #     models.cannot_use :controllers
     #   end
     #
-    # An +Archspec.rb+ file does not need this wrapper. Its top level is already
-    # the DSL, so bare +component+ and +architecture+ calls work directly. Use
-    # +define+ when constructing a definition from Ruby, such as in a test.
+    # An +Archspec.rb+ file is not written with this wrapper. Its top level is
+    # already the DSL, so bare +component+ and +architecture+ calls work
+    # directly. Use +define+ when constructing a definition from Ruby, such as
+    # in a test.
     #
-    # Returns the ArchSpec::Definition, which is also stored as last_definition.
+    # Returns the ArchSpec::Definition.
     def define(name = nil, &block)
       definition = Definition.new(name)
       definition.extend(DSL::Context)
       definition.instance_eval(&block) if block
-      self.last_definition = definition
+      definition
     end
   end
 end

@@ -27,8 +27,6 @@ component :models,      in: "app/models/**/*.rb"
 component :billing,     namespace: "Billing"
 ```
 
-`component`, `layer`, and `role` are aliases. Use the word that matches the architecture you are describing.
-
 Declare one component per subdirectory with `each_directory`, which is handy for engines and packs:
 
 ```ruby

@@ -36,9 +36,9 @@ module ArchSpec
         public_names = public_constant_names(graph)
 
         graph.dependency_edges.filter_map do |edge|
-          next if component.files.include?(edge.from_path)
+          next if graph.source_components_for(edge).include?(source)
 
-          resolved = graph.resolve_constant_reference(edge.to, edge.from_constant)
+          resolved = graph.resolve_edge_constant(edge)
           next unless graph.component_names_for_constant(resolved).include?(source)
           next if public?(resolved, public_names)
 

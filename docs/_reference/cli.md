@@ -6,6 +6,14 @@ description: ArchSpec command line reference.
 
 # CLI
 
+Show general or command-specific help without running a check:
+
+```sh
+bundle exec archspec help
+bundle exec archspec help check
+bundle exec archspec check --help
+```
+
 ## init
 
 ```sh
@@ -39,7 +47,7 @@ This is the fast loop after an agent or a person edits a few files. It cannot be
 bundle exec archspec check --update-todo
 ```
 
-Writes the current violations to the configured todo file. Use this for existing apps, not for accepting new regressions.
+Writes the current violations to the configured todo file. Use this for existing apps, not for accepting new regressions. Parse errors are never written to the todo; a file that does not parse has to be fixed.
 
 ## explain
 

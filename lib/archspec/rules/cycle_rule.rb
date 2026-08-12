@@ -74,7 +74,7 @@ module ArchSpec
       def first_location_for_cycle(graph, cycle)
         source, target = cycle
         graph.dependency_edges.find do |edge|
-          graph.component_names_for_path(edge.from_path).include?(source) &&
+          graph.source_components_for(edge).include?(source) &&
             graph.target_components_for(edge).include?(target)
         end&.location
       end

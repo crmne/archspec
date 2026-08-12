@@ -8,6 +8,16 @@ module ArchSpec
   # An +Archspec.rb+ file is evaluated in this context, so every method here is
   # a top-level call in that file.
   module DSL
+    # Raises when any of +names+ is not a declared component. Shared by the
+    # top-level DSL and the component proxies.
+    def self.assert_known_components!(definition, names, for_rule:)
+      unknown = Array(names).flatten.compact.map(&:to_sym).reject { |name| definition.component?(name) }.uniq.sort
+      return if unknown.empty?
+
+      label = unknown.length == 1 ? 'component' : 'components'
+      raise Error, "#{for_rule} references unknown #{label}: #{unknown.join(', ')}"
+    end
+
     # The top-level DSL. Declare the project, its components, an architecture
     # preset, and global rules.
     #
@@ -120,6 +130,7 @@ module ArchSpec
       #
       # Rule id: +dependencies.no_cycles+.
       def no_cycles(among: nil)
+        DSL.assert_known_components!(self, among, for_rule: 'no_cycles') if among
         add_rule(Rules::NoCyclesRule.new(among: among))
       end
 
@@ -162,6 +173,7 @@ module ArchSpec
       #
       # Rule id: +dependencies.allow+.
       def can_only_use(*targets)
+        DSL.assert_known_components!(definition, targets, for_rule: "#{name}.can_only_use")
         add_rule(Rules::AllowDependenciesRule.new(name, targets))
         self
       end
@@ -173,6 +185,7 @@ module ArchSpec
       #
       # Rule id: +dependencies.forbid+.
       def cannot_use(*targets)
+        DSL.assert_known_components!(definition, targets, for_rule: "#{name}.cannot_use")
         add_rule(Rules::ForbidDependenciesRule.new(name, targets))
         self
       end
@@ -185,6 +198,7 @@ module ArchSpec
       #
       # Rule id: +dependencies.consumers+.
       def can_only_be_used_by(*consumers)
+        DSL.assert_known_components!(definition, consumers, for_rule: "#{name}.can_only_be_used_by")
         add_rule(Rules::AllowedConsumersRule.new(name, consumers))
         self
       end
@@ -288,6 +302,8 @@ module ArchSpec
       #
       # Rule id: +protocol.must_implement+.
       def must_implement(*methods)
+        raise Error, 'must_implement requires at least one method' if methods.flatten.compact.empty?
+
         methods.each do |method_name|
           add_rule(Rules::MustImplementRule.new(name, method_name))
         end

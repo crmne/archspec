@@ -3,7 +3,7 @@
 require 'test_helper'
 
 class ArchitecturesTest < ArchSpecTest
-  def test_rails_mvc_architecture_keeps_models_away_from_controllers
+  def test_rails_architecture_keeps_models_away_from_controllers
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY
         class User
@@ -380,6 +380,51 @@ class ArchitecturesTest < ArchSpecTest
 
       assert(diagnostics.any? { |diagnostic| diagnostic.rule == 'naming.forbidden' })
     end
+  end
+
+  def test_rails_architecture_requires_controllers_and_models
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        architecture :rails, components: { controllers: 'app/controllers/**/*.rb' }
+      end
+    end
+
+    assert_match(/need controllers and models components, missing: models/, error.message)
+  end
+
+  def test_rails_architecture_skips_rules_for_omitted_optional_components
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; UsersController; end\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; User; end\n"
+
+      definition = ArchSpec.define do
+        architecture :rails, components: {
+          controllers: 'app/controllers/**/*.rb',
+          models: 'app/models/**/*.rb'
+        }
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal ['dependencies.forbid'], diagnostics.map(&:rule)
+      assert_match(/models must not depend on controllers/, diagnostics.first.message)
+    end
+  end
+
+  def test_architectures_reject_unknown_options
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define { architecture :rails, typo: true }
+    end
+
+    assert_match(/Unknown option.*typo:/, error.message)
+  end
+
+  def test_modular_monolith_requires_components
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define { architecture :modular_monolith }
+    end
+
+    assert_match(/requires the components: option/, error.message)
   end
 
   def test_ruby_conventions_composes_with_rails

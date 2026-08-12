@@ -4,15 +4,21 @@ require 'set'
 
 module ArchSpec
   module Rules
-    # Backs the +methods.matching(...)+ DSL. One rule pairs a selector (which
+    # Backs the +method_names.matching(...)+ DSL. One rule pairs a selector (which
     # methods it judges) with a constraint (what must hold of them). It judges a
     # component's defined, public methods in the requested scope, or every such
     # method in the project when +source+ is nil. Every finding is name-based and
     # exact, so confidence is always +:high+.
     class NamingRule
+      VALID_SCOPES = %i[instance class].freeze
+
       attr_reader :source, :selector, :scope, :except
 
       def initialize(source:, selector:, constraint:, scope: :instance, except: [])
+        unless VALID_SCOPES.include?(scope)
+          raise Error, "method_names scope: must be :instance or :class, got #{scope.inspect}"
+        end
+
         @source = source&.to_sym
         @selector = selector
         @constraint = constraint
@@ -52,6 +58,8 @@ module ArchSpec
         attr_reader :regex
 
         def initialize(regex)
+          raise Error, "method_names matching expects a Regexp, got #{regex.inspect}" unless regex.is_a?(Regexp)
+
           @regex = regex
         end
 
@@ -99,6 +107,11 @@ module ArchSpec
       # <tt>requires("without_%{base}")</tt>. Rule id +naming.requires+.
       class Requires
         def initialize(template, on: nil, scope: :instance, because: nil)
+          unless NamingRule::VALID_SCOPES.include?(scope)
+            raise Error, "requires scope: must be :instance or :class, got #{scope.inspect}"
+          end
+          raise Error, "requires expects a String template, got #{template.inspect}" unless template.is_a?(String)
+
           @template = template
           @on = on
           @target_scope = scope
@@ -155,7 +168,7 @@ module ArchSpec
         end
       end
 
-      # Returned by ArchSpec::DSL::ComponentProxy#methods. Starts a selector.
+      # Returned by ArchSpec::DSL::ComponentProxy#method_names. Starts a selector.
       class Builder
         def initialize(component, scope: :instance)
           @component = component
@@ -181,6 +194,7 @@ module ArchSpec
         end
 
         def requires(template, on: nil, scope: :instance, except: [], because: nil)
+          validate_template!(template)
           add(Requires.new(template, on: component_name(on), scope: scope, because: because), except)
         end
 
@@ -201,7 +215,21 @@ module ArchSpec
         def component_name(target)
           return if target.nil?
 
-          target.respond_to?(:name) ? target.name : target.to_sym
+          name = target.respond_to?(:name) ? target.name : target.to_sym
+          unless @component.definition.component?(name)
+            raise Error, "#{@component.name}.method_names.requires references unknown component: #{name}"
+          end
+
+          name
+        end
+
+        def validate_template!(template)
+          return unless template.is_a?(String)
+
+          captures = @selector.regex.names.to_h { |name| [name.to_sym, name] }
+          template % captures
+        rescue KeyError, ArgumentError => e
+          raise Error, "invalid requires template #{template.inspect}: #{e.message}"
         end
       end
     end

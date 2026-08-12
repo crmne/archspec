@@ -34,7 +34,7 @@ module ArchSpec
           consumers = includers[edge.from_constant]
           next if consumers.empty?
 
-          target = graph.resolve_constant_reference(edge.to, edge.from_constant)
+          target = graph.resolve_edge_constant(edge)
           includer = consumers.find { |name| target == name || target.start_with?("#{name}::") }
           next unless includer
 
@@ -56,7 +56,7 @@ module ArchSpec
         graph.edges.each do |edge|
           next unless MIXIN_TYPES.include?(edge.type) && edge.from_constant
 
-          mod = graph.resolve_constant_reference(edge.to, edge.from_constant)
+          mod = graph.resolve_edge_constant(edge)
           map[mod].add(edge.from_constant) unless mod == edge.from_constant
         end
 

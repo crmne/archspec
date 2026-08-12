@@ -35,7 +35,7 @@ module ArchSpec
           next unless edge.type == :calls_named_method
           next unless method_names.include?(edge.to.to_sym)
           next if receiver == :none && edge.receiver != :none
-          next unless graph.component_names_for_path(edge.from_path).include?(source)
+          next unless graph.source_components_for(edge).include?(source)
           next if own_method_call?(graph, edge)
 
           Diagnostic.new(
@@ -107,7 +107,10 @@ module ArchSpec
 
       def initialize(source, method_names)
         @source = source.to_sym
-        @method_names = Array(method_names).flatten.map(&:to_sym)
+        names = Array(method_names).flatten.compact
+        raise Error, 'must_implement_one_of requires at least one method' if names.empty?
+
+        @method_names = names.map(&:to_sym)
       end
 
       def merge_key
@@ -154,7 +157,7 @@ module ArchSpec
         component = graph.components[source]
         return [] unless component
 
-        component.constants.flat_map { |name| graph.constants_named(name) }.select(&:class?).uniq(&:name)
+        graph.constants_for_component(source).select(&:class?).uniq(&:name)
       end
 
       def for(constant, methods, unresolved)
@@ -222,7 +225,7 @@ module ArchSpec
       def evaluate(graph)
         graph.edges.filter_map do |edge|
           next unless edge.type == :instantiates_and_invokes
-          next unless graph.component_names_for_path(edge.from_path).include?(source)
+          next unless graph.source_components_for(edge).include?(source)
 
           Diagnostic.new(
             rule: id,

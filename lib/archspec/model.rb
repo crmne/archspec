@@ -29,14 +29,16 @@ module ArchSpec
   end
 
   class ConstantNode
-    attr_reader :name, :kind, :path, :location, :instance_methods, :class_methods, :method_definitions, :mixins
+    attr_reader :name, :kind, :path, :location, :instance_methods, :class_methods, :method_definitions, :mixins,
+                :nesting
     attr_accessor :superclass
 
-    def initialize(name:, kind:, path:, location:)
+    def initialize(name:, kind:, path:, location:, nesting: [])
       @name = name
       @kind = kind
       @path = path
       @location = location
+      @nesting = Array(nesting).dup.freeze
       @instance_methods = Set.new
       @class_methods = Set.new
       @method_definitions = []
@@ -79,7 +81,16 @@ module ArchSpec
     end
   end
 
-  Edge = ValueObject.define(:type, :from_path, :from_constant, :to, :location, :confidence, :receiver)
+  Edge = ValueObject.define(
+    :type,
+    :from_path,
+    :from_constant,
+    :to,
+    :location,
+    :confidence,
+    :receiver,
+    :lexical_nesting
+  )
 
   class Component
     attr_reader :name, :files, :constants, :file_reasons, :constant_reasons
@@ -88,6 +99,7 @@ module ArchSpec
       @name = name.to_sym
       @files = Set.new
       @constants = Set.new
+      @constant_occurrences = Set.new
       @file_reasons = Hash.new { |hash, key| hash[key] = Set.new }
       @constant_reasons = Hash.new { |hash, key| hash[key] = Set.new }
     end
@@ -97,9 +109,16 @@ module ArchSpec
       file_reasons[path].add(reason) if reason
     end
 
-    def add_constant(name, reason: nil)
+    def add_constant(name, path:, reason: nil)
       constants.add(name)
+      @constant_occurrences.add([name, path])
       constant_reasons[name].add(reason) if reason
+    end
+
+    def includes_constant?(name, path: nil)
+      return constants.include?(name) unless path
+
+      @constant_occurrences.include?([name, path])
     end
   end
 
@@ -134,19 +153,21 @@ module ArchSpec
       )
     end
 
-    def add_constant(name:, kind:, path:, location:)
+    def add_constant(name:, kind:, path:, location:, nesting: [])
       normalized = normalize_constant(name)
       existing = @constants_by_name[normalized].find { |constant| constant.path == path && constant.kind == kind }
       return existing if existing
 
-      constant = ConstantNode.new(name: normalized, kind: kind, path: path, location: location)
+      constant = ConstantNode.new(name: normalized, kind: kind, path: path, location: location, nesting: nesting)
       constants << constant
       @constants_by_name[normalized] << constant
       constant
     end
 
-    def add_edge(type:, from_path:, from_constant:, to:, location:, confidence: :high, receiver: nil)
-      edges << Edge.new(type, from_path, from_constant, normalize_constant(to), location, confidence, receiver)
+    def add_edge(type:, from_path:, from_constant:, to:, location:, confidence: :high, receiver: nil,
+                 lexical_nesting: nil)
+      nesting = lexical_nesting&.map { |name| normalize_constant(name) }&.freeze
+      edges << Edge.new(type, from_path, from_constant, to.to_s, location, confidence, receiver, nesting)
     end
 
     def constants_named(name)
@@ -161,7 +182,7 @@ module ArchSpec
       component = components[name.to_sym]
       return [] unless component
 
-      component.constants.flat_map { |constant_name| constants_named(constant_name) }.flat_map(&:method_definitions)
+      constants_for_component(name).flat_map(&:method_definitions)
     end
 
     # Every method definition in the graph, across all constants. Used by
@@ -175,18 +196,22 @@ module ArchSpec
 
       component_specs.each do |spec|
         component = Component.new(spec.name)
+        files_matched_by_pattern = Set.new
 
         spec.file_patterns.each do |pattern|
-          each_matching_file(pattern) { |path| component.add_file(path, reason: "matched file pattern #{pattern}") }
+          each_matching_file(pattern) do |path|
+            files_matched_by_pattern.add(path)
+            component.add_file(path, reason: "matched file pattern #{pattern}")
+          end
         end
 
         constants.each do |constant|
-          matched_file = component.files.include?(constant.path)
+          matched_file = files_matched_by_pattern.include?(constant.path)
           matched_constant = spec.matches_constant?(constant.name)
           next unless matched_file || matched_constant
 
           component.add_file(constant.path, reason: "defines #{constant.name}") if matched_constant
-          component.add_constant(constant.name,
+          component.add_constant(constant.name, path: constant.path,
                                  reason: matched_file ? 'defined in matched file' : 'matched namespace/constant selector')
         end
 
@@ -200,12 +225,21 @@ module ArchSpec
       end
     end
 
-    def component_names_for_constant(name)
+    def component_names_for_constant(name, path: nil)
       normalized = normalize_constant(name)
 
       components.values.each_with_object(Set.new) do |component, names|
-        names.add(component.name) if component.constants.include?(normalized)
+        names.add(component.name) if component.includes_constant?(normalized, path: path)
       end
+    end
+
+    # Components that own the source of an edge. Constant and namespace
+    # selectors stay precise when a file also defines unrelated constants;
+    # top-level edges fall back to the file assignment.
+    def source_components_for(edge)
+      return component_names_for_path(edge.from_path) unless edge.from_constant
+
+      component_names_for_constant(edge.from_constant, path: edge.from_path)
     end
 
     def dependency_edges
@@ -215,29 +249,28 @@ module ArchSpec
     def target_components_for(edge)
       return Set.new unless DEPENDENCY_EDGE_TYPES.include?(edge.type)
 
-      resolved = resolve_constant_reference(edge.to, edge.from_constant)
+      resolved = resolve_edge_constant(edge)
       constants_named(resolved).each_with_object(Set.new) do |constant, names|
-        names.merge(component_names_for_path(constant.path))
-        names.merge(component_names_for_constant(constant.name))
+        names.merge(component_names_for_constant(resolved, path: constant.path))
       end
     end
 
-    def resolve_constant_reference(name, from_constant)
+    def resolve_constant_reference(name, from_constant = nil, lexical_nesting: nil)
+      absolute = name.to_s.start_with?('::')
       normalized = normalize_constant(name)
-      candidates = []
+      return normalized if absolute
 
-      if from_constant
-        namespace = normalize_constant(from_constant).split('::')
-        namespace.pop
-
-        until namespace.empty?
-          candidates << "#{namespace.join('::')}::#{normalized}"
-          namespace.pop
-        end
-      end
-
+      scopes = lexical_nesting || inferred_nesting(from_constant)
+      candidates = scopes.map { |scope| "#{normalize_constant(scope)}::#{normalized}" }
       candidates << normalized
       candidates.find { |candidate| constants_named(candidate).any? } || normalized
+    end
+
+    # Resolves an edge with the lexical nesting captured where the reference
+    # appeared. This matters for compact class declarations and superclass
+    # expressions, where inferring scope from the finished class name is wrong.
+    def resolve_edge_constant(edge)
+      resolve_constant_reference(edge.to, edge.from_constant, lexical_nesting: edge.lexical_nesting)
     end
 
     # Instance methods a constant responds to, walking resolvable superclasses
@@ -259,11 +292,21 @@ module ArchSpec
       nodes.each do |node|
         methods.merge(node.instance_methods)
 
-        ancestors = node.mixins[:include].to_a + node.mixins[:prepend].to_a
-        ancestors << node.superclass if node.superclass
+        mixins = node.mixins[:include].to_a + node.mixins[:prepend].to_a
 
-        ancestors.each do |ancestor|
-          resolved_name = resolve_constant_reference(ancestor, node.name)
+        mixins.each do |ancestor|
+          resolved_name = resolve_constant_reference(
+            ancestor,
+            node.name,
+            lexical_nesting: [node.name] + node.nesting
+          )
+          ancestor_methods, ancestor_unresolved = effective_instance_methods(resolved_name, visited)
+          methods.merge(ancestor_methods)
+          unresolved.merge(ancestor_unresolved)
+        end
+
+        if node.superclass
+          resolved_name = resolve_constant_reference(node.superclass, node.name, lexical_nesting: node.nesting)
           ancestor_methods, ancestor_unresolved = effective_instance_methods(resolved_name, visited)
           methods.merge(ancestor_methods)
           unresolved.merge(ancestor_unresolved)
@@ -278,7 +321,7 @@ module ArchSpec
       pairs = Set.new
 
       dependency_edges.each do |edge|
-        source_components = component_names_for_path(edge.from_path)
+        source_components = source_components_for(edge)
         source_components &= allowed_sources unless allowed_sources.empty?
         next if source_components.empty?
 
@@ -300,14 +343,21 @@ module ArchSpec
       end
     end
 
-    def component_assignment_reasons_for_constant(name)
+    def component_assignment_reasons_for_constant(name, path: nil)
       normalized = normalize_constant(name)
 
       components.values.each_with_object({}) do |component, reasons|
-        next unless component.constants.include?(normalized)
+        next unless component.includes_constant?(normalized, path: path)
 
         reasons[component.name] = component.constant_reasons[normalized].to_a.sort
       end
+    end
+
+    def constants_for_component(name)
+      component = components[name.to_sym]
+      return [] unless component
+
+      constants.select { |constant| component.includes_constant?(constant.name, path: constant.path) }
     end
 
     def suppressed?(diagnostic)
@@ -326,6 +376,13 @@ module ArchSpec
 
     def normalize_constant(value)
       value.to_s.sub(/\A::/, '')
+    end
+
+    def inferred_nesting(from_constant)
+      return [] unless from_constant
+
+      parts = normalize_constant(from_constant).split('::')
+      parts.length.downto(1).map { |length| parts.first(length).join('::') }
     end
   end
 end
