@@ -416,7 +416,7 @@ class ArchitecturesTest < ArchSpecTest
       ArchSpec.define { architecture :rails, typo: true }
     end
 
-    assert_match(/Unknown option.*typo:/, error.message)
+    assert_match(/unknown option.*typo:/, error.message)
   end
 
   def test_modular_monolith_requires_components

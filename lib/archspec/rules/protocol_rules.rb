@@ -42,7 +42,7 @@ module ArchSpec
             rule: id,
             message: "#{source} must not call ##{edge.to}",
             location: edge.location,
-            evidence: "#{edge.from_constant || edge.from_path} calls #{edge.to}"
+            evidence: "#{graph.edge_source_name(edge)} calls #{edge.to}"
           )
         end
       end
@@ -231,7 +231,7 @@ module ArchSpec
             rule: id,
             message: "#{source} must not instantiate and immediately invoke #{edge.to}",
             location: edge.location,
-            evidence: "#{edge.from_constant || edge.from_path} uses #{edge.to}"
+            evidence: "#{graph.edge_source_name(edge)} uses #{edge.to}"
           )
         end
       end

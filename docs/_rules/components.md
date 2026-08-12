@@ -18,9 +18,15 @@ Rule id: `components.empty`
 Every file that lands in the component fails the check:
 
 ```text
-[components.empty] app/services/create_user.rb:1:1
-  services must stay empty: behavior belongs on models
-  evidence: app/services/create_user.rb belongs to services
+[error] services must stay empty: behavior belongs on models [components.empty]
+
+app/services/create_user.rb:1:1
+
+  → 1 │ class CreateUser
+      │ ^
+    2 │   def perform
+
+  note: app/services/create_user.rb belongs to services
 ```
 
 The `because:` reason is optional but recommended. It appears in the failure

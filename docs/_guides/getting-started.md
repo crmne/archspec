@@ -71,19 +71,37 @@ ArchSpec exits with `0` when the rules pass and non-zero when they fail.
 
 ## Read a Failure
 
-A failure shows the rule, file, line, message, evidence, confidence, and stable id:
+A failure shows the message and rule, the offending code, and the evidence
+ArchSpec found:
 
 ```text
-[dependencies.forbid] app/models/user.rb:2:3
-  models must not depend on controllers
-  evidence: User references_constant UsersController
-  confidence: high
+[error] models must not depend on controllers [dependencies.forbid]
+
+app/models/user.rb:2:3
+
+    1 │ class User < ApplicationRecord
+  → 2 │   UsersController
+      │   ^~~~~~~~~~~~~~~
+    3 │ end
+
+  note: User references UsersController
 ```
 
 Run `explain` on the file to see how ArchSpec assigned it:
 
 ```sh
 bundle exec archspec explain app/models/user.rb
+```
+
+```text
+app/models/user.rb
+
+  defined constants: User
+  components:
+    models: matched file pattern app/models/**/*.rb
+  outgoing facts:
+    1:14 │ inherits from ApplicationRecord
+     2:3 │ references UsersController
 ```
 
 ## Commit the Spec

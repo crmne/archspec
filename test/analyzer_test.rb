@@ -262,7 +262,7 @@ class AnalyzerTest < ArchSpecTest
       diagnostics = diagnostics_for(definition, root)
 
       assert_equal 1, diagnostics.size
-      assert_match(/Selected references_constant Forbidden/, diagnostics.first.evidence)
+      assert_match(/Selected references Forbidden/, diagnostics.first.evidence)
     end
   end
 

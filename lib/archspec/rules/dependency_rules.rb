@@ -31,14 +31,6 @@ module ArchSpec
       def relevant_edges(graph)
         graph.dependency_edges.select { |edge| graph.source_components_for(edge).include?(source) }
       end
-
-      def target_components(graph, edge)
-        graph.target_components_for(edge)
-      end
-
-      def edge_target(edge)
-        edge.to
-      end
     end
 
     # Backs ArchSpec::DSL::ComponentProxy#can_only_use. Flags references from the
@@ -50,14 +42,14 @@ module ArchSpec
 
       def evaluate(graph)
         relevant_edges(graph).flat_map do |edge|
-          target_components(graph, edge).filter_map do |target|
+          graph.target_components_for(edge).filter_map do |target|
             next if target == source || targets.include?(target)
 
             Diagnostic.new(
               rule: id,
               message: "#{source} may not depend on #{target}",
               location: edge.location,
-              evidence: "#{edge.from_constant || edge.from_path} #{edge.type} #{edge_target(edge)}"
+              evidence: "#{graph.edge_source_name(edge)} #{edge.verb} #{edge.to}"
             )
           end
         end
@@ -73,14 +65,14 @@ module ArchSpec
 
       def evaluate(graph)
         relevant_edges(graph).flat_map do |edge|
-          forbidden = target_components(graph, edge) & targets
+          forbidden = graph.target_components_for(edge) & targets
 
           forbidden.map do |target|
             Diagnostic.new(
               rule: id,
               message: "#{source} must not depend on #{target}",
               location: edge.location,
-              evidence: "#{edge.from_constant || edge.from_path} #{edge.type} #{edge_target(edge)}"
+              evidence: "#{graph.edge_source_name(edge)} #{edge.verb} #{edge.to}"
             )
           end
         end
@@ -124,7 +116,7 @@ module ArchSpec
               rule: id,
               message: message_for(offender),
               location: edge.location,
-              evidence: "#{edge.from_constant || edge.from_path} #{edge.type} #{edge.to}"
+              evidence: "#{graph.edge_source_name(edge)} #{edge.verb} #{edge.to}"
             )
           end
         end
@@ -173,7 +165,7 @@ module ArchSpec
             rule: id,
             message: "#{source} must not reference #{referenced}",
             location: edge.location,
-            evidence: "#{edge.from_constant || edge.from_path} #{edge.type} #{edge.to}"
+            evidence: "#{graph.edge_source_name(edge)} #{edge.verb} #{edge.to}"
           )
         end
       end

@@ -164,7 +164,18 @@ bundle exec archspec explain app/models/user.rb
 ```
 
 `explain` shows why a file or constant belongs to a component and which outgoing
-facts ArchSpec found.
+facts ArchSpec found:
+
+```text
+app/models/user.rb
+
+  defined constants: User
+  components:
+    models: matched file pattern app/models/**/*.rb
+  outgoing facts:
+    1:14 │ inherits from ApplicationRecord
+     2:3 │ references UsersController
+```
 
 ## Checking AI-Written Code
 
@@ -182,10 +193,16 @@ Passing paths still analyzes the project so dependencies resolve, but reports on
 If it fails, read the evidence before changing the spec:
 
 ```text
-[dependencies.forbid] app/models/user.rb:2:3
-  models must not depend on controllers
-  evidence: User references_constant UsersController
-  confidence: high
+[error] models must not depend on controllers [dependencies.forbid]
+
+app/models/user.rb:2:3
+
+    1 │ class User < ApplicationRecord
+  → 2 │   UsersController
+      │   ^~~~~~~~~~~~~~~
+    3 │ end
+
+  note: User references UsersController
 ```
 
 Most failures should be fixed in the generated code. Update the spec only when

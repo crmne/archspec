@@ -29,9 +29,16 @@ bundle exec archspec check
 If it fails, do not start by changing the spec. Read the evidence:
 
 ```text
-[methods.forbid] app/services/create_user.rb:7:5
-  services must not call #redirect_to
-  evidence: CreateUser calls redirect_to
+[error] services must not call #redirect_to [methods.forbid]
+
+app/services/create_user.rb:7:5
+
+    6 │   def perform
+  → 7 │     redirect_to root_path
+      │     ^~~~~~~~~~~~~~~~~~~~~
+    8 │   end
+
+  note: CreateUser calls redirect_to
 ```
 
 Then ask:
@@ -47,6 +54,17 @@ Most failures should be fixed in the generated code.
 
 ```sh
 bundle exec archspec explain app/services/create_user.rb
+```
+
+```text
+app/services/create_user.rb
+
+  defined constants: CreateUser
+  components:
+    services: matched file pattern app/services/**/*.rb
+  outgoing facts:
+    3:5 │ calls create!
+    7:5 │ calls redirect_to
 ```
 
 `explain` shows the defined constants, component assignment, suppressions, and outgoing facts. Use it when a failure looks surprising.

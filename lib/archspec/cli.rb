@@ -37,19 +37,19 @@ module ArchSpec
       when 'explain'
         explain(argv, output)
       when 'version', '--version', '-v'
-        raise UsageError, "Unexpected argument: #{argv.first}" if argv.any?
+        raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
 
         output.puts ArchSpec::VERSION
         0
       else
-        raise UsageError, "Unknown command: #{command}"
+        raise UsageError, "unknown command: #{command}"
       end
     rescue OptionParser::ParseError, UsageError => e
-      error.puts e.message
+      error.puts "archspec: error: #{e.message}"
       error.puts usage(command)
       USAGE_ERROR_STATUS
     rescue Error => e
-      error.puts e.message
+      error.puts "archspec: error: #{e.message}"
       1
     end
 
@@ -57,9 +57,9 @@ module ArchSpec
 
     def help(argv, output)
       subject = argv.shift
-      raise UsageError, "Unexpected argument: #{argv.first}" if argv.any?
+      raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
       if subject && !%w[init check explain version].include?(subject)
-        raise UsageError, "Unknown command: #{subject}"
+        raise UsageError, "unknown command: #{subject}"
       end
 
       output.puts usage(subject)
@@ -80,19 +80,19 @@ module ArchSpec
         return 0
       end
 
-      raise UsageError, "Unexpected argument: #{argv[1]}" if argv.length > 1
+      raise UsageError, "unexpected argument: #{argv[1]}" if argv.length > 1
 
       path = argv.shift || CONFIG_FILE
 
       if File.exist?(path) && !options[:force]
-        raise Error, "#{path} already exists. Use --force to overwrite it."
+        raise Error, "#{path} already exists (use --force to overwrite)"
       end
 
       File.write(path, TEMPLATE)
       output.puts "Created #{path}"
       0
     rescue SystemCallError => e
-      raise Error, "Could not create #{path}: #{e.message}"
+      raise Error, "could not create #{path}: #{e.message}"
     end
 
     def check(argv, output)
@@ -119,7 +119,7 @@ module ArchSpec
         return 0
       end
 
-      raise Error, 'Cannot combine --update-todo with path arguments.' if options[:update_todo] && argv.any?
+      raise Error, 'cannot combine --update-todo with path arguments' if options[:update_todo] && argv.any?
 
       formatter = formatter_for(options[:format])
       definition, root = load_definition(options[:config])
@@ -132,7 +132,7 @@ module ArchSpec
       if options[:update_todo]
         unless todo_path
           raise Error,
-                "No todo configured. Add `todo \"archspec_todo.yml\"` to #{options[:config]}."
+                "no todo configured; add `todo \"archspec_todo.yml\"` to #{options[:config]}"
         end
 
         # Syntax errors are never an accepted baseline; they must be fixed.
@@ -162,8 +162,8 @@ module ArchSpec
       end
 
       subject = argv.shift
-      raise UsageError, 'Missing PATH_OR_CONSTANT.' unless subject
-      raise UsageError, "Unexpected argument: #{argv.first}" if argv.any?
+      raise UsageError, 'missing PATH_OR_CONSTANT' unless subject
+      raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
 
       definition, root = load_definition(options[:config])
       graph = Analyzer.analyze(definition, root: root)
@@ -172,7 +172,7 @@ module ArchSpec
     end
 
     def load_definition(config_path)
-      raise Error, "Missing #{config_path}. Run `archspec init` first." unless File.exist?(config_path)
+      raise Error, "no #{config_path} found; run `archspec init` first" unless File.exist?(config_path)
 
       absolute_config = File.expand_path(config_path)
       definition = Definition.new
@@ -181,8 +181,8 @@ module ArchSpec
       definition.instance_eval(File.read(absolute_config), absolute_config)
 
       if definition.component_specs.empty? && definition.rules.empty?
-        raise Error, "#{config_path} declared no components or rules. The file's top level is already " \
-                     'the DSL; do not wrap declarations in ArchSpec.define.'
+        raise Error, "#{config_path} declared no components or rules; the file's top level is already " \
+                     'the DSL, so do not wrap declarations in ArchSpec.define'
       end
 
       [definition, definition.absolute_root]
@@ -190,7 +190,7 @@ module ArchSpec
       raise
     rescue SyntaxError, LoadError, StandardError => e
       detail = e.message.lines.first&.strip || e.class.name
-      raise Error, "Could not load #{config_path}: #{detail}"
+      raise Error, "could not load #{config_path}: #{detail}"
     end
 
     def scope_to_paths(diagnostics, paths, root)
@@ -217,7 +217,7 @@ module ArchSpec
       when 'json'
         Formatters::JSON
       else
-        raise UsageError, "Unknown format: #{name.inspect}"
+        raise UsageError, "unknown format: #{name.inspect}"
       end
     end
 

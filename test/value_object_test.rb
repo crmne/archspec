@@ -3,32 +3,33 @@
 require 'test_helper'
 
 class ValueObjectTest < ArchSpecTest
-  def test_value_objects_accept_keywords
-    location = ArchSpec::SourceLocation.new(path: '/app/user.rb', line: 12, column: 3)
+  Point = ArchSpec::ValueObject.define(:x, :y)
 
-    assert_equal '/app/user.rb', location.path
-    assert_equal 12, location.line
-    assert_equal 3, location.column
+  def test_value_objects_accept_keywords
+    point = Point.new(x: 12, y: 3)
+
+    assert_equal 12, point.x
+    assert_equal 3, point.y
   end
 
   def test_value_objects_are_immutable
-    location = ArchSpec::SourceLocation.new('/app/user.rb', 12, 3)
+    point = Point.new(12, 3)
 
-    assert_predicate location, :frozen?
-    refute_respond_to location, :line=
+    assert_predicate point, :frozen?
+    refute_respond_to point, :x=
   end
 
   def test_value_objects_can_copy_with_changes
-    location = ArchSpec::SourceLocation.new('/app/user.rb', 12, 3)
-    updated = location.with(line: 13)
+    point = Point.new(12, 3)
+    updated = point.with(x: 13)
 
-    assert_equal ArchSpec::SourceLocation.new('/app/user.rb', 13, 3), updated
-    assert_equal 12, location.line
+    assert_equal Point.new(13, 3), updated
+    assert_equal 12, point.x
   end
 
   def test_value_objects_reject_incomplete_values
     assert_raises(ArgumentError) do
-      ArchSpec::SourceLocation.new('/app/user.rb')
+      Point.new(12)
     end
   end
 end

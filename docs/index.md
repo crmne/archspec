@@ -16,6 +16,19 @@ hero:
         models.cannot_use :controllers
         services.cannot_call :render, :redirect_to
         ```
+    - title: Failures explained
+      link: /cli/
+      code: |
+        ```text
+        [error] services must not call #render [methods.forbid]
+
+        app/services/create_user.rb:7:5
+
+          → 7 │     render :new
+              │     ^~~~~~~~~~~
+
+          note: CreateUser calls render
+        ```
     - title: Rails
       link: /architectures/rails/
       code: |

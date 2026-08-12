@@ -90,7 +90,25 @@ module ArchSpec
     :confidence,
     :receiver,
     :lexical_nesting
-  )
+  ) do
+    VERBS = {
+      references_constant: 'references',
+      inherits_from: 'inherits from',
+      includes: 'includes',
+      prepends: 'prepends',
+      extends: 'extends',
+      calls_named_method: 'calls',
+      instantiates_and_invokes: 'instantiates and invokes',
+      requires: 'requires',
+      requires_relative: 'requires',
+      dynamic_feature: 'uses dynamic feature'
+    }.freeze
+
+    # The edge type as prose, for diagnostics and explain output.
+    def verb
+      VERBS.fetch(type, type.to_s.tr('_', ' '))
+    end
+  end
 
   class Component
     attr_reader :name, :files, :constants, :file_reasons, :constant_reasons
@@ -231,6 +249,14 @@ module ArchSpec
       components.values.each_with_object(Set.new) do |component, names|
         names.add(component.name) if component.includes_constant?(normalized, path: path)
       end
+    end
+
+    # The edge's source as prose: its constant when known, otherwise the
+    # root-relative path of the file. Diagnostics use this so evidence never
+    # embeds an absolute path, which would make todo fingerprints
+    # machine-specific.
+    def edge_source_name(edge)
+      edge.from_constant || files[edge.from_path]&.relative_path || edge.from_path
     end
 
     # Components that own the source of an edge. Constant and namespace

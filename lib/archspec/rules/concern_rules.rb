@@ -42,7 +42,7 @@ module ArchSpec
             rule: id,
             message: "#{edge.from_constant} must not reference its includer #{includer}",
             location: edge.location,
-            evidence: "#{edge.from_constant} #{edge.type} #{target}"
+            evidence: "#{edge.from_constant} #{edge.verb} #{target}"
           )
         end
       end

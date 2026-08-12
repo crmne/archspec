@@ -56,7 +56,17 @@ protocol rules).
 
 Run `archspec explain app/models/user.rb` to see the facts for one file.
 It prints the defined constants, component assignments with reasons, and
-every outgoing edge.
+every outgoing edge:
+
+```text
+app/models/user.rb
+
+  defined constants: User
+  components:
+    models: matched file pattern app/models/**/*.rb
+  outgoing facts:
+    2:22 │ references UsersController
+```
 
 ## A Violation, Traced
 
@@ -77,10 +87,16 @@ Parsing records a `references_constant` edge from `app/models/user.rb` to
 it lands in a forbidden component, and emits:
 
 ```text
-[dependencies.forbid] app/models/user.rb:2:22
-  models must not depend on controllers
-  evidence: User references_constant UsersController
-  confidence: high
+[error] models must not depend on controllers [dependencies.forbid]
+
+app/models/user.rb:2:22
+
+    1 │ class User
+  → 2 │   def profile_path = UsersController
+      │                      ^~~~~~~~~~~~~~~
+    3 │ end
+
+  note: User references UsersController
 ```
 
 ## Dynamic Code

@@ -23,7 +23,7 @@ class CLITest < ArchSpecTest
     status = ArchSpec::CLI.run(['frobnicate'], output: StringIO.new, error: error)
 
     assert_equal 64, status
-    assert_match(/Unknown command: frobnicate/, error.string)
+    assert_match(/archspec: error: unknown command: frobnicate/, error.string)
   end
 
   def test_help_is_returned_without_exiting_the_caller
@@ -58,7 +58,7 @@ class CLITest < ArchSpecTest
       end
 
       assert_equal 1, status
-      assert_match(/Could not load Archspec\.rb/, error.string)
+      assert_match(/archspec: error: could not load Archspec\.rb/, error.string)
       assert_match(/syntax error/i, error.string)
     end
   end
@@ -77,7 +77,7 @@ class CLITest < ArchSpecTest
       end
 
       assert_equal 1, status
-      assert_match(/Could not load todo file/, error.string)
+      assert_match(/could not load todo file/, error.string)
     end
   end
 
@@ -221,7 +221,7 @@ class CLITest < ArchSpecTest
       end
 
       assert_equal 1, status
-      assert_match(/Cannot combine/, error.string)
+      assert_match(/cannot combine/, error.string)
     end
   end
 
@@ -235,7 +235,7 @@ class CLITest < ArchSpecTest
       end
 
       assert_equal 1, status
-      assert_match(/No todo configured/, error.string)
+      assert_match(/no todo configured/, error.string)
     end
   end
 
@@ -245,7 +245,7 @@ class CLITest < ArchSpecTest
     status = ArchSpec::CLI.run(['check', '--format', 'xml'], output: StringIO.new, error: error)
 
     assert_equal 64, status
-    assert_match(/Unknown format: "xml"/, error.string)
+    assert_match(/unknown format: "xml"/, error.string)
   end
 
   def test_check_updates_todo_file
@@ -349,7 +349,7 @@ class CLITest < ArchSpecTest
 
       assert_equal 0, status
       assert_match(/suppressions:/, output.string)
-      assert_match(/dependencies\.forbid on line 3 -- accepted boundary/, output.string)
+      assert_match(/3 │ dependencies\.forbid -- accepted boundary/, output.string)
     end
   end
 

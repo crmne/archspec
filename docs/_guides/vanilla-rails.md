@@ -48,9 +48,15 @@ then requires these directories to stay empty, using the
 If a change adds `app/services/create_user.rb`, the check fails:
 
 ```text
-[components.empty] app/services/create_user.rb:1:1
-  services must stay empty: behavior belongs on models, not service objects
-  evidence: app/services/create_user.rb belongs to services
+[error] services must stay empty: behavior belongs on models, not service objects [components.empty]
+
+app/services/create_user.rb:1:1
+
+  → 1 │ class CreateUser
+      │ ^
+    2 │   def perform
+
+  note: app/services/create_user.rb belongs to services
 ```
 
 ## More Rules

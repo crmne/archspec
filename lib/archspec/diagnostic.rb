@@ -36,6 +36,8 @@ module ArchSpec
         path: location.relative_path(root),
         line: location.line,
         column: location.column,
+        end_line: location.end_line,
+        end_column: location.end_column,
         evidence: evidence,
         confidence: confidence.to_s
       }

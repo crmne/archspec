@@ -140,7 +140,7 @@ module ArchSpec
     def apply(name, dsl, **options)
       name = architecture_name(name)
       defaults = DEFAULTS[name]
-      raise Error, "Unknown ArchSpec architecture: #{name.inspect}" unless defaults
+      raise Error, "unknown architecture: #{name.inspect}" unless defaults
 
       validate_options!(name, defaults, options)
       send(name, dsl, **defaults.merge(options))
@@ -149,7 +149,9 @@ module ArchSpec
     def rails(dsl, components:, controller_api:, share_helpers:)
       components = normalize_map(components)
       missing = %i[controllers models] - components.keys
-      raise Error, "The rails architectures need controllers and models components, missing: #{missing.join(', ')}" if missing.any?
+      if missing.any?
+        raise Error, "the rails architectures need controllers and models components, missing: #{missing.join(', ')}"
+      end
 
       define_components(dsl, components)
 
@@ -222,7 +224,7 @@ module ArchSpec
     end
 
     def modular_monolith(dsl, components:, allow: {}, public: {})
-      raise Error, 'Architecture :modular_monolith requires the components: option' unless components
+      raise Error, 'architecture :modular_monolith requires the components: option' unless components
 
       components = normalize_map(components)
       define_components(dsl, components)
@@ -276,7 +278,7 @@ module ArchSpec
     def architecture_name(name)
       name.to_sym
     rescue NoMethodError
-      raise Error, "Unknown ArchSpec architecture: #{name.inspect}"
+      raise Error, "unknown architecture: #{name.inspect}"
     end
 
     def validate_options!(name, defaults, options)
@@ -285,7 +287,7 @@ module ArchSpec
 
       label = unknown.length == 1 ? 'option' : 'options'
       names = unknown.map { |option| "#{option}:" }.sort.join(', ')
-      raise Error, "Unknown #{label} for architecture :#{name}: #{names}"
+      raise Error, "unknown #{label} for architecture :#{name}: #{names}"
     end
 
     def forbid_name(dsl, regex, reason, scope:)

@@ -18,7 +18,7 @@ component :controllers, in: "app/controllers/**/*.rb"
 models.cannot_use :controllers
 ```
 
-ArchSpec reports the rule id, file, line, message, evidence, confidence, and stable id. Use the rule id for suppressions.
+ArchSpec reports each violation with its message and rule id, the offending code, and the evidence it found. Use the rule id for suppressions. The JSON format (`--format json`) adds the confidence and the stable id the todo file matches on.
 
 ## Rule Families
 

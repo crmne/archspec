@@ -17,7 +17,7 @@ module ArchSpec
 
       def evaluate(graph)
         cycles(graph).map do |cycle|
-          location = first_location_for_cycle(graph, cycle) || SourceLocation.new(graph.root, 1, 1)
+          location = first_location_for_cycle(graph, cycle) || SourceLocation.point(graph.root, 1, 1)
           Diagnostic.new(
             rule: id,
             message: "component dependency cycle: #{cycle.join(' -> ')}",

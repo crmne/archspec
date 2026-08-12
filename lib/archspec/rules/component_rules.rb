@@ -30,7 +30,7 @@ module ArchSpec
           Diagnostic.new(
             rule: id,
             message: because ? "#{source} must stay empty: #{because}" : "#{source} must stay empty",
-            location: SourceLocation.new(path, 1, 1),
+            location: SourceLocation.point(path, 1, 1),
             evidence: "#{relative} belongs to #{source}"
           )
         end

@@ -17,13 +17,13 @@ module ArchSpec
 
       document = YAML.safe_load_file(path, permitted_classes: [], aliases: false) || {}
       unless document.is_a?(Hash) && (document['violations'].nil? || document['violations'].is_a?(Array))
-        raise Error, "Invalid todo file #{path}: expected a violations list"
+        raise Error, "invalid todo file #{path}: expected a violations list"
       end
 
       ids = Array(document['violations']).map.with_index do |entry, index|
         id = entry.is_a?(Hash) ? entry['id'] : entry
         unless id.is_a?(String) && !id.empty?
-          raise Error, "Invalid todo file #{path}: violation #{index + 1} has no id"
+          raise Error, "invalid todo file #{path}: violation #{index + 1} has no id"
         end
 
         id
@@ -33,7 +33,7 @@ module ArchSpec
     rescue Error
       raise
     rescue Psych::Exception, SystemCallError => e
-      raise Error, "Could not load todo file #{path}: #{e.message}"
+      raise Error, "could not load todo file #{path}: #{e.message}"
     end
 
     def self.write(path, diagnostics, root:)
@@ -51,7 +51,7 @@ module ArchSpec
 
       File.write(path, payload.to_yaml)
     rescue SystemCallError => e
-      raise Error, "Could not write todo file #{path}: #{e.message}"
+      raise Error, "could not write todo file #{path}: #{e.message}"
     end
 
     def initialize(ids, root:)
