@@ -36,7 +36,8 @@ module ArchSpec
   #   prefix), applied project-wide. Adds no components, so it composes with any
   #   other architecture. No options.
   #
-  # See the guides at https://archspecrb.dev/architectures/ for each in depth.
+  # See the {architecture guides}[https://archspecrb.dev/architectures/] for
+  # each preset in depth.
   module Architectures
     extend self
 

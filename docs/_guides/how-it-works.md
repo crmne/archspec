@@ -1,7 +1,7 @@
 ---
 title: How It Works
 nav_order: 5
-description: The pipeline from Ruby source to architecture diagnostics.
+description: Learn how ArchSpec collects Ruby files, parses source with Prism, builds its model, evaluates rules, and reports architecture diagnostics.
 ---
 
 # How It Works

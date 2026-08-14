@@ -1,7 +1,7 @@
 ---
 title: Hexagonal
 nav_order: 5
-description: Keep domain and ports independent from adapters.
+description: Use ArchSpec's hexagonal architecture preset to keep domain code and ports independent from adapters and infrastructure concerns.
 ---
 
 # Hexagonal

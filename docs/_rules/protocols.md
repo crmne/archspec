@@ -1,7 +1,7 @@
 ---
 title: Protocols
 nav_order: 4
-description: Require classes in a component to define expected methods.
+description: Use ArchSpec protocol rules to require classes in a component to implement one method or at least one member of an accepted method set.
 ---
 
 # Protocols

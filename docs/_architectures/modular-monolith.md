@@ -1,7 +1,7 @@
 ---
 title: Modular Monolith
 nav_order: 7
-description: Enforce allowed dependencies between application modules.
+description: Use ArchSpec's modular monolith preset to declare application modules, dependency allowlists, and public APIs for package boundaries.
 ---
 
 # Modular Monolith

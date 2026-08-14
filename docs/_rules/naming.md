@@ -1,7 +1,9 @@
 ---
 title: Naming
 nav_order: 10
-description: Enforce naming conventions on a component's public API.
+description: Use ArchSpec naming rules to select public or private methods and require or forbid exact names, prefixes, suffixes, and regular expressions.
+seo:
+  title: Method naming rules
 ---
 
 # Naming

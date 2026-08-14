@@ -11,7 +11,7 @@ exclude:
   - lib/archspec/formatters/
 footer_content:
   Documentation:
-    Guides: https://archspecrb.dev
+    Guides: https://archspecrb.dev/
     Rules: https://archspecrb.dev/rules/
   Resources:
     GitHub: https://github.com/crmne/archspec

@@ -1,7 +1,7 @@
 ---
 title: Dependencies
 nav_order: 2
-description: Allow or forbid dependencies between components.
+description: Use ArchSpec dependency rules to define component allowlists, deny specific dependencies, restrict consumers, and expose public APIs.
 ---
 
 # Dependencies

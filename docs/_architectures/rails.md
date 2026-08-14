@@ -1,7 +1,9 @@
 ---
 title: Rails
 nav_order: 2
-description: Check conventional Rails boundaries.
+description: Use ArchSpec's Rails architecture preset to enforce MVC boundaries and keep controller-only APIs out of models and services.
+seo:
+  title: Rails architecture preset
 ---
 
 # Rails

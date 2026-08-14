@@ -1,7 +1,9 @@
 ---
 title: Cycles
 nav_order: 7
-description: Detect cycles between component dependencies.
+description: Use ArchSpec cycle rules to detect circular dependencies between declared components and report the concrete evidence that closes each cycle.
+seo:
+  title: Dependency cycle rules
 ---
 
 # Cycles

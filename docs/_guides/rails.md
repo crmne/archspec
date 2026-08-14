@@ -1,7 +1,7 @@
 ---
 title: Rails Applications
 nav_order: 2
-description: Use ArchSpec with conventional Rails apps.
+description: Configure ArchSpec for a conventional Rails application and enforce practical boundaries between controllers, models, services, and helpers.
 ---
 
 # Rails Applications

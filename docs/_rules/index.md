@@ -1,7 +1,9 @@
 ---
 title: Rules
 nav_order: 1
-description: The checks ArchSpec can run.
+description: Browse every ArchSpec rule for dependencies, cycles, constants, method calls, protocols, object usage, concerns, naming, and component structure.
+seo:
+  title: Architecture rules overview
 permalink: /rules/
 ---
 

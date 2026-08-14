@@ -16,6 +16,11 @@ namespace :docs do
   task :api do
     sh 'docs/bin/build-api.sh', 'docs/_site/api'
   end
+
+  desc 'Audit generated metadata, discovery files, and internal links'
+  task :audit do
+    sh 'docs/bin/audit-seo.rb', 'docs/_site'
+  end
 end
 
 namespace :torture do

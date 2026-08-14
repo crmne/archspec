@@ -1,7 +1,9 @@
 ---
 title: Concerns
 nav_order: 9
-description: Keep concerns independent of the classes that include them.
+description: Use ArchSpec concern rules to keep reusable modules independent from the concrete classes that include them in Ruby and Rails applications.
+seo:
+  title: Concern independence rules
 ---
 
 # Concerns

@@ -1,7 +1,9 @@
 ---
 title: Methods
 nav_order: 3
-description: Forbid method calls or method definitions.
+description: Use ArchSpec method rules to forbid calls to selected APIs or prevent components from defining methods that violate architecture boundaries.
+seo:
+  title: Method boundary rules
 ---
 
 # Methods

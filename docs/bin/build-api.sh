@@ -12,31 +12,9 @@ unset RUBYOPT RUBYLIB BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLE_BIN BUNDLE_APP_CONFI
 
 ( cd "$repo" && bundle exec rdoc --output "$out" --quiet lib )
 
-# Give /api/ a real index page. GitHub Pages cannot emit a server-side redirect,
-# and a crawlable landing is preferable to a client-side meta refresh.
-cat > "$out/index.html" <<'HTML'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>ArchSpec Ruby API Reference</title>
-<meta name="description" content="Generated Ruby API documentation for ArchSpec classes, modules, and methods.">
-<meta property="og:type" content="website">
-<meta property="og:title" content="ArchSpec Ruby API Reference">
-<meta property="og:description" content="Generated Ruby API documentation for ArchSpec classes, modules, and methods.">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ArchSpec Ruby API Reference">
-<meta name="twitter:description" content="Generated Ruby API documentation for ArchSpec classes, modules, and methods.">
-<link href="./css/rdoc.css?v=8.0.0" rel="stylesheet">
-</head>
-<body role="document">
-<main class="main-content">
-<h1>ArchSpec Ruby API Reference</h1>
-<p>Generated documentation for ArchSpec classes, modules, and methods.</p>
-<p><a href="ArchSpec.html">Open the ArchSpec module reference</a></p>
-</main>
-</body>
-</html>
-HTML
+# RDoc normally makes /api/ a meta-refresh to ArchSpec.html. Publish the full
+# module reference at the canonical landing URL so readers arrive directly at
+# the documentation and crawlers see real content.
+cp "$out/ArchSpec.html" "$out/index.html"
 
 ( cd "$repo" && bundle exec ruby docs/bin/postprocess_api_seo.rb "$out" "${SITE_BASE_URL:-https://archspecrb.dev}" )

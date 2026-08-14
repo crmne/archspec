@@ -1,7 +1,7 @@
 ---
 layout: home
 title: Architecture linter for Ruby and Rails
-description: Static analysis architecture linter for Ruby and Rails, a Packwerk alternative. Declare your components, dependencies, and boundaries in one file and check them in CI.
+description: Static architecture linter for Ruby and Rails and a Packwerk alternative. Declare components and boundaries in one file, then check every change in CI.
 permalink: /
 hero:
   name: ArchSpec

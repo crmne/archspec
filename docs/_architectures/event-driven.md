@@ -1,7 +1,7 @@
 ---
 title: Event Driven
 nav_order: 9
-description: Keep event definitions independent from publishers and subscribers.
+description: Use ArchSpec's event-driven preset to keep event definitions independent while controlling dependencies between publishers and subscribers.
 ---
 
 # Event Driven

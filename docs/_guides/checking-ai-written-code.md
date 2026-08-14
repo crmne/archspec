@@ -1,7 +1,7 @@
 ---
 title: Checking AI-Written Code
 nav_order: 3
-description: Use ArchSpec as a guardrail for generated code.
+description: Use ArchSpec as a deterministic architecture guardrail for AI-written Ruby and Rails code, with actionable evidence for every violation.
 ---
 
 # Checking AI-Written Code

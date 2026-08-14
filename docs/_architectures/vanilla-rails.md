@@ -1,7 +1,7 @@
 ---
 title: Vanilla Rails
 nav_order: 3
-description: Keep behavior on models and forbid extra abstraction directories.
+description: Use ArchSpec's vanilla Rails preset to keep behavior on models, protect conventional boundaries, and forbid extra abstraction directories.
 seo:
   title: Vanilla Rails Architecture
 ---

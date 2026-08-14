@@ -1,7 +1,9 @@
 ---
 title: Clean
 nav_order: 6
-description: Enforce the inward dependency rule.
+description: Use ArchSpec's clean architecture preset to enforce inward dependencies between frameworks, adapters, use cases, and entities in Ruby apps.
+seo:
+  title: Clean architecture preset
 ---
 
 # Clean

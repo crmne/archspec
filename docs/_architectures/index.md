@@ -1,7 +1,7 @@
 ---
 title: Architectures
 nav_order: 1
-description: Higher-level architecture bundles built from rules.
+description: Explore ArchSpec architecture presets for Rails, layered, hexagonal, clean, modular monolith, CQRS, event-driven, and Ruby conventions.
 permalink: /architectures/
 ---
 

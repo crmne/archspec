@@ -1,7 +1,9 @@
 ---
 title: CLI
 nav_order: 2
-description: ArchSpec command line reference.
+description: Reference every ArchSpec command-line option for checking projects, explaining files, emitting JSON, managing baselines, and choosing config files.
+seo:
+  title: ArchSpec command-line interface
 ---
 
 # CLI

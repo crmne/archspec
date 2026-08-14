@@ -1,7 +1,7 @@
 ---
 title: Getting Started
 nav_order: 1
-description: Install ArchSpec and run the first architecture check.
+description: Install ArchSpec, generate an Archspec.rb file, run your first architecture check, and learn how to interpret a reported violation.
 ---
 
 # Getting Started

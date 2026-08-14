@@ -1,7 +1,7 @@
 ---
 title: Ruby Conventions
 nav_order: 10
-description: Generic Ruby naming idioms, applied project-wide.
+description: Use ArchSpec's Ruby conventions preset to enforce idiomatic method names across a project without declaring application components.
 ---
 
 # Ruby Conventions

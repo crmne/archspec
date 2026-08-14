@@ -1,7 +1,7 @@
 ---
 title: Configuration
 nav_order: 1
-description: The Archspec.rb DSL.
+description: Complete reference for the Archspec.rb DSL, including sources, components, dependency rules, protocols, naming rules, baselines, and presets.
 ---
 
 # Configuration

@@ -1,7 +1,9 @@
 ---
 title: Layered
 nav_order: 4
-description: Enforce inward dependencies through ordered layers.
+description: Use ArchSpec's layered architecture preset to define ordered application layers, enforce inward dependencies, and detect dependency cycles.
+seo:
+  title: Layered architecture preset
 ---
 
 # Layered

@@ -1,7 +1,7 @@
 ---
 title: Components
 nav_order: 8
-description: Keep a directory empty on purpose.
+description: Use ArchSpec component rules to require selected directories to stay empty and report files that violate an intentional project boundary.
 ---
 
 # Components

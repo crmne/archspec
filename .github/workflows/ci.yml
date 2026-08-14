@@ -134,6 +134,9 @@ jobs:
       - name: Build API docs (RDoc) into /api/
         run: docs/bin/build-api.sh docs/_site/api
 
+      - name: Audit generated SEO
+        run: docs/bin/audit-seo.rb docs/_site
+
       - name: Upload Pages artifact
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: actions/upload-pages-artifact@v4

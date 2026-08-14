@@ -1,7 +1,9 @@
 ---
 title: CQRS
 nav_order: 8
-description: Keep command and query code separated.
+description: Use ArchSpec's CQRS preset to separate commands, queries, and read models while preventing query code from calling mutating methods.
+seo:
+  title: CQRS architecture preset
 ---
 
 # CQRS

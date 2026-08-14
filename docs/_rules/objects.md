@@ -1,7 +1,9 @@
 ---
 title: Objects
 nav_order: 5
-description: Forbid one-shot command-object style calls.
+description: Use ArchSpec object rules to prevent one-shot command-object patterns that instantiate a class and immediately invoke a selected method.
+seo:
+  title: Object usage rules
 ---
 
 # Objects

@@ -1,7 +1,7 @@
 ---
 title: Vanilla Rails
 nav_order: 4
-description: Turn 37signals-style Rails conventions into executable checks.
+description: Turn 37signals-style vanilla Rails conventions into executable ArchSpec checks for models, controllers, concerns, and directory structure.
 seo:
   title: Vanilla Rails Guide
 ---
