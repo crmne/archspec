@@ -1,5 +1,7 @@
 title: ArchSpec
 description: Architecture linter for Ruby and Rails.
+url: https://archspecrb.dev
+baseurl: ""
 lang: en-US
 timezone: UTC
 
@@ -51,6 +53,30 @@ defaults:
       layout: default
 
 jekyll_vitepress:
+  seo:
+    page_type: TechArticle
+    image:
+      path: /assets/images/archspec-social.png
+      alt: ArchSpec — Architecture linter for Ruby and Rails
+      width: 1200
+      height: 630
+    publisher:
+      type: Organization
+      name: ArchSpec
+      url: https://archspecrb.dev
+      same_as:
+        - https://github.com/crmne/archspec
+        - https://rubygems.org/gems/archspec
+  llms:
+    title: ArchSpec
+    description: >-
+      Documentation for ArchSpec, the static-analysis architecture linter for
+      Ruby and Rails applications.
+    full: true
+    details: >-
+      Start with getting started and configuration, then use the rule,
+      architecture, CLI, CI, and AI-written-code guides. Source is on
+      [GitHub](https://github.com/crmne/archspec).
   branding:
     site_title: ArchSpec
   tokens:

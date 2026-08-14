@@ -2,6 +2,8 @@
 title: Vanilla Rails
 nav_order: 4
 description: Turn 37signals-style Rails conventions into executable checks.
+seo:
+  title: Vanilla Rails Guide
 ---
 
 # Vanilla Rails

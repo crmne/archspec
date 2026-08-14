@@ -2,6 +2,8 @@
 title: Vanilla Rails
 nav_order: 3
 description: Keep behavior on models and forbid extra abstraction directories.
+seo:
+  title: Vanilla Rails Architecture
 ---
 
 # Vanilla Rails
