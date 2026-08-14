@@ -76,7 +76,8 @@ jekyll_vitepress:
     details: >-
       Start with getting started and configuration, then use the rule,
       architecture, CLI, CI, and AI-written-code guides. Source is on
-      [GitHub](https://github.com/crmne/archspec).
+      [GitHub](https://github.com/crmne/archspec), and the generated
+      [API reference](https://archspecrb.dev/api/) documents the Ruby API.
   branding:
     site_title: ArchSpec
   tokens:

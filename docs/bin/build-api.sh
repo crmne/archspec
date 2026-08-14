@@ -12,17 +12,31 @@ unset RUBYOPT RUBYLIB BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLE_BIN BUNDLE_APP_CONFI
 
 ( cd "$repo" && bundle exec rdoc --output "$out" --quiet lib )
 
-# RDoc's main page must be a file, so the curated landing lives in the ArchSpec
-# module doc and the index redirects there.
+# Give /api/ a real index page. GitHub Pages cannot emit a server-side redirect,
+# and a crawlable landing is preferable to a client-side meta refresh.
 cat > "$out/index.html" <<'HTML'
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0; url=ArchSpec.html">
-<link rel="canonical" href="ArchSpec.html">
-<title>ArchSpec API</title>
+<title>ArchSpec Ruby API Reference</title>
+<meta name="description" content="Generated Ruby API documentation for ArchSpec classes, modules, and methods.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ArchSpec Ruby API Reference">
+<meta property="og:description" content="Generated Ruby API documentation for ArchSpec classes, modules, and methods.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ArchSpec Ruby API Reference">
+<meta name="twitter:description" content="Generated Ruby API documentation for ArchSpec classes, modules, and methods.">
+<link href="./css/rdoc.css?v=8.0.0" rel="stylesheet">
 </head>
-<body><a href="ArchSpec.html">ArchSpec API documentation</a></body>
+<body role="document">
+<main class="main-content">
+<h1>ArchSpec Ruby API Reference</h1>
+<p>Generated documentation for ArchSpec classes, modules, and methods.</p>
+<p><a href="ArchSpec.html">Open the ArchSpec module reference</a></p>
+</main>
+</body>
 </html>
 HTML
+
+( cd "$repo" && bundle exec ruby docs/bin/postprocess_api_seo.rb "$out" "${SITE_BASE_URL:-https://archspecrb.dev}" )
