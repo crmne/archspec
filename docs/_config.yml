@@ -57,7 +57,7 @@ jekyll_vitepress:
     page_type: TechArticle
     image:
       path: /assets/images/archspec-social.png
-      alt: ArchSpec — Architecture linter for Ruby and Rails
+      alt: "ArchSpec: executable architecture specifications for Ruby and Rails"
       width: 1200
       height: 630
     publisher:
