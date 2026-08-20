@@ -6,7 +6,7 @@
 
 <p>Declare your components and boundaries in one <code>Archspec.rb</code>, and every change gets checked in CI, whether a person or a coding agent wrote it. No AI involved, just Prism.</p>
 
-Battle tested in [RubyLLM](https://rubyllm.com) and at [<picture><source media="(prefers-color-scheme: dark)" srcset="https://chatwithwork.com/logotype-dark.svg"><img src="https://chatwithwork.com/logotype.svg" alt="Chat with Work" height="30" align="absmiddle"></picture>](https://chatwithwork.com) - *Fully private work AI*
+Battle tested in [<picture><source media="(prefers-color-scheme: dark)" srcset="https://rubyllm.com/assets/images/logotype_dark.svg"><img src="https://rubyllm.com/assets/images/logotype.svg" alt="RubyLLM" height="30" align="absmiddle"></picture>](https://rubyllm.com) and at [<picture><source media="(prefers-color-scheme: dark)" srcset="https://chatwithwork.com/logotype-dark.svg"><img src="https://chatwithwork.com/logotype.svg" alt="Chat with Work" height="30" align="absmiddle"></picture>](https://chatwithwork.com)
 
 [![Gem Version](https://badge.fury.io/rb/archspec.svg)](https://rubygems.org/gems/archspec)
 [![Gem Downloads](https://img.shields.io/gem/dt/archspec)](https://rubygems.org/gems/archspec)
