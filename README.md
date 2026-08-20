@@ -1,20 +1,24 @@
+<div align="center">
+
 # ArchSpec
 
-Static analysis for your architecture. A linter for Ruby and Rails boundaries.
+<strong>Executable architecture specifications for Ruby and Rails</strong>
 
-ArchSpec turns your application's architecture into executable checks. Declare
-your components, dependencies, and boundaries in one file, then check every
-change in CI, whether a person or a coding agent wrote it. It is plain static
-analysis: it reads Ruby source with Prism, never boots the app, and no AI is
-involved in checking your code.
+<p>Declare your components and boundaries in one <code>Archspec.rb</code>, and every change gets checked in CI, whether a person or a coding agent wrote it. No AI involved, just Prism.</p>
 
-It maps conventional Rails files to constants and checks the structural rules
-you write down: components, layers, constant references, inheritance, mixins,
-named method calls, method protocols, cycles, and Rails boundaries.
+Battle tested in [RubyLLM](https://rubyllm.com) and at [<picture><source media="(prefers-color-scheme: dark)" srcset="https://chatwithwork.com/logotype-dark.svg"><img src="https://chatwithwork.com/logotype.svg" alt="Chat with Work" height="30" align="absmiddle"></picture>](https://chatwithwork.com) - *Fully private work AI*
 
-It does not try to infer the "true" design pattern of arbitrary Ruby code. You
-describe the architecture your team wants. ArchSpec checks whether the code still
-matches it.
+[![Gem Version](https://badge.fury.io/rb/archspec.svg)](https://rubygems.org/gems/archspec)
+[![Gem Downloads](https://img.shields.io/gem/dt/archspec)](https://rubygems.org/gems/archspec)
+[![CI](https://github.com/crmne/archspec/actions/workflows/ci.yml/badge.svg)](https://github.com/crmne/archspec/actions/workflows/ci.yml)
+
+<img src="https://archspecrb.dev/assets/images/archspec-check.png" alt="archspec check reporting an architecture violation with a code frame, the offending span underlined, and the evidence as a note" width="760">
+
+</div>
+
+---
+
+ArchSpec turns your architecture into executable checks: components, layers, constant references, inheritance, mixins, named method calls, method protocols, naming conventions, cycles, and Rails boundaries. It is plain static analysis: it reads Ruby source with Prism, never boots the app, and no AI is involved in checking your code. The full Discourse app, 1,899 files, checks in 2.5 seconds.
 
 ## Why ArchSpec?
 
@@ -31,6 +35,10 @@ to remember, and checks them on every change:
 - packs only depend on approved packs
 - query objects do not call obvious write methods
 - generated code follows the same boundaries as hand-written code
+
+ArchSpec does not try to infer the "true" design pattern of arbitrary Ruby code.
+You describe the architecture your team wants. ArchSpec checks whether the code
+still matches it.
 
 ## Show me the code
 
