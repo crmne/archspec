@@ -170,6 +170,11 @@
 }
 .VPHomeFeatures .details a:hover { color: var(--vp-c-brand-2); }
 
+.VPFooter .footer-built-with {
+  display: block;
+  margin-top: 12px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .archspec-card,
   .archspec-card-stack,

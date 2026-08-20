@@ -100,6 +100,13 @@ jekyll_vitepress:
   syntax:
     light_theme: github
     dark_theme: github.dark
+  footer:
+    enabled: true
+    show_on_docs: false
+    message: >-
+      Brought to you by <a href="https://paolino.me" target="_blank" rel="noreferrer">Carmine Paolino</a>, maker of
+    copyright: >-
+      <span class="footer-brand-links"><a href="https://chatwithwork.com" class="footer-chatwithwork-link" target="_blank" rel="noreferrer"><img class="footer-chatwithwork-logo theme-image light" src="https://chatwithwork.com/logotype.svg" alt="Chat with Work"><img class="footer-chatwithwork-logo theme-image dark" src="https://chatwithwork.com/logotype-dark.svg" alt="Chat with Work"></a><a href="https://rubyllm.com" class="footer-rubyllm-link" target="_blank" rel="noreferrer"><img class="footer-rubyllm-logo theme-image light" src="https://rubyllm.com/assets/images/logotype.svg" alt="RubyLLM"><img class="footer-rubyllm-logo theme-image dark" src="https://rubyllm.com/assets/images/logotype_dark.svg" alt="RubyLLM"></a></span><br><span class="footer-built-with">Docs built with <a href="https://jekyll-vitepress.dev" target="_blank" rel="noreferrer">Jekyll VitePress</a>.</span>
   doc_footer:
     enabled: true
     previous_label: Previous page
