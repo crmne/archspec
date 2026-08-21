@@ -1,4 +1,4 @@
 ---
 sha: 4cac48263809d806cee8660c6b1adc6e5d0c9445
 rules:
-  dependencies.forbid: 7
+  dependencies.forbid: 10

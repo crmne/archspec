@@ -152,6 +152,51 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_dependency_rules_see_assigned_constants
+    with_project do |root|
+      write "#{root}/app/models/billing.rb", <<~RUBY
+        class Billing
+          MAX_RETRIES = 3
+        end
+      RUBY
+      write "#{root}/app/services/charge.rb", <<~RUBY
+        class Charge
+          def run = Billing::MAX_RETRIES
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :services, in: 'app/services/**/*.rb'
+        services.cannot_use :models
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_equal 'Charge references Billing::MAX_RETRIES', diagnostics.first.evidence
+    end
+  end
+
+  def test_protocols_apply_to_struct_classes_but_not_plain_constants
+    with_project do |root|
+      write "#{root}/app/services/currency.rb", <<~RUBY
+        Currency = Struct.new(:code) do
+          def call = code
+        end
+
+        TIMEOUT = 5
+      RUBY
+
+      definition = ArchSpec.define do
+        component :services, in: 'app/services/**/*.rb'
+        services.must_implement :call
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
   def test_disable_next_line_suppresses_one_rule
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY

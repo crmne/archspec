@@ -54,6 +54,12 @@ Everything a rule can check is one of these edge types:
 Alongside edges, the graph keeps each constant's methods and mixins (for
 protocol rules).
 
+A definition is a `class` or `module` keyword, or a constant assignment.
+`MAX_RETRIES = 3` defines a plain constant; assigning `Class.new`,
+`Struct.new`, or `Data.define` defines a class whose block is its body, and
+`Module.new` defines a module. All of them belong to components and resolve
+as reference targets like any other constant.
+
 Run `archspec explain app/models/user.rb` to see the facts for one file.
 It prints the defined constants, component assignments with reasons, and
 every outgoing edge:

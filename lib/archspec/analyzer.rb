@@ -186,6 +186,9 @@ module ArchSpec
         when Prism::CallNode
           visit_call(graph, path, node, current_constant: current_constant, namespace: namespace,
                                         nesting: nesting, visibility: visibility, default_scope: default_scope)
+        when Prism::ConstantWriteNode, Prism::ConstantPathWriteNode
+          visit_constant_assignment(graph, path, node, current_constant: current_constant, namespace: namespace,
+                                                       nesting: nesting)
         when Prism::ConstantPathNode, Prism::ConstantReadNode
           add_constant_reference(graph, path, node, current_constant, nesting)
         else
@@ -251,6 +254,90 @@ module ArchSpec
 
         visit_constant_body(graph, path, constant, node.body, constant.name.split('::'),
                             nesting: [constant.name] + nesting)
+      end
+
+      # +CONST = value+ defines a constant just like the class and module
+      # keywords do. Assigning +Class.new+, +Struct.new+, or +Data.define+
+      # makes a class whose block is its body; +Module.new+ makes a module;
+      # any other value is a plain +:constant+.
+      def visit_constant_assignment(graph, path, node, current_constant:, namespace:, nesting:)
+        name = assigned_constant_name(node, namespace)
+        unless name
+          return visit(graph, path, node.value, current_constant: current_constant, namespace: namespace,
+                                                nesting: nesting)
+        end
+
+        constant = graph.add_constant(
+          name: name,
+          kind: builder_kind(node.value) || :constant,
+          path: path,
+          location: SourceLocation.from_prism(path, node.location),
+          nesting: nesting
+        )
+
+        # Defining Billing::MAX_RETRIES from another file still depends on Billing.
+        if node.is_a?(Prism::ConstantPathWriteNode) && node.target.parent
+          visit(graph, path, node.target.parent, current_constant: constant.name, namespace: namespace,
+                                                 nesting: nesting)
+        end
+
+        if constant.class? || constant.module?
+          visit_class_builder(graph, path, constant, node.value, nesting)
+        else
+          visit(graph, path, node.value, current_constant: constant.name, namespace: namespace, nesting: nesting)
+        end
+      end
+
+      def assigned_constant_name(node, namespace)
+        return qualified_constant_name(node.target, namespace) if node.is_a?(Prism::ConstantPathWriteNode)
+
+        namespace.empty? ? node.name.to_s : "#{namespace.join('::')}::#{node.name}"
+      end
+
+      BUILDER_KINDS = {
+        %w[Class new] => :class,
+        %w[Struct new] => :class,
+        %w[Data define] => :class,
+        %w[Module new] => :module
+      }.freeze
+
+      def builder_kind(value)
+        return unless value.is_a?(Prism::CallNode) && constant_node?(value.receiver)
+
+        receiver = constant_reference_name(value.receiver)&.sub(/\A::/, '')
+        BUILDER_KINDS[[receiver, value.message]]
+      end
+
+      def visit_class_builder(graph, path, constant, value, nesting)
+        visit_builder_superclass(graph, path, constant, value, nesting) if constant.class?
+
+        block = value.block
+        return unless block.is_a?(Prism::BlockNode) && block.body
+
+        visit_constant_body(graph, path, constant, block.body, constant.name.split('::'),
+                            nesting: [constant.name] + nesting)
+      end
+
+      # +Class.new(Base)+ inherits from Base like the class keyword would.
+      # Struct and Data members generate methods we cannot see, so their
+      # ancestry stays marked unresolved, as with a dynamic superclass.
+      def visit_builder_superclass(graph, path, constant, value, nesting)
+        argument = value.arguments&.arguments&.first
+        superclass = constant_reference_name(argument) if argument && constant_node?(argument)
+
+        if superclass
+          constant.superclass = superclass
+          graph.add_edge(
+            type: :inherits_from,
+            from_path: path,
+            from_constant: constant.name,
+            to: superclass,
+            location: SourceLocation.from_prism(path, argument.location),
+            lexical_nesting: nesting
+          )
+        elsif constant_reference_name(value.receiver)&.sub(/\A::/, '') != 'Class'
+          constant.superclass = "#{constant_reference_name(value.receiver)}.#{value.message}"
+        end
       end
 
       # A +class << self+ (or +class << SomeConstant+) block defines methods on a

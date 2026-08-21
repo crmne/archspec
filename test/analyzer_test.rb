@@ -391,6 +391,42 @@ class AnalyzerTest < ArchSpecTest
     end
   end
 
+  def test_constant_assignments_define_constants
+    with_project do |root|
+      write "#{root}/app/models/billing.rb", <<~RUBY
+        class Billing
+          MAX_RETRIES = 3
+          Currency = Struct.new(:code) do
+            def call = code
+          end
+          Events = Module.new
+          Fallback = Class.new(StandardError)
+        end
+
+        DEFAULT_RATE = 0.1
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal :constant, graph.constants_named('Billing::MAX_RETRIES').first.kind
+      assert_equal :constant, graph.constants_named('DEFAULT_RATE').first.kind
+      assert_equal :module, graph.constants_named('Billing::Events').first.kind
+
+      currency = graph.constants_named('Billing::Currency').first
+      assert_equal :class, currency.kind
+      assert_equal 'Struct.new', currency.superclass
+      assert_equal %i[call], currency.instance_methods.to_a
+
+      fallback = graph.constants_named('Billing::Fallback').first
+      assert_equal :class, fallback.kind
+      assert_equal 'StandardError', fallback.superclass
+    end
+  end
+
   def test_builds_graph_from_direct_prism_parse
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY
