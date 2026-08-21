@@ -152,6 +152,7 @@ module ArchSpec
     RESOLVED_ROOTS = %w[Object BasicObject].freeze
 
     attr_reader :root, :files, :constants, :edges, :components
+    attr_accessor :grants
 
     def initialize(root)
       @root = File.expand_path(root)
@@ -160,6 +161,11 @@ module ArchSpec
       @constants_by_name = Hash.new { |hash, key| hash[key] = [] }
       @edges = []
       @components = {}
+      @grants = {}
+    end
+
+    def granted?(edge, target)
+      source_components_for(edge).any? { |component| grants[component]&.include?(target) }
     end
 
     def add_file(path:, parse_errors:, suppressions: [])

@@ -22,7 +22,7 @@ module ArchSpec
     ].freeze
 
     attr_accessor :name, :root_path, :todo_path, :base_dir
-    attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules
+    attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules, :grants
 
     def initialize(name = nil)
       @name = name
@@ -33,6 +33,11 @@ module ArchSpec
       @ignore_patterns = DEFAULT_IGNORE_PATTERNS.dup
       @component_specs = {}
       @rules = []
+      @grants = {}
+    end
+
+    def add_grant(source, targets)
+      (@grants[source.to_sym] ||= Set.new).merge(Array(targets).flatten.map(&:to_sym))
     end
 
     def add_source_patterns(patterns)

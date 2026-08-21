@@ -178,6 +178,18 @@ module ArchSpec
         self
       end
 
+      # Grants extra allowed targets to this component on top of any allowlist,
+      # including allowlists of other components sharing its files. Use it to
+      # give a nested component an escape hatch from its enclosing layer.
+      # Does not override #cannot_use.
+      #
+      #   workflows.can_also_use :notifications
+      def can_also_use(*targets)
+        DSL.assert_known_components!(definition, targets, for_rule: "#{name}.can_also_use")
+        definition.add_grant(name, targets)
+        self
+      end
+
       # Forbids depending on the named components. Narrower than #can_only_use:
       # only the listed components fail, other dependencies are left alone.
       #

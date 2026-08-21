@@ -22,6 +22,7 @@ module ArchSpec
       end
 
       graph.assign_components(definition.component_specs.values)
+      graph.grants = definition.grants
       graph
     end
 

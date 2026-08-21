@@ -43,7 +43,7 @@ module ArchSpec
       def evaluate(graph)
         relevant_edges(graph).flat_map do |edge|
           graph.target_components_for(edge).filter_map do |target|
-            next if target == source || targets.include?(target)
+            next if target == source || targets.include?(target) || graph.granted?(edge, target)
 
             Diagnostic.new(
               rule: id,

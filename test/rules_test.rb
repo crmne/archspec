@@ -670,4 +670,40 @@ class RulesTest < ArchSpecTest
 
     assert_match(/no_cycles references unknown component: controlers/, error.message)
   end
+
+  def test_can_also_use_grants_extra_targets
+    with_project do |root|
+      write "#{root}/app/models/order.rb", <<~RUBY
+        class Order
+          def notify = OrderMailer
+        end
+      RUBY
+
+      write "#{root}/app/models/order_workflow.rb", <<~RUBY
+        class OrderWorkflow
+          def finish = OrderMailer
+        end
+      RUBY
+
+      write "#{root}/app/mailers/order_mailer.rb", <<~RUBY
+        class OrderMailer
+          def deliver = nil
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :workflows, in: 'app/models/**/*_workflow.rb'
+        component :mailers, in: 'app/mailers/**/*.rb'
+        models.can_only_use :workflows
+        workflows.can_also_use :mailers
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/models may not depend on mailers/, diagnostics.first.message)
+      assert_match(/Order references OrderMailer/, diagnostics.first.evidence)
+    end
+  end
 end
