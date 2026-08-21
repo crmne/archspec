@@ -107,6 +107,51 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_cycle_rule_reports_a_tangle_once_with_an_example_cycle
+    with_project do |root|
+      names = %w[a b c d]
+      names.each do |name|
+        others = (names - [name]).map { |other| "#{other.upcase}Thing" }.join('; ')
+        write "#{root}/app/#{name}/#{name}_thing.rb", "class #{name.upcase}Thing; #{others}; end\n"
+      end
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        names.each { |name| component name.to_sym, in: "app/#{name}/**/*.rb" }
+        no_cycles
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_equal 'component dependency cycle among 4 components: a, b, c, d', diagnostics.first.message
+      assert_equal 'a -> b -> a', diagnostics.first.evidence
+    end
+  end
+
+  def test_cycle_rule_reports_independent_cycles_separately
+    with_project do |root|
+      write "#{root}/app/a/alpha.rb", "class Alpha; Beta; end\n"
+      write "#{root}/app/b/beta.rb", "class Beta; Alpha; Gamma; end\n"
+      write "#{root}/app/c/gamma.rb", "class Gamma; Delta; end\n"
+      write "#{root}/app/d/delta.rb", "class Delta; Gamma; end\n"
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        component :a, in: 'app/a/**/*.rb'
+        component :b, in: 'app/b/**/*.rb'
+        component :c, in: 'app/c/**/*.rb'
+        component :d, in: 'app/d/**/*.rb'
+        no_cycles
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal ['component dependency cycle: a -> b -> a', 'component dependency cycle: c -> d -> c'],
+                   diagnostics.map(&:message).sort
+    end
+  end
+
   def test_disable_next_line_suppresses_one_rule
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY

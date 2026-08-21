@@ -27,3 +27,13 @@ ArchSpec builds the component dependency graph from visible dependency edges and
 ```text
 component dependency cycle: domain -> infra -> domain
 ```
+
+A group of components that all reach each other is reported once, not once per
+route through it. When the group is larger than the cycle shown, the message
+names every component in it and the note carries the shortest cycle to break:
+
+```text
+component dependency cycle among 4 components: billing, catalog, orders, shipping
+
+  note: billing -> orders -> billing
+```

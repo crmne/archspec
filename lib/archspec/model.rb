@@ -342,25 +342,6 @@ module ArchSpec
       [methods, unresolved]
     end
 
-    def component_dependency_pairs(only: nil)
-      allowed_sources = Array(only).compact.map(&:to_sym).to_set
-      pairs = Set.new
-
-      dependency_edges.each do |edge|
-        source_components = source_components_for(edge)
-        source_components &= allowed_sources unless allowed_sources.empty?
-        next if source_components.empty?
-
-        target_components_for(edge).each do |target|
-          source_components.each do |source|
-            pairs.add([source, target]) unless source == target
-          end
-        end
-      end
-
-      pairs
-    end
-
     def component_assignment_reasons_for_path(path)
       components.values.each_with_object({}) do |component, reasons|
         next unless component.files.include?(path)
