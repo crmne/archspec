@@ -209,7 +209,8 @@ module ArchSpec
           kind: :class,
           path: path,
           location: SourceLocation.from_prism(path, node.location),
-          nesting: nesting
+          nesting: nesting,
+          namespace_only: node.superclass.nil? && namespace_only_body?(node.body)
         )
 
         if node.superclass
@@ -249,7 +250,8 @@ module ArchSpec
           kind: :module,
           path: path,
           location: SourceLocation.from_prism(path, node.location),
-          nesting: nesting
+          nesting: nesting,
+          namespace_only: namespace_only_body?(node.body)
         )
 
         visit_constant_body(graph, path, constant, node.body, constant.name.split('::'),
@@ -286,6 +288,12 @@ module ArchSpec
         else
           visit(graph, path, node.value, current_constant: constant.name, namespace: namespace, nesting: nesting)
         end
+      end
+
+      def namespace_only_body?(body)
+        body.is_a?(Prism::StatementsNode) &&
+          !body.body.empty? &&
+          body.body.all? { |child| child.is_a?(Prism::ClassNode) || child.is_a?(Prism::ModuleNode) }
       end
 
       def assigned_constant_name(node, namespace)

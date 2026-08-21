@@ -31,13 +31,14 @@ module ArchSpec
   class ConstantNode
     attr_reader :name, :kind, :path, :location, :instance_methods, :class_methods, :method_definitions, :mixins,
                 :nesting
-    attr_accessor :superclass
+    attr_accessor :superclass, :namespace_only
 
-    def initialize(name:, kind:, path:, location:, nesting: [])
+    def initialize(name:, kind:, path:, location:, nesting: [], namespace_only: false)
       @name = name
       @kind = kind
       @path = path
       @location = location
+      @namespace_only = namespace_only
       @nesting = Array(nesting).dup.freeze
       @instance_methods = Set.new
       @class_methods = Set.new
@@ -171,12 +172,16 @@ module ArchSpec
       )
     end
 
-    def add_constant(name:, kind:, path:, location:, nesting: [])
+    def add_constant(name:, kind:, path:, location:, nesting: [], namespace_only: false)
       normalized = normalize_constant(name)
       existing = @constants_by_name[normalized].find { |constant| constant.path == path && constant.kind == kind }
-      return existing if existing
+      if existing
+        existing.namespace_only &&= namespace_only
+        return existing
+      end
 
-      constant = ConstantNode.new(name: normalized, kind: kind, path: path, location: location, nesting: nesting)
+      constant = ConstantNode.new(name: normalized, kind: kind, path: path, location: location, nesting: nesting,
+                                  namespace_only: namespace_only)
       constants << constant
       @constants_by_name[normalized] << constant
       constant
@@ -224,7 +229,7 @@ module ArchSpec
         end
 
         constants.each do |constant|
-          matched_file = files_matched_by_pattern.include?(constant.path)
+          matched_file = files_matched_by_pattern.include?(constant.path) && !defers_to_real_definition?(constant)
           matched_constant = spec.matches_constant?(constant.name)
           next unless matched_file || matched_constant
 
@@ -372,6 +377,11 @@ module ArchSpec
     end
 
     private
+
+    def defers_to_real_definition?(constant)
+      constant.namespace_only &&
+        @constants_by_name[constant.name].any? { |other| !other.namespace_only }
+    end
 
     def each_matching_file(pattern)
       glob = File.absolute_path(pattern, root)
