@@ -137,11 +137,32 @@ module ArchSpec
         extend: :extends
       }.freeze
 
-      ATTR_MESSAGES = {
+      # Macros that define methods from their symbol arguments, mapped to the
+      # accessors each one generates.
+      GENERATED_METHOD_MACROS = {
         attr_reader: %i[reader],
         attr_writer: %i[writer],
-        attr_accessor: %i[reader writer]
+        attr_accessor: %i[reader writer],
+        attribute: %i[reader writer],
+        delegate: %i[reader],
+        alias_attribute: %i[reader writer],
+        enum: %i[reader writer],
+        store_accessor: %i[reader writer],
+        belongs_to: %i[reader writer],
+        has_one: %i[reader writer],
+        has_many: %i[reader writer],
+        has_and_belongs_to_many: %i[reader writer]
       }.freeze
+
+      # These name one method and then take options; the rest name every method
+      # they define.
+      SINGLE_NAME_MACROS = %i[attribute alias_attribute enum belongs_to has_one has_many
+                              has_and_belongs_to_many].freeze
+
+      # Active Record builds these around a singular association, so a bare
+      # build_session is the model's own method too.
+      SINGULAR_ASSOCIATION_MACROS = %i[belongs_to has_one].freeze
+      SINGULAR_ASSOCIATION_HELPERS = ['build_%s', 'create_%s', 'create_%s!', 'reload_%s'].freeze
 
       def visit(graph, path, node, current_constant: nil, namespace: [], nesting: [], visibility: :public,
                 default_scope: :instance)
@@ -485,36 +506,49 @@ module ArchSpec
         end || []
       end
 
-      # attr_*, Rails attribute, and unprefixed delegate calls define methods;
-      # without them, a class calling its own reader looks like a foreign call.
+      # attr_*, Rails attribute, association macros, and unprefixed delegate
+      # calls define methods; without them, a class calling its own reader looks
+      # like a foreign call.
       def record_generated_methods(graph, path, node, message, current_constant, location, visibility, default_scope)
         return unless current_constant && node.receiver.nil?
-        return unless ATTR_MESSAGES.key?(message) || %i[attribute delegate].include?(message)
+
+        kinds = GENERATED_METHOD_MACROS[message]
+        return unless kinds
 
         constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path }
         return unless constant
         return if message == :delegate && truthy_keyword_argument?(node, :prefix)
 
-        names = generated_method_names(constant, node, message)
         adder = default_scope == :class ? :add_class_method : :add_instance_method
-        names.each do |name|
-          kinds = message == :attribute ? %i[reader writer] : ATTR_MESSAGES.fetch(message, %i[reader])
-          constant.public_send(adder, name, location: location, visibility: visibility) if kinds.include?(:reader)
-          constant.public_send(adder, :"#{name}=", location: location, visibility: visibility) if kinds.include?(:writer)
+        generated_method_names(constant, node, message).each do |name|
+          accessors_for(message, name, kinds).each do |accessor|
+            constant.public_send(adder, accessor, location: location, visibility: visibility)
+          end
         end
       end
 
-      # Active Record and Active Model take one attribute name followed by an
-      # optional type, which may itself be a symbol. CurrentAttributes instead
-      # accepts any number of names, so retain every literal name there.
+      def accessors_for(message, name, kinds)
+        accessors = []
+        accessors << name if kinds.include?(:reader)
+        accessors << :"#{name}=" if kinds.include?(:writer)
+        return accessors unless SINGULAR_ASSOCIATION_MACROS.include?(message)
+
+        accessors + SINGULAR_ASSOCIATION_HELPERS.map { |template| format(template, name).to_sym }
+      end
+
+      # Active Record and Active Model take one name followed by options, which
+      # may themselves be symbols. CurrentAttributes instead accepts any number
+      # of names, so retain every literal name there.
       def generated_method_names(constant, node, message)
         names = symbol_arguments(node)
-        return names unless message == :attribute
-
-        superclass = constant.superclass.to_s.sub(/\A::/, '')
-        return names if superclass == 'ActiveSupport::CurrentAttributes'
+        return names unless SINGLE_NAME_MACROS.include?(message)
+        return names if message == :attribute && current_attributes?(constant)
 
         names.first(1)
+      end
+
+      def current_attributes?(constant)
+        constant.superclass.to_s.sub(/\A::/, '') == 'ActiveSupport::CurrentAttributes'
       end
 
       def symbol_arguments(node)

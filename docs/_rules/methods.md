@@ -26,7 +26,7 @@ By default a call matches whatever the receiver is, so `queries.cannot_call :upd
 services.cannot_call :render, :params, receiver: :none
 ```
 
-`pdf.render` and `client.params` then pass, while a bare `render` or `params` fails. The `:rails` architectures use `receiver: :none` for the controller API. A bare call to a method the component defines, inherits, or generates with `attr_*`, Rails `attribute`, or `delegate` is treated as a call to its own API and is not flagged.
+`pdf.render` and `client.params` then pass, while a bare `render` or `params` fails. The `:rails` architectures use `receiver: :none` for the controller API. A bare call to a method the component defines, inherits, or generates with `attr_*`, Rails `attribute`, `alias_attribute`, `enum`, `store_accessor`, `delegate`, or an Active Record association macro is treated as a call to its own API and is not flagged. The association macros cover the reader and writer, plus the `build_`, `create_`, and `reload_` helpers on `belongs_to` and `has_one`.
 
 ## Forbid Definitions
 

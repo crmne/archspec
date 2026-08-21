@@ -294,6 +294,54 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_cannot_call_treats_association_readers_as_own_api
+    with_project do |root|
+      write "#{root}/app/models/preview_authorization.rb", <<~RUBY
+        class PreviewAuthorization < ApplicationRecord
+          belongs_to :session
+          has_many :flashes
+
+          def valid_session?
+            session&.user && flashes.any? && build_session && create_session! && reload_session
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.cannot_call :session, receiver: :none
+        models.cannot_call :flashes, receiver: :none
+        models.cannot_call :build_session, receiver: :none
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_cannot_call_still_flags_a_name_no_macro_defines
+    with_project do |root|
+      write "#{root}/app/models/preview_authorization.rb", <<~RUBY
+        class PreviewAuthorization < ApplicationRecord
+          belongs_to :account
+
+          def valid_session?
+            session&.user
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.cannot_call :session, receiver: :none
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_equal 'models must not call #session', diagnostics.first.message
+    end
+  end
+
   def test_cannot_call_matches_any_receiver_by_default
     with_project do |root|
       write "#{root}/app/queries/user_query.rb", <<~RUBY
