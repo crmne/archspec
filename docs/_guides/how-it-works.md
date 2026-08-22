@@ -76,6 +76,13 @@ A definition is a `class` or `module` keyword, or a constant assignment.
 `Module.new` defines a module. All of them belong to components and resolve
 as reference targets like any other constant.
 
+A second resolver can check the parser's work. With `resolver :rubydex` in
+`Archspec.rb`, every check also indexes the workspace and its locked bundle
+through Rubydex and sets that answer beside the parser's on each constant
+reference: the same constant from both is a converged edge, a disagreement
+is no edge at all and doubts the findings around it, and the summary says
+how often each happened. See [Facts]({% link _reference/facts.md %}).
+
 Run `archspec explain app/models/user.rb` to see the facts for one file.
 It prints the defined constants, component assignments with reasons, and
 every outgoing edge:

@@ -16,6 +16,7 @@ ignore "tmp/**/*", "vendor/**/*"
 todo "archspec_todo.yml"
 facts "archspec_facts"
 cache ".archspec/cache"
+resolver :rubydex
 ```
 {: data-title="Archspec.rb"}
 
@@ -24,6 +25,8 @@ Todo ids are computed from the rule, path, message, and evidence, not the line n
 `facts` names the directory of producer-written facts files merged before rules run; it defaults to `archspec_facts/`. With `associations: :static` the Active Record associations the source states outright are merged on every check without booting. See [Facts]({% link _reference/facts.md %}).
 
 `cache` keeps what the parser extracted from each file between runs, keyed by the file's content and the gem and parser versions, so a check re-reads only what changed, and lets a path-scoped check reuse a snapshot that has only its YAML graph for every file it does not name. It is off until declared; the directory defaults to `.archspec/cache/` and ignores itself in git. The output with and without the cache is the same, byte for byte.
+
+`resolver` runs a second resolver inside every check and sets its answer beside the parser's on each constant reference. The set is closed; `:rubydex` indexes the workspace and its locked bundle without booting anything, and the two answers converge per reference: the same constant from both is a `converged` edge, a reference only the parser resolved keeps its edge, one only Rubydex resolved becomes an edge marked as its, and a disagreement is no edge at all, counted, and doubts every finding in that constant to medium confidence. The index is kept under `.archspec/resolvers/`, keyed by the locked bundle, the parsed files and the two versions, so an unchanged tree costs a read. A declared resolver whose gem, `Gemfile` or `Gemfile.lock` is missing fails the check by name rather than running without it, so two machines never grade one tree differently and both read clean. Without the declaration nothing changes. See [Facts]({% link _reference/facts.md %}).
 
 ## Components
 

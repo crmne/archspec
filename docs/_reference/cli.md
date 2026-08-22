@@ -144,7 +144,7 @@ Boots the application through `bin/rails runner` and writes the Active Record as
 bundle exec archspec reflect --rubydex
 ```
 
-Writes `archspec_facts/rubydex.yml` with the constant references Rubydex resolves and the parser cannot, without booting. Needs the `rubydex` gem in the bundle; nothing else loads it.
+Writes `archspec_facts/rubydex.yml` with the constant references Rubydex resolves and the parser cannot, without booting. Needs the `rubydex` gem in the bundle; only this command and a declared `resolver :rubydex` load it. The index it builds is kept under `.archspec/resolvers/` and read again while the tree and the locked bundle are unchanged.
 
 ## explain
 

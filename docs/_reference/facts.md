@@ -138,3 +138,16 @@ A second resolver for the same file format. [Rubydex](https://github.com/Shopify
 Under the same rule the producer writes what else Rubydex resolved and the parser did not: a superclass or mixin the parser has none for (`extend self` is the common case), a method the parser did not see defined, and a call whose receiver Rubydex resolved to a constant where the parser saw a variable. A call the parser recorded as implicit self is counted as `call_implicit_self`, not written, since the enclosing class is not a receiver the parser lacked.
 
 The gem is required only by this command: add `rubydex` to the development group and run under `bundle exec`. Without the gem, a `Gemfile` or a `Gemfile.lock` the command refuses rather than indexing the workspace alone. References into gems reach `check` as names the tree does not define, which is how gem constants already behave: `cannot_reference_constants` sees them and component rules do not.
+
+## A second resolver inside check
+
+```ruby
+resolver :rubydex
+```
+{: data-title="Archspec.rb"}
+
+The same resolution, run on every check instead of written once. With the declaration, `check` indexes the workspace and the locked bundle through Rubydex after reading the files, builds the facts file above in memory and merges it, and keeps every answer Rubydex gave beside the parser's own. On each constant reference the two converge: both naming the same constant is an edge marked `converged`; a reference only the parser resolved keeps its edge; one only Rubydex resolved is an edge marked `rubydex`; a reference the two resolve to different constants is no edge, counted as a disagreement in the census, and doubts every finding in that constant to medium confidence with both answers in the note. Neither resolver outranks the other, and a target defined in a gem still reaches the rules as a name the tree does not define.
+
+The summary prints one line per resolver, `resolvers: rubydex: converged 412, parser only 3, rubydex only 29, disagreed 0 (index hit, 0.08s)`, and `explain` prints both answers on every edge. The index is kept under `.archspec/resolvers/` as a facts file of every answer, keyed by the content of `Gemfile.lock`, the parsed files and the archspec and Rubydex versions; a check on an unchanged tree and bundle reads it, and any change to either indexes again. `archspec reflect --rubydex` is the same computation followed by a write, so the file it leaves in `archspec_facts/` and the facts a declared resolver merges are one and the same; declare the resolver or write the file, not both, or the references land twice.
+
+The gem stays out of the gemspec: it loads only when the resolver is declared or the command runs. A declared resolver whose gem, `Gemfile` or `Gemfile.lock` is missing fails the check by name, never silently, because two machines grading the same tree differently and both reading clean is the failure the declaration exists to prevent.
