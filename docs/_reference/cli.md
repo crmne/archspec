@@ -1,7 +1,7 @@
 ---
 title: CLI
 nav_order: 2
-description: Reference every ArchSpec command-line option for checking projects, explaining files, emitting JSON, managing baselines, and choosing config files.
+description: Reference every ArchSpec command-line option for checking projects, explaining files, emitting JSON, managing baselines, reflecting Active Record facts, and choosing config files.
 seo:
   title: ArchSpec command-line interface
 ---
@@ -52,10 +52,11 @@ app/models/user.rb:9:5
 1 architecture violation found.
 ```
 
-A clean run prints one line:
+A clean run prints the summary and names the facts files it merged, or says the directory was absent:
 
 ```text
 ArchSpec passed: 391 files, 407 constants, 11061 facts checked.
+facts: none (archspec_facts/ absent)
 ```
 
 Pass paths to report only violations in those files or directories. ArchSpec still analyzes the whole project, so cross-file dependencies resolve, but output is scoped to what you touched:
@@ -73,6 +74,15 @@ bundle exec archspec check --update-todo
 ```
 
 Writes the current violations to the configured todo file. Use this for existing apps, not for accepting new regressions. Parse errors are never written to the todo; a file that does not parse has to be fixed.
+
+## reflect
+
+```sh
+bundle exec archspec reflect
+bundle exec archspec reflect --output archspec_facts/rails.yml
+```
+
+Boots the application through `bin/rails runner` and writes the Active Record associations, with their resolved classes, to the facts directory. This is the only command that loads the app; `check` merges the file it writes and stays static. See [Facts](facts/).
 
 ## explain
 

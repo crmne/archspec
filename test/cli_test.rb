@@ -396,4 +396,53 @@ class CLITest < ArchSpecTest
       assert_match(/class methods: find/, output.string)
     end
   end
+  def test_reflect_runs_inside_the_app_through_bin_rails_runner
+    with_project do |root|
+      write "#{root}/Archspec.rb", "component :models, in: 'app/models/**/*.rb'\n"
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/bin/rails", <<~SH
+        #!/bin/sh
+        printf '%s\\n' "$@" > "#{root}/runner-args"
+        mkdir -p "#{root}/archspec_facts"
+        printf 'format: 1\\n' > "#{root}/archspec_facts/rails.yml"
+      SH
+      File.chmod(0o755, "#{root}/bin/rails")
+
+      output = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['reflect'], output: output, error: StringIO.new) }
+
+      assert_equal 0, status
+      assert_equal 'Wrote archspec_facts/rails.yml', output.string.strip
+      args = File.readlines("#{root}/runner-args", chomp: true)
+      assert_equal 'runner', args.first
+      assert_match "ArchSpec::Reflect.run(output: \"#{root}/archspec_facts/rails.yml\", root: \"#{root}\")", args.last
+    end
+  end
+
+  def test_reflect_refuses_outside_a_rails_application
+    with_project do |root|
+      write "#{root}/Archspec.rb", "component :models, in: 'app/models/**/*.rb'\n"
+
+      error = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['reflect'], output: StringIO.new, error: error) }
+
+      assert_equal 1, status
+      assert_match 'no bin/rails', error.string
+    end
+  end
+
+  def test_reflect_reports_a_failed_runner
+    with_project do |root|
+      write "#{root}/Archspec.rb", "component :models, in: 'app/models/**/*.rb'\n"
+      write "#{root}/bin/rails", "#!/bin/sh\nexit 3\n"
+      File.chmod(0o755, "#{root}/bin/rails")
+
+      error = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['reflect', '--output', 'tmp/facts.yml'], output: StringIO.new, error: error) }
+
+      assert_equal 1, status
+      assert_match 'bin/rails runner failed', error.string
+    end
+  end
+
 end

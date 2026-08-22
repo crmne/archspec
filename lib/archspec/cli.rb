@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'optparse'
+require 'pathname'
 
 module ArchSpec
   # The <tt>archspec</tt> command line. Backs the +exe/archspec+ executable and
@@ -9,6 +10,7 @@ module ArchSpec
   #   archspec init
   #   archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
   #   archspec explain PATH_OR_CONSTANT
+  #   archspec reflect [--config PATH] [--output PATH]
   #
   # #run returns the process exit status: 0 when clean, 1 when violations are
   # found.
@@ -36,6 +38,8 @@ module ArchSpec
         check(argv, output)
       when 'explain'
         explain(argv, output)
+      when 'reflect'
+        reflect(argv, output)
       when 'version', '--version', '-v'
         raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
 
@@ -58,7 +62,7 @@ module ArchSpec
     def help(argv, output)
       subject = argv.shift
       raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
-      if subject && !%w[init check explain version].include?(subject)
+      if subject && !%w[init check explain reflect version].include?(subject)
         raise UsageError, "unknown command: #{subject}"
       end
 
@@ -171,6 +175,40 @@ module ArchSpec
       0
     end
 
+    # Runs the Active Record reflector inside the application through
+    # <tt>bin/rails runner</tt>, the only ArchSpec command that boots the app.
+    # The facts file it writes is what +check+ merges on later static runs.
+    def reflect(argv, output)
+      options = { config: CONFIG_FILE, output: nil, help: false }
+      parser = OptionParser.new do |opts|
+        opts.banner = usage('reflect').strip
+        opts.on('--config PATH', 'Use a different architecture file') { |value| options[:config] = value }
+        opts.on('--output PATH', 'Write the facts file here instead of the facts directory') do |value|
+          options[:output] = value
+        end
+        opts.on('-h', '--help', 'Show this help') { options[:help] = true }
+      end
+      parser.parse!(argv)
+
+      if options[:help]
+        output.puts parser
+        return 0
+      end
+
+      raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
+
+      definition, root = load_definition(options[:config])
+      runner = File.join(root, 'bin', 'rails')
+      raise Error, "no bin/rails at #{root}; reflect runs inside a Rails application" unless File.executable?(runner)
+
+      destination = File.expand_path(options[:output] || File.join(definition.facts_path, 'rails.yml'), root)
+      script = "require 'archspec'; ArchSpec::Reflect.run(output: #{destination.inspect}, root: #{root.inspect})"
+      raise Error, 'bin/rails runner failed; the facts file was not written' unless system(runner, 'runner', script, chdir: root)
+
+      output.puts "Wrote #{Pathname(destination).relative_path_from(Pathname(root))}"
+      0
+    end
+
     def load_definition(config_path)
       raise Error, "no #{config_path} found; run `archspec init` first" unless File.exist?(config_path)
 
@@ -229,6 +267,8 @@ module ArchSpec
         'Usage: archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]'
       when 'explain'
         'Usage: archspec explain PATH_OR_CONSTANT [--config PATH]'
+      when 'reflect'
+        'Usage: archspec reflect [--config PATH] [--output PATH]'
       when 'version'
         'Usage: archspec version'
       when ''
@@ -237,6 +277,7 @@ module ArchSpec
             archspec init [PATH] [--force]
             archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
             archspec explain PATH_OR_CONSTANT [--config PATH]
+            archspec reflect [--config PATH] [--output PATH]
             archspec version
             archspec help [COMMAND]
         TEXT
