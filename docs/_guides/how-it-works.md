@@ -111,7 +111,10 @@ Static analysis cannot see through `send`, `const_get`, or `method_missing`.
 ArchSpec records these as `dynamic_feature` facts with confidence
 `unknown_due_to_dynamic_feature` instead of ignoring them, and every
 diagnostic carries the evidence it was derived from, so you can verify a
-report against the source line it points to.
+report against the source line it points to. A diagnostic inside a
+constant that uses one of them prints at medium confidence with the
+feature and its line in the note. Every run ends with a census of what
+it could not see, by cause, so silence is never mistaken for agreement.
 
 Because ArchSpec only parses code and never loads it, checks need no Rails
 boot, no database, and have no side effects. They are safe to run in CI, in

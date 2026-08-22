@@ -31,6 +31,7 @@ module ArchSpec
           output.puts "ArchSpec passed: #{graph.files.size} files, #{graph.constants.size} constants, " \
                       "#{graph.edges.size} facts checked."
           output.puts facts_summary(graph)
+          output.puts census_summary(graph)
           return
         end
 
@@ -44,6 +45,14 @@ module ArchSpec
         label = diagnostics.size == 1 ? 'architecture violation' : 'architecture violations'
         output.puts style.bold("#{diagnostics.size} #{label} found.")
         output.puts facts_summary(graph)
+        output.puts census_summary(graph)
+      end
+
+      # What the run could not see, by cause, so a run the parser barely read
+      # never prints the same summary as one it read in full.
+      def census_summary(graph)
+        clauses = graph.census.clauses
+        "could not see: #{clauses.empty? ? 'nothing' : clauses.join(', ')}"
       end
 
       # The delta against a baseline: what the change introduced, resolved and
@@ -167,8 +176,10 @@ module ArchSpec
         note = diagnostic.evidence.to_s
         return if note.empty? || note == relative
 
-        note = "#{note} (confidence: #{diagnostic.confidence})" unless diagnostic.confidence == :high
-        note
+        return note if diagnostic.confidence == :high
+
+        detail = [diagnostic.confidence, diagnostic.caveat].compact.join(', ')
+        "#{note} (confidence: #{detail})"
       end
 
       def underline(location, text)

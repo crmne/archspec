@@ -8,8 +8,12 @@ module ArchSpec
   # in an existing app and burn the list down over time. Matched by
   # ArchSpec::Diagnostic#fingerprint, so entries survive edits that shift lines.
   class Todo
+    Entry = ValueObject.define(:id, :rule, :path, :message)
+
+    attr_reader :entries, :path
+
     def self.empty(root: nil)
-      new(Set.new, root: root)
+      new([], root: root)
     end
 
     def self.load(path, root:)
@@ -20,16 +24,17 @@ module ArchSpec
         raise Error, "invalid todo file #{path}: expected a violations list"
       end
 
-      ids = Array(document['violations']).map.with_index do |entry, index|
+      entries = Array(document['violations']).map.with_index do |entry, index|
         id = entry.is_a?(Hash) ? entry['id'] : entry
         unless id.is_a?(String) && !id.empty?
           raise Error, "invalid todo file #{path}: violation #{index + 1} has no id"
         end
 
-        id
+        fields = entry.is_a?(Hash) ? entry : {}
+        Entry.new(id, fields['rule'], fields['path'], fields['message'])
       end
 
-      new(ids.to_set, root: root)
+      new(entries, root: root, path: File.expand_path(path))
     rescue Error
       raise
     rescue Psych::Exception, SystemCallError => e
@@ -54,13 +59,22 @@ module ArchSpec
       raise Error, "could not write todo file #{path}: #{e.message}"
     end
 
-    def initialize(ids, root:)
-      @ids = ids
+    def initialize(entries, root:, path: nil)
+      @entries = entries
+      @ids = entries.map(&:id).to_set
       @root = root
+      @path = path
     end
 
     def include?(diagnostic)
-      ids.include?(diagnostic.fingerprint(root: root))
+      !id_for(diagnostic).nil?
+    end
+
+    # The recorded id matching a diagnostic, or nil when the todo file does
+    # not accept it.
+    def id_for(diagnostic)
+      id = diagnostic.fingerprint(root: root)
+      ids.include?(id) ? id : nil
     end
 
     private

@@ -52,12 +52,25 @@ app/models/user.rb:9:5
 1 architecture violation found.
 ```
 
-A clean run prints the summary and names the facts files it merged, or says the directory was absent:
+A clean run prints the summary, names the facts files it merged or says the directory was absent, and then says what the analysis could not see:
 
 ```text
 ArchSpec passed: 391 files, 407 constants, 11061 facts checked.
 facts: none (archspec_facts/ absent)
+could not see: 312 unresolved constant references, 14 dynamic features, 2 unused suppressions
 ```
+
+The last line is the census: constant references that matched no definition in the project (gems and the standard library land here), dynamic features such as `send` and `const_get`, calls whose receiver the parser cannot type, files ignored by glob or unreadable by the parser, suppressions that matched nothing, and todo entries that matched nothing. It prints on passing and failing runs alike, and reads `could not see: nothing` only when every count is zero, so a run the parser barely read never looks like one it read in full. The JSON format carries the same counts as a `census` object, with the unresolved names and the constants carrying each dynamic feature.
+
+A diagnostic inside a constant that uses a dynamic feature is reported at medium confidence, and its note names the feature and line, because the feature may define or reach what the rule could not see. The scope is the constant, not the file.
+
+Unused suppressions and stale todo entries are counted but never fail a run by themselves. Ask for them:
+
+```sh
+bundle exec archspec check --housekeeping
+```
+
+reports each as a diagnostic under `housekeeping.unused_suppression` or `housekeeping.stale_todo` and exits non-zero when any exist. It cannot be combined with `--update-todo`.
 
 Pass paths to report only violations in those files or directories. ArchSpec still analyzes the whole project, so cross-file dependencies resolve, but output is scoped to what you touched:
 

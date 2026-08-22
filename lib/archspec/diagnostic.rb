@@ -8,14 +8,28 @@ module ArchSpec
   # these. Its #fingerprint is the stable id used to match todo entries and
   # suppress specific findings.
   class Diagnostic
-    attr_reader :rule, :message, :location, :evidence, :confidence
+    attr_reader :rule, :message, :location, :evidence, :confidence, :caveat
 
-    def initialize(rule:, message:, location:, evidence:, confidence: :high)
+    def initialize(rule:, message:, location:, evidence:, confidence: :high, caveat: nil)
       @rule = rule
       @message = message
       @location = location
       @evidence = evidence
       @confidence = confidence
+      @caveat = caveat
+    end
+
+    # The same finding at medium confidence, with the reason it is less
+    # certain. The fingerprint is unchanged, so todo entries still match.
+    def doubted(caveat)
+      Diagnostic.new(
+        rule: rule,
+        message: message,
+        location: location,
+        evidence: evidence,
+        confidence: :medium,
+        caveat: caveat
+      )
     end
 
     # Line numbers stay out of the fingerprint so todo entries survive edits
@@ -39,7 +53,8 @@ module ArchSpec
         end_line: location.end_line,
         end_column: location.end_column,
         evidence: evidence,
-        confidence: confidence.to_s
+        confidence: confidence.to_s,
+        caveat: caveat
       }
     end
   end

@@ -10,6 +10,8 @@ module ArchSpec
       root = File.expand_path(root)
       graph = Graph.new(root)
 
+      graph.ignored_files = ignored_files(definition, root).to_a.sort
+
       ruby_files(definition, root).each do |path|
         result = Prism.parse_file(path)
         graph.add_file(

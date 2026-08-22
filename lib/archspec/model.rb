@@ -163,6 +163,92 @@ module ArchSpec
     end
   end
 
+
+  # What a run could not see, counted once on the finished graph and read by
+  # the formatters as it is. A constant reference that matched no definition,
+  # a dynamic feature, a call on a receiver of unknown kind, a file ignored
+  # by glob or unreadable by the parser: each is a blind spot with a cause,
+  # so a run over code the parser barely read never prints the summary of a
+  # run that read it in full.
+  class Census
+    attr_reader :resolved_references, :unresolved_references, :unresolved_names, :dynamic_features,
+                :other_receiver_calls, :ignored_files, :parse_error_files, :producers,
+                :unused_suppressions, :stale_todo_entries
+
+    def initialize(resolved_references:, unresolved_references:, unresolved_names:, dynamic_features:,
+                   other_receiver_calls:, ignored_files:, parse_error_files:, producers:,
+                   unused_suppressions: 0, stale_todo_entries: 0)
+      @resolved_references = resolved_references
+      @unresolved_references = unresolved_references
+      @unresolved_names = unresolved_names
+      @dynamic_features = dynamic_features
+      @other_receiver_calls = other_receiver_calls
+      @ignored_files = ignored_files
+      @parse_error_files = parse_error_files
+      @producers = producers
+      @unused_suppressions = unused_suppressions
+      @stale_todo_entries = stale_todo_entries
+    end
+
+    def with_housekeeping(unused_suppressions:, stale_todo_entries:)
+      Census.new(
+        resolved_references: resolved_references,
+        unresolved_references: unresolved_references,
+        unresolved_names: unresolved_names,
+        dynamic_features: dynamic_features,
+        other_receiver_calls: other_receiver_calls,
+        ignored_files: ignored_files,
+        parse_error_files: parse_error_files,
+        producers: producers,
+        unused_suppressions: unused_suppressions,
+        stale_todo_entries: stale_todo_entries
+      )
+    end
+
+    def dynamic_feature_count
+      dynamic_features.values.sum { |carriers| carriers.size }
+    end
+
+    # The blind spots as prose clauses, in a fixed order, empty when the run
+    # saw everything it was given.
+    def clauses
+      [
+        clause(unresolved_references, 'unresolved constant reference'),
+        clause(dynamic_feature_count, 'dynamic feature'),
+        clause(other_receiver_calls, 'call with an untyped receiver', 'calls with untyped receivers'),
+        clause(ignored_files, 'ignored file'),
+        clause(parse_error_files, 'file with parse errors', 'files with parse errors'),
+        clause(unused_suppressions, 'unused suppression'),
+        clause(stale_todo_entries, 'stale todo entry', 'stale todo entries')
+      ].compact
+    end
+
+    def to_h
+      {
+        references: {
+          resolved: resolved_references,
+          unresolved: unresolved_references,
+          unresolved_names: unresolved_names
+        },
+        dynamic_features: dynamic_features.transform_values { |carriers| { count: carriers.size, carriers: carriers } },
+        other_receiver_calls: other_receiver_calls,
+        ignored_files: ignored_files,
+        parse_error_files: parse_error_files,
+        producers: producers,
+        unused_suppressions: unused_suppressions,
+        stale_todo_entries: stale_todo_entries
+      }
+    end
+
+    private
+
+    def clause(count, singular, plural = "#{singular}s")
+      return if count.zero?
+
+      "#{count} #{count == 1 ? singular : plural}"
+    end
+  end
+
   class Graph
     DEPENDENCY_EDGE_TYPES = %i[
       references_constant
@@ -175,7 +261,7 @@ module ArchSpec
     RESOLVED_ROOTS = %w[Object BasicObject].freeze
 
     attr_reader :root, :files, :constants, :edges, :components, :facts_files
-    attr_accessor :facts_directory
+    attr_accessor :facts_directory, :ignored_files
 
     def initialize(root)
       @root = File.expand_path(root)
@@ -188,6 +274,8 @@ module ArchSpec
       @facts_directory = nil
       @facts_present = false
       @facts_origins = {}.compare_by_identity
+      @ignored_files = []
+      @census = nil
     end
 
     def add_file(path:, parse_errors:, suppressions: [])
@@ -330,6 +418,34 @@ module ArchSpec
 
         @components[component.name] = component
       end
+
+      @census = nil
+    end
+
+    def census
+      @census ||= take_census
+    end
+
+    def record_housekeeping(unused_suppressions:, stale_todo_entries:)
+      @census = census.with_housekeeping(
+        unused_suppressions: unused_suppressions,
+        stale_todo_entries: stale_todo_entries
+      )
+    end
+
+    # The innermost constant whose definition spans the location, or nil for a
+    # location outside any constant body.
+    def constant_enclosing(location)
+      constants_for_path(location.path).select do |constant|
+        constant.location.line <= location.line && constant.location.end_line >= location.line
+      end.min_by { |constant| constant.location.end_line - constant.location.line }
+    end
+
+    def dynamic_features_for(constant_name, path)
+      edges.select do |edge|
+        edge.type == :dynamic_feature && edge.from_path == path &&
+          (constant_name.nil? || edge.from_constant == constant_name)
+      end
     end
 
     def component_names_for_path(path)
@@ -452,10 +568,60 @@ module ArchSpec
     end
 
     def suppressed?(diagnostic)
-      files[diagnostic.location.path]&.suppressions&.any? { |suppression| suppression.matches?(diagnostic) }
+      suppressions_matching(diagnostic).any?
+    end
+
+    def suppressions_matching(diagnostic)
+      Array(files[diagnostic.location.path]&.suppressions).select { |suppression| suppression.matches?(diagnostic) }
+    end
+
+    def suppressions
+      files.values.flat_map(&:suppressions)
     end
 
     private
+
+    def take_census
+      resolved = 0
+      unresolved_names = Set.new
+      dynamic = Hash.new { |hash, key| hash[key] = [] }
+      other_receivers = 0
+      producers = Hash.new(0)
+
+      edges.each do |edge|
+        case edge.type
+        when *DEPENDENCY_EDGE_TYPES
+          if constants_named(resolve_edge_constant(edge)).any?
+            resolved += 1
+          else
+            unresolved_names.add(resolve_edge_constant(edge))
+          end
+        when :dynamic_feature
+          dynamic[edge.to] << "#{edge_source_name(edge)} (#{edge.location.relative_path(root)}:#{edge.location.line})"
+        when :calls_named_method
+          other_receivers += 1 if edge.receiver == :other
+        end
+        producers[producer_of(edge)] += 1 if facts_present?
+      end
+
+      Census.new(
+        resolved_references: resolved,
+        unresolved_references: dependency_edges.size - resolved,
+        unresolved_names: unresolved_names.to_a.sort,
+        dynamic_features: dynamic.sort.to_h.transform_values(&:sort),
+        other_receiver_calls: other_receivers,
+        ignored_files: ignored_files.size,
+        parse_error_files: files.values.count { |file| file.parse_errors.any? },
+        producers: facts_present? ? producers.sort.to_h : nil
+      )
+    end
+
+    def producer_of(edge)
+      origin = facts_file_for(edge)
+      return 'parser' unless origin
+
+      facts_files.find { |file| file.relative_path == origin }&.producer || origin
+    end
 
     # Walks a constant's ancestry collecting methods. The block maps a node to
     # its own methods in the requested scope, the mixins to follow with the

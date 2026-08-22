@@ -10,7 +10,7 @@ module ArchSpec
   # dispatches the +init+, +check+, +explain+, and +version+ subcommands.
   #
   #   archspec init
-  #   archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
+  #   archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo] [--housekeeping]
   #   archspec check --baseline [DIR] [--mode ratchet|advisory|strict]
   #   archspec snapshot [--config PATH] [--output DIR]
   #   archspec explain PATH_OR_CONSTANT
@@ -111,6 +111,7 @@ module ArchSpec
         config: CONFIG_FILE,
         format: 'text',
         update_todo: false,
+        housekeeping: false,
         baseline: nil,
         mode: nil,
         help: false
@@ -122,6 +123,9 @@ module ArchSpec
         opts.on('--format FORMAT', 'Output text or json') { |value| options[:format] = value }
         opts.on('--update-todo', 'Replace the configured todo with current violations') do
           options[:update_todo] = true
+        end
+        opts.on('--housekeeping', 'Report unused suppressions and stale todo entries as violations') do
+          options[:housekeeping] = true
         end
         opts.on('--baseline [DIR]', 'Grade the change against a snapshot (default .archspec)') do |value|
           options[:baseline] = value || Snapshot::DEFAULT_DIRECTORY
@@ -137,6 +141,7 @@ module ArchSpec
       end
 
       raise Error, 'cannot combine --update-todo with path arguments' if options[:update_todo] && argv.any?
+      raise Error, 'cannot combine --update-todo with --housekeeping' if options[:update_todo] && options[:housekeeping]
       raise Error, 'cannot combine --update-todo with --baseline' if options[:update_todo] && options[:baseline]
       raise UsageError, '--mode needs --baseline' if options[:mode] && !options[:baseline]
 
@@ -148,7 +153,7 @@ module ArchSpec
       graph = Analyzer.analyze(definition, root: root)
       todo_path = todo_path_for(definition, root)
       todo = options[:update_todo] ? Todo.empty(root: root) : Todo.load(todo_path, root: root)
-      diagnostics = Evaluator.evaluate(definition, graph, todo: todo)
+      diagnostics = Evaluator.evaluate(definition, graph, todo: todo, housekeeping: options[:housekeeping])
 
       if options[:baseline]
         return check_against_baseline(options, argv, output, formatter, definition, root, graph, todo, diagnostics,
@@ -374,7 +379,7 @@ module ArchSpec
         'Usage: archspec init [PATH] [--force]'
       when 'check'
         'Usage: archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo] ' \
-          '[--baseline [DIR]] [--mode ratchet|advisory|strict]'
+          '[--housekeeping] [--baseline [DIR]] [--mode ratchet|advisory|strict]'
       when 'snapshot'
         'Usage: archspec snapshot [--config PATH] [--output DIR]'
       when 'explain'
@@ -387,7 +392,7 @@ module ArchSpec
         <<~TEXT
           Usage:
             archspec init [PATH] [--force]
-            archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
+            archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo] [--housekeeping]
             archspec check [PATHS...] --baseline [DIR] [--mode ratchet|advisory|strict]
             archspec snapshot [--config PATH] [--output DIR]
             archspec explain PATH_OR_CONSTANT [--config PATH]

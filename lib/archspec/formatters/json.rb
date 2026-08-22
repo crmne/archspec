@@ -49,6 +49,7 @@ module ArchSpec
               misses: file.misses
             }
           end,
+          census: graph.census.to_h,
           violations: diagnostics.map { |diagnostic| diagnostic.to_h(root: graph.root) }
         }
       end
