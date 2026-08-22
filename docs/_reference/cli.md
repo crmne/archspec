@@ -102,7 +102,7 @@ bundle exec archspec check --format sarif > archspec.sarif
 
 Prints a SARIF 2.1.0 log with one run: a rule per rule id carrying the rule's `because:` as its description and its docs page as the help link, and a result per finding with the span, the fingerprint the todo file uses under `partialFingerprints`, and the confidence, caveat, date verdict, suggested action and evidence as properties. Upload it with the code-scanning action and the findings appear in the Security tab and inline on the diff, persisting across runs by fingerprint. Under `--baseline` each result carries its bucket and the run carries the mode, the baseline commit and the edge counts; resolved findings are included at no level so the history shows them going away. Keys print in a fixed order, so the document is stable for the same tree.
 
-A format of your own is registered from `Archspec.rb` with `formatter`; see [Configuration](configuration/).
+A format of your own is registered from `Archspec.rb` with `formatter`; see [Configuration]({% link _reference/configuration.md %}).
 
 ## snapshot
 
