@@ -16,7 +16,7 @@ bundle exec archspec snapshot
 bundle exec archspec check --baseline
 ```
 
-The snapshot holds what the rules read: every parsed file with its parse errors and suppressions, every constant with its methods and mixins, every fact, and the component assignment. The receipt beside it records the ArchSpec version, the root, the source and ignore patterns, a digest of the parsed files, the rule ids that existed when it was taken, and the git commit with a dirty flag when the root is a repository. Both files are sorted YAML with no timestamp, so two snapshots of the same tree are identical. `.archspec/` ignores itself; nothing in it is meant to be committed.
+The snapshot holds what the rules read: every parsed file with its parse errors and suppressions, every constant with its methods and mixins, every fact, and the component assignment. The receipt beside it records the ArchSpec version, the root, the source and ignore patterns, a digest of the parsed files, the rule ids that existed when it was taken, and the git commit with a dirty flag when the root is a repository. Both files are sorted YAML with no timestamp, so two snapshots of the same tree are identical. The graph is also written as `graph.bin`, the same document serialised with Marshal, which loads in a fraction of the time and is what a path-scoped check reads; the receipt carries its digest, and a payload that does not match, or was written by another ArchSpec or Prism version, is ignored for the YAML. `.archspec/` ignores itself; nothing in it is meant to be committed.
 
 ## What a check reports
 

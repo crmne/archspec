@@ -25,7 +25,7 @@ class ScopedCheckTest < ArchSpecTest
     end
   end
 
-  def test_a_scoped_check_without_a_cache_reads_everything
+  def test_a_scoped_check_without_a_cache_reuses_a_snapshot_with_a_payload
     with_project do |root|
       write_app(root, cache: false)
       assert_equal 0, archspec(root, ["snapshot"])
@@ -35,7 +35,33 @@ class ScopedCheckTest < ArchSpecTest
         check_json(root, ['app/models'])
       end
 
+      assert_equal ["#{root}/app/models/user.rb"], parsed
+    end
+  end
+
+  def test_a_scoped_check_without_a_cache_reads_everything_when_the_snapshot_has_only_yaml
+    with_project do |root|
+      write_app(root, cache: false)
+      assert_equal 0, archspec(root, ["snapshot"])
+      File.delete("#{root}/.archspec/#{ArchSpec::Snapshot::PAYLOAD_FILE}")
+      parsed = []
+      original = Prism.method(:parse_file)
+      Prism.stub(:parse_file, ->(path) { parsed << path && original.call(path) }) do
+        check_json(root, ['app/models'])
+      end
+
       assert_equal 2, parsed.size
+    end
+  end
+
+  def test_a_scoped_check_prints_what_a_full_check_prints
+    with_project do |root|
+      write_app(root, cache: false)
+      assert_equal 0, archspec(root, ["snapshot"])
+      write "#{root}/app/models/user.rb", "class User\n  def audit = UsersController\nend\n"
+
+      assert_equal check_output(root, ['--format', 'json']), check_output(root, ['--format', 'json', 'app/models'])
+      assert_equal check_output(root, []), check_output(root, ['app/models'])
     end
   end
 
@@ -99,6 +125,12 @@ class ScopedCheckTest < ArchSpecTest
 
   def archspec(root, argv)
     Dir.chdir(root) { ArchSpec::CLI.run(argv, output: StringIO.new, error: StringIO.new) }
+  end
+
+  def check_output(root, argv)
+    output = StringIO.new
+    Dir.chdir(root) { ArchSpec::CLI.run(['check', *argv], output: output, error: output) }
+    output.string
   end
 
   def check_json(root, paths)

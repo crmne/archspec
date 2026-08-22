@@ -181,12 +181,14 @@ module ArchSpec
     end
 
     # A path-scoped run over a snapshot of the same tree re-reads only the
-    # named paths; every other file's facts come from the snapshot. It is
-    # part of what the cache directive opts into, because loading a snapshot
-    # costs more than parsing a small tree, and without a snapshot, or with
-    # one taken under other settings, every file is read.
+    # named paths; every other file's facts come from the snapshot. It happens
+    # whenever the snapshot carries a payload the current version wrote, which
+    # loads faster than a small tree parses; a snapshot with only the YAML
+    # graph, which loads slower than that, is reused only under the cache
+    # directive, and without a snapshot, or with one taken under other
+    # settings, every file is read.
     def analyze_for_check(definition, root, paths, options)
-      scoped = paths.any? && definition.cache_path && !options[:update_todo] && !options[:baseline]
+      scoped = paths.any? && !options[:update_todo] && !options[:baseline]
       reused = reusable_snapshot(definition, root) if scoped
       return Analyzer.analyze(definition, root: root) unless reused
 
@@ -197,7 +199,9 @@ module ArchSpec
       directory = File.expand_path(Snapshot::DEFAULT_DIRECTORY, root)
       return unless File.exist?(File.join(directory, Snapshot::RECEIPT_FILE))
 
-      snapshot = Snapshot.load(directory, root: root)
+      snapshot = definition.cache_path ? Snapshot.load(directory, root: root) : Snapshot.load_payload(directory, root: root)
+      return unless snapshot
+
       receipt = snapshot.receipt
       patterns = (definition.analysis_patterns + definition.ignore_patterns).sort
       return unless receipt.archspec_version == ArchSpec::VERSION && receipt.root == root && receipt.patterns == patterns

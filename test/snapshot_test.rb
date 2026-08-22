@@ -29,6 +29,46 @@ class SnapshotTest < ArchSpecTest
     end
   end
 
+  def test_the_payload_is_read_when_it_matches_its_receipt_and_the_yaml_otherwise
+    with_project do |root|
+      write_app(root)
+      assert_equal 0, snapshot(root)
+      directory = File.join(root, '.archspec')
+      assert File.exist?(File.join(directory, ArchSpec::Snapshot::PAYLOAD_FILE))
+      assert ArchSpec::Snapshot.payload?(directory, root: root)
+      from_payload = ArchSpec::Snapshot.load(directory, root: root)
+
+      File.binwrite(File.join(directory, ArchSpec::Snapshot::PAYLOAD_FILE), 'not the payload')
+      refute ArchSpec::Snapshot.payload?(directory, root: root)
+      from_yaml = ArchSpec::Snapshot.load(directory, root: root)
+
+      assert_equal from_payload.graph.edges, from_yaml.graph.edges
+      assert_equal from_payload.graph.constants.map(&:name), from_yaml.graph.constants.map(&:name)
+      assert_equal from_payload.receipt, from_yaml.receipt
+
+      File.delete(File.join(directory, ArchSpec::Snapshot::PAYLOAD_FILE))
+      refute ArchSpec::Snapshot.payload?(directory, root: root)
+      assert_equal from_payload.graph.edges, ArchSpec::Snapshot.load(directory, root: root).graph.edges
+    end
+  end
+
+  def test_a_payload_from_another_version_is_ignored_for_the_yaml
+    with_project do |root|
+      write_app(root)
+      assert_equal 0, snapshot(root)
+      directory = File.join(root, '.archspec')
+      path = File.join(directory, ArchSpec::Snapshot::PAYLOAD_FILE)
+      foreign = Marshal.dump({ 'format' => 1, 'archspec_version' => '0.0.0', 'prism_version' => Prism::VERSION,
+                               'graph' => { 'files' => [], 'constants' => [], 'edges' => [], 'components' => [] } })
+      File.binwrite(path, foreign)
+      receipt = File.join(directory, ArchSpec::Snapshot::RECEIPT_FILE)
+      File.write(receipt, File.read(receipt).sub(/payload_digest: .*/, "payload_digest: #{Digest::SHA256.hexdigest(foreign)}"))
+
+      refute ArchSpec::Snapshot.payload?(directory, root: root)
+      assert_equal %w[User UsersController], ArchSpec::Snapshot.load(directory, root: root).graph.constants.map(&:name).sort
+    end
+  end
+
   def test_two_snapshots_of_the_same_tree_are_identical
     with_project do |root|
       write_app(root)

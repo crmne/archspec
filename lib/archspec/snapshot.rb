@@ -3,6 +3,7 @@
 require 'digest'
 require 'fileutils'
 require 'pathname'
+require 'prism'
 require 'yaml'
 
 require_relative 'error'
@@ -26,7 +27,8 @@ module ArchSpec
     :parsed_set_digest,
     :rule_ids,
     :commit,
-    :dirty
+    :dirty,
+    :payload_digest
   ) do
     # The first reason this receipt cannot be compared with +other+, or nil
     # when the two snapshots were produced the same way. Only the inputs that
@@ -50,22 +52,34 @@ module ArchSpec
   # +check --baseline+ has a before to grade against. Everything the evaluator
   # reads is stored; everything it can recompute is not. The files are sorted
   # YAML with no timestamp, so two snapshots of the same tree are identical.
+  #
+  # The graph is written twice: as YAML, which a person can read and which any
+  # version can load, and as a Marshal payload of the same document, which
+  # loads in a fraction of the time and is what a path-scoped check reads.
+  # The receipt records the payload's digest, so a payload that does not
+  # match its receipt, or was written by another gem or parser version, is
+  # ignored in favour of the YAML rather than trusted.
   class Snapshot
     FORMAT = 1
     DEFAULT_DIRECTORY = '.archspec'
     GRAPH_FILE = 'graph.yml'
+    PAYLOAD_FILE = 'graph.bin'
     RECEIPT_FILE = 'receipt.yml'
 
     attr_reader :graph, :receipt
 
     def self.write(directory, graph:, definition:, definition_digest:, commit:, dirty:)
       directory = File.expand_path(directory, graph.root)
-      receipt = receipt_for(graph, definition, definition_digest: definition_digest, commit: commit, dirty: dirty)
+      document = graph_document(graph)
+      payload = Marshal.dump(payload_document(document))
+      receipt = receipt_for(graph, definition, definition_digest: definition_digest, commit: commit, dirty: dirty,
+                                               payload_digest: Digest::SHA256.hexdigest(payload))
 
       FileUtils.mkdir_p(directory)
       File.write(File.join(directory, '.gitignore'), "*\n")
       File.write(File.join(directory, RECEIPT_FILE), receipt_document(receipt).to_yaml)
-      File.write(File.join(directory, GRAPH_FILE), graph_document(graph).to_yaml)
+      File.write(File.join(directory, GRAPH_FILE), document.to_yaml)
+      File.binwrite(File.join(directory, PAYLOAD_FILE), payload)
       new(graph, receipt)
     rescue SystemCallError => e
       raise Error, "could not write snapshot to #{directory}: #{e.message}"
@@ -80,11 +94,34 @@ module ArchSpec
       end
 
       receipt = receipt_from(read_yaml(receipt_path), receipt_path)
-      graph = graph_from(read_yaml(graph_path), graph_path, root: receipt.root)
-      new(graph, receipt)
+      document = read_payload(File.join(directory, PAYLOAD_FILE), receipt) || read_yaml(graph_path)
+      new(graph_from(document, graph_path, root: receipt.root), receipt)
     end
 
-    def self.receipt_for(graph, definition, definition_digest:, commit:, dirty:)
+    # The snapshot from its payload alone, or nil when there is no payload the
+    # current gem and parser wrote matching the receipt. A path-scoped check
+    # reuses a snapshot only through this loader, because loading the YAML
+    # costs more than parsing a small tree, and a scoped run that is slower
+    # than a full one is no loop.
+    def self.load_payload(directory, root:)
+      directory = File.expand_path(directory, root)
+      receipt_path = File.join(directory, RECEIPT_FILE)
+      return unless File.exist?(receipt_path)
+
+      receipt = receipt_from(read_yaml(receipt_path), receipt_path)
+      document = read_payload(File.join(directory, PAYLOAD_FILE), receipt)
+      return unless document
+
+      new(graph_from(document, PAYLOAD_FILE, root: receipt.root), receipt)
+    end
+
+    def self.payload?(directory, root:)
+      !load_payload(directory, root: root).nil?
+    rescue Error
+      false
+    end
+
+    def self.receipt_for(graph, definition, definition_digest:, commit:, dirty:, payload_digest: nil)
       Receipt.new(
         format: FORMAT,
         archspec_version: ArchSpec::VERSION,
@@ -94,7 +131,8 @@ module ArchSpec
         parsed_set_digest: parsed_set_digest(graph),
         rule_ids: definition.rules.map(&:id).uniq.sort,
         commit: commit,
-        dirty: dirty
+        dirty: dirty,
+        payload_digest: payload_digest
       )
     end
 
@@ -125,6 +163,30 @@ module ArchSpec
         raise Error, "could not load snapshot file #{path}: #{e.message}"
       end
 
+      def payload_document(document)
+        { 'format' => FORMAT, 'archspec_version' => ArchSpec::VERSION, 'prism_version' => Prism::VERSION,
+          'graph' => document }
+      end
+
+      # The graph document from the payload, or nil when there is none, when it
+      # does not match the receipt's digest, or when another gem or parser
+      # version wrote it. Every refusal falls back to the YAML silently: the
+      # payload is an accelerator, never the record.
+      def read_payload(path, receipt)
+        return unless receipt.payload_digest && File.exist?(path)
+
+        bytes = File.binread(path)
+        return unless Digest::SHA256.hexdigest(bytes) == receipt.payload_digest
+
+        payload = Marshal.load(bytes)
+        return unless payload.is_a?(Hash) && payload['format'] == FORMAT &&
+                      payload['archspec_version'] == ArchSpec::VERSION && payload['prism_version'] == Prism::VERSION
+
+        payload['graph']
+      rescue ArgumentError, TypeError, SystemCallError
+        nil
+      end
+
       def receipt_document(receipt)
         {
           'format' => receipt.format,
@@ -135,7 +197,8 @@ module ArchSpec
           'parsed_set_digest' => receipt.parsed_set_digest,
           'rule_ids' => receipt.rule_ids,
           'commit' => receipt.commit,
-          'dirty' => receipt.dirty
+          'dirty' => receipt.dirty,
+          'payload_digest' => receipt.payload_digest
         }
       end
 
@@ -151,7 +214,8 @@ module ArchSpec
           parsed_set_digest: document['parsed_set_digest'].to_s,
           rule_ids: Array(document['rule_ids']).map(&:to_s),
           commit: document['commit'],
-          dirty: document['dirty'] == true
+          dirty: document['dirty'] == true,
+          payload_digest: document['payload_digest']
         )
       end
 
