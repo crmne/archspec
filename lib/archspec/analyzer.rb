@@ -49,6 +49,12 @@ module ArchSpec
       graph
     end
 
+    # The files a run over +definition+ reads, for a caller that needs to know
+    # whether a snapshot still covers the tree without analysing it.
+    def files_to_read(definition, root:)
+      ruby_files(definition, root)
+    end
+
     private
 
     def read_file(graph, path, cache)

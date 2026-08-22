@@ -30,6 +30,15 @@ class ExplainTest < ArchSpecTest
     end
   end
 
+  def test_explain_analyses_again_when_a_file_was_added_since_the_snapshot
+    with_shop do |root|
+      archspec(root, 'snapshot')
+      write "#{root}/app/models/session.rb", "class Session; end\n"
+      out = explain(root, 'app/models/user.rb')
+      assert_match(/because files have been added or removed since the snapshot/, out)
+    end
+  end
+
   def test_explain_declines_a_snapshot_taken_under_other_patterns
     with_shop do |root|
       archspec(root, 'snapshot')

@@ -316,16 +316,13 @@ module ArchSpec
 
     # The snapshot's graph when one was taken the same way of the same tree,
     # else a fresh analysis; the origin says which, and why, so the two never
-    # read alike. A snapshot of an older commit or of a tree that has since
-    # changed is not this tree, however comparable its receipt.
+    # read alike.
     def graph_for_explain(definition, root)
       directory = File.expand_path(Snapshot::DEFAULT_DIRECTORY, root)
-      commit = GitTree.commit(root)
-      dirty = GitTree.dirty?(root)
-      cause = snapshot_cause(definition, root, directory, commit, dirty)
+      cause = snapshot_cause(definition, root, directory)
       if cause
-        [Analyzer.analyze(definition, root: root), Explanation::Origin.new(source: :analysis, commit: commit,
-                                                                                 dirty: dirty, cause: cause)]
+        [Analyzer.analyze(definition, root: root), Explanation::Origin.new(source: :analysis, commit: nil,
+                                                                                 dirty: nil, cause: cause)]
       else
         snapshot = Snapshot.load(directory, root: root)
         [snapshot.graph, Explanation::Origin.new(source: :snapshot, commit: snapshot.receipt.commit,
@@ -333,37 +330,30 @@ module ArchSpec
       end
     end
 
-    def snapshot_cause(definition, root, directory, commit, dirty)
+    def snapshot_cause(definition, root, directory)
       return 'no snapshot has been taken' unless File.exist?(File.join(directory, Snapshot::RECEIPT_FILE))
 
       snapshot = Snapshot.load(directory, root: root)
-      receipt = snapshot.receipt
       current = Receipt.new(
         format: Snapshot::FORMAT, archspec_version: ArchSpec::VERSION, root: root, definition_digest: nil,
         patterns: (definition.analysis_patterns + definition.ignore_patterns).sort, parsed_set_digest: '',
-        rule_ids: [], commit: commit, dirty: dirty, payload_digest: nil
+        rule_ids: [], commit: nil, dirty: false, payload_digest: nil
       )
-      current.incomparable_with(receipt) || tree_moved_since(receipt, commit, dirty) || files_changed_since(snapshot)
+      current.incomparable_with(snapshot.receipt) || tree_changed_since(definition, root, snapshot)
     rescue Error => e
       e.message
     end
 
-    def tree_moved_since(receipt, commit, dirty)
-      if receipt.commit && commit && receipt.commit != commit
-        "the snapshot was taken at #{receipt.commit[0, 12]} and the tree is at #{commit[0, 12]}"
-      elsif dirty
-        'the working tree has changes since the snapshot'
-      elsif receipt.dirty
-        'the snapshot was taken from a tree with uncommitted changes'
+    # The tree is the snapshot's tree when the files a run would read are the
+    # files the snapshot read, byte for byte. Git is not asked: a commit can
+    # move without touching a file the rules see, and a tree can change
+    # without git noticing.
+    def tree_changed_since(definition, root, snapshot)
+      if Analyzer.files_to_read(definition, root: root) != snapshot.graph.files.keys.sort
+        'files have been added or removed since the snapshot'
+      elsif Snapshot.parsed_set_digest(snapshot.graph) != snapshot.receipt.parsed_set_digest
+        'files the snapshot read have changed on disk'
       end
-    end
-
-    # Git cannot see every tree, so the files the snapshot read are digested
-    # again: one of them changed on disk means the snapshot is not this tree.
-    def files_changed_since(snapshot)
-      return if Snapshot.parsed_set_digest(snapshot.graph) == snapshot.receipt.parsed_set_digest
-
-      'files the snapshot read have changed on disk'
     end
 
     def explain_formatter_for(name)
