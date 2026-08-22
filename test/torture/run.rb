@@ -9,9 +9,12 @@
 #   ruby test/torture/run.rb mastodon --update
 #
 # A run fails when the per-rule counts move, when a diagnostic appears that
-# the record does not carry, or when a true positive disappears. --update
-# records new diagnostics as unjudged and keeps every verdict already
-# written; it refuses to drop a true positive, which only a hand edit may do.
+# the record does not carry, when a true positive disappears, or when the run
+# takes longer than the ceiling the record carries. --update records new
+# diagnostics as unjudged and keeps every verdict already written; it refuses
+# to drop a true positive, which only a hand edit may do, and keeps a ceiling
+# once one is written. The synthetic app is generated rather than fetched:
+# the issue #3 shape, 879 files across 26 packs that all reach each other.
 
 $LOAD_PATH.unshift File.expand_path('../../lib', __dir__)
 
@@ -21,6 +24,7 @@ require 'json'
 require 'stringio'
 require 'yaml'
 require_relative 'snapshot'
+require_relative 'synthetic'
 
 APPS = {
   'discourse' => {
@@ -34,6 +38,10 @@ APPS = {
   'mastodon' => {
     url: 'https://github.com/mastodon/mastodon',
     sha: '163f96cee4dea23365bff9b433871e68d20d9ee7'
+  },
+  'synthetic' => {
+    generator: TortureSynthetic,
+    sha: TortureSynthetic::SHAPE
   }
 }.freeze
 
@@ -47,19 +55,24 @@ checkout = File.join(repo_root, 'tmp', 'torture', app_name)
 config_source = File.join(__dir__, app_name, 'Archspec.rb')
 expected_path = File.join(__dir__, app_name, 'expected.yml')
 
-unless Dir.exist?(File.join(checkout, '.git'))
-  FileUtils.mkdir_p(checkout)
-  system('git', 'init', '--quiet', checkout, exception: true)
-  system('git', '-C', checkout, 'remote', 'add', 'origin', app.fetch(:url), exception: true)
-end
+if app.key?(:generator)
+  FileUtils.rm_rf(checkout)
+  app.fetch(:generator).write(checkout)
+else
+  unless Dir.exist?(File.join(checkout, '.git'))
+    FileUtils.mkdir_p(checkout)
+    system('git', 'init', '--quiet', checkout, exception: true)
+    system('git', '-C', checkout, 'remote', 'add', 'origin', app.fetch(:url), exception: true)
+  end
 
-head = `git -C #{checkout} rev-parse HEAD 2>/dev/null`.strip
-unless head == app.fetch(:sha)
-  system('git', '-C', checkout, 'fetch', '--quiet', '--depth', '1', 'origin', app.fetch(:sha), exception: true)
-  system('git', '-C', checkout, 'checkout', '--quiet', app.fetch(:sha), exception: true)
-end
+  head = `git -C #{checkout} rev-parse HEAD 2>/dev/null`.strip
+  unless head == app.fetch(:sha)
+    system('git', '-C', checkout, 'fetch', '--quiet', '--depth', '1', 'origin', app.fetch(:sha), exception: true)
+    system('git', '-C', checkout, 'checkout', '--quiet', app.fetch(:sha), exception: true)
+  end
 
-FileUtils.cp(config_source, File.join(checkout, 'Archspec.rb'))
+  FileUtils.cp(config_source, File.join(checkout, 'Archspec.rb'))
+end
 
 output = StringIO.new
 started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -85,7 +98,7 @@ end
 recorded = File.exist?(expected_path) ? TortureSnapshot.load(expected_path) : nil
 
 if update
-  update = TortureSnapshot.update(recorded || {}, violations, sha: app.fetch(:sha))
+  update = TortureSnapshot.update(recorded || {}, violations, sha: app.fetch(:sha), elapsed: elapsed)
   if update.refused?
     puts 'refusing to drop true positives no longer reported; edit the record by hand:'
     recorded.fetch('diagnostics').each { |id, entry| puts describe(entry, id) if update.retained.include?(entry) }
@@ -107,7 +120,7 @@ if TortureSnapshot.legacy?(recorded)
   puts 'record carries counts only; run with --update to record each diagnostic'
 end
 
-result = TortureSnapshot.compare(recorded, violations)
+result = TortureSnapshot.compare(recorded, violations, elapsed: elapsed)
 
 unless result.added.empty?
   puts 'added (not in the record):'

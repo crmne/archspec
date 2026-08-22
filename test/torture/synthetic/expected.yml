@@ -1,0 +1,17 @@
+---
+sha: synthetic-26x879-v1
+seconds: 30
+rules:
+  dependencies.no_cycles: 1
+diagnostics:
+  0a987d4ed8a7e7bb50e8586f:
+    rule: dependencies.no_cycles
+    path: packs/pack00/app/models/pack00/record0.rb
+    message: 'component dependency cycle among 26 components: pack00, pack01, pack02,
+      pack03, pack04, pack05, pack06, pack07, pack08, pack09, pack10, pack11, pack12,
+      pack13, pack14, pack15, pack16, pack17, pack18, pack19, pack20, pack21, pack22,
+      pack23, pack24, pack25'
+    evidence: pack00 -> pack14 -> pack09 -> pack04 -> pack25 -> pack20 -> pack15 ->
+      pack10 -> pack05 -> pack00
+    verdict: true_positive
+    note: every pack reaches every other by construction

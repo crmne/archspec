@@ -1,5 +1,6 @@
 ---
 sha: 163f96cee4dea23365bff9b433871e68d20d9ee7
+seconds: 60
 rules:
   dependencies.forbid: 14
 diagnostics:

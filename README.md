@@ -255,7 +255,7 @@ It also runs against pinned checkouts of large real-world Rails apps to catch cr
 bundle exec rake torture
 ```
 
-Each app's `test/torture/<app>/expected.yml` records every diagnostic the pinned checkout produces, keyed by the same fingerprint the todo file uses, with a verdict: `true_positive`, `false_positive`, or `unjudged`. A run fails when the per-rule counts move, when a diagnostic appears that the record does not carry, or when a true positive disappears. `--update` records new diagnostics as `unjudged` and keeps every verdict already written; a verdict is written by a person editing the file, never by the tool, and a true positive only leaves the record by hand.
+Each app's `test/torture/<app>/expected.yml` records every diagnostic the pinned checkout produces, keyed by the same fingerprint the todo file uses, with a verdict: `true_positive`, `false_positive`, or `unjudged`. A run fails when the per-rule counts move, when a diagnostic appears that the record does not carry, when a true positive disappears, or when the run takes longer than the `seconds` ceiling the record carries. `--update` records new diagnostics as `unjudged` and keeps every verdict already written; a verdict is written by a person editing the file, never by the tool, and a true positive only leaves the record by hand. The ceiling is wide enough that only an order of magnitude trips it. A fourth app is generated rather than fetched: 879 files across 26 packs that all reach each other, the shape that once hung the cycle rule, and it runs with the ordinary test suite.
 
 ## License
 

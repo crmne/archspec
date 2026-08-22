@@ -1,5 +1,6 @@
 ---
 sha: 65bb2f8ff2cc84d9836cd03ba857f3a20552a78a
+seconds: 60
 rules:
   concerns.independence: 1
   dependencies.forbid: 1

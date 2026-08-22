@@ -8,10 +8,14 @@ require 'yaml'
 # run, so the gate a release relied on only gets stronger. Two violations at
 # different lines of one file can share a fingerprint; the counts stay per
 # violation, as the release gate always counted them, while the entries are
-# per fingerprint.
+# per fingerprint. The record also carries a ceiling in seconds: a run over
+# it is a regression, and the ceiling is wide enough that only an order of
+# magnitude trips it, never a slow runner.
 module TortureSnapshot
   VERDICTS = %w[true_positive false_positive unjudged].freeze
   FIELDS = %w[rule path message evidence].freeze
+  CEILING_FACTOR = 10
+  CEILING_FLOOR = 30
 
   Update = Struct.new(:snapshot, :retained, keyword_init: true) do
     def refused?
@@ -19,10 +23,11 @@ module TortureSnapshot
     end
   end
 
-  Result = Struct.new(:counts_changed, :added, :removed, :improved, keyword_init: true) do
+  Result = Struct.new(:counts_changed, :added, :removed, :improved, :over_ceiling, keyword_init: true) do
     def failures
       failures = []
       failures << 'per-rule counts moved' if counts_changed
+      failures << over_ceiling if over_ceiling
       failures << "#{added.size} diagnostic(s) not in the record" unless added.empty?
       lost = removed.select { |entry| entry.fetch('verdict') == 'true_positive' }
       failures << "#{lost.size} true positive(s) gone" unless lost.empty?
@@ -67,10 +72,13 @@ module TortureSnapshot
     violations.group_by { |violation| violation.fetch('rule') }.transform_values(&:size).sort.to_h
   end
 
-  def compare(recorded, violations)
+  def compare(recorded, violations, elapsed: nil)
     live = entries_for(violations)
     counts_changed = recorded.fetch('rules') != counts_for(violations)
-    return Result.new(counts_changed: counts_changed, added: {}, removed: [], improved: []) if legacy?(recorded)
+    over = over_ceiling(recorded, elapsed)
+    if legacy?(recorded)
+      return Result.new(counts_changed: counts_changed, added: {}, removed: [], improved: [], over_ceiling: over)
+    end
 
     recorded_entries = recorded.fetch('diagnostics')
     added = live.reject { |id, _| recorded_entries.key?(id) }
@@ -79,11 +87,23 @@ module TortureSnapshot
       counts_changed: counts_changed,
       added: added,
       removed: removed.values,
-      improved: removed.values.select { |entry| entry.fetch('verdict') == 'false_positive' }
+      improved: removed.values.select { |entry| entry.fetch('verdict') == 'false_positive' },
+      over_ceiling: over
     )
   end
 
-  def update(recorded, violations, sha:)
+  def over_ceiling(recorded, elapsed)
+    ceiling = recorded['seconds']
+    return if ceiling.nil? || elapsed.nil? || elapsed <= ceiling
+
+    format('took %.1fs, over the %ds ceiling', elapsed, ceiling)
+  end
+
+  def ceiling_for(recorded, elapsed)
+    recorded['seconds'] || [(elapsed.to_f * CEILING_FACTOR).ceil, CEILING_FLOOR].max
+  end
+
+  def update(recorded, violations, sha:, elapsed: nil)
     live = entries_for(violations)
     previous = recorded.fetch('diagnostics', {})
     kept = previous.select { |id, entry| live.key?(id) || entry.fetch('verdict') == 'true_positive' }
@@ -96,7 +116,9 @@ module TortureSnapshot
       merged['note'] = judged['note'] if judged.key?('note')
       [id, merged]
     end
-    Update.new(snapshot: { 'sha' => sha, 'rules' => counts_for(violations), 'diagnostics' => entries }, retained: [])
+    snapshot = { 'sha' => sha, 'seconds' => ceiling_for(recorded, elapsed), 'rules' => counts_for(violations),
+                 'diagnostics' => entries }
+    Update.new(snapshot: snapshot, retained: [])
   end
 
   def legacy?(recorded)
