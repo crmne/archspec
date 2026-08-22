@@ -63,15 +63,16 @@ module ArchSpec
     # component that do not implement the method, counting inherited and
     # mixed-in methods.
     class MustImplementRule
-      attr_reader :source, :method_name
+      attr_reader :source, :method_name, :scope
 
-      def initialize(source, method_name)
+      def initialize(source, method_name, scope: :instance)
         @source = source.to_sym
         @method_name = method_name.to_sym
+        @scope = ProtocolEvidence.validate_scope(scope)
       end
 
       def merge_key
-        [self.class, source, method_name]
+        [self.class, source, method_name, scope]
       end
 
       def id
@@ -80,14 +81,14 @@ module ArchSpec
 
       def evaluate(graph)
         constants_for(graph).filter_map do |constant|
-          methods, unresolved = graph.effective_instance_methods(constant.name)
+          methods, unresolved = graph.effective_methods_in_scope(constant.name, scope)
           next if methods.include?(method_name)
 
           Diagnostic.new(
             rule: id,
-            message: "#{constant.name} must implement ##{method_name}",
+            message: "#{constant.name} must implement #{ProtocolEvidence.describe(method_name, scope)}",
             location: constant.location,
-            evidence: ProtocolEvidence.for(constant, methods, unresolved),
+            evidence: ProtocolEvidence.for(constant, methods, unresolved, scope),
             confidence: unresolved.empty? ? :high : :medium
           )
         end
@@ -103,18 +104,19 @@ module ArchSpec
     # Backs ArchSpec::DSL::ComponentProxy#must_implement_one_of. Flags classes
     # that implement none of the named methods.
     class MustImplementOneOfRule
-      attr_reader :source, :method_names
+      attr_reader :source, :method_names, :scope
 
-      def initialize(source, method_names)
+      def initialize(source, method_names, scope: :instance)
         @source = source.to_sym
         names = Array(method_names).flatten.compact
         raise Error, 'must_implement_one_of requires at least one method' if names.empty?
 
         @method_names = names.map(&:to_sym)
+        @scope = ProtocolEvidence.validate_scope(scope)
       end
 
       def merge_key
-        [self.class, source]
+        [self.class, source, scope]
       end
 
       def merge!(other)
@@ -128,14 +130,15 @@ module ArchSpec
 
       def evaluate(graph)
         constants_for(graph).filter_map do |constant|
-          methods, unresolved = graph.effective_instance_methods(constant.name)
+          methods, unresolved = graph.effective_methods_in_scope(constant.name, scope)
           next if method_names.any? { |method_name| methods.include?(method_name) }
 
+          described = method_names.map { |name| ProtocolEvidence.describe(name, scope) }.join(', ')
           Diagnostic.new(
             rule: id,
-            message: "#{constant.name} must implement one of #{method_names.map { |name| "##{name}" }.join(', ')}",
+            message: "#{constant.name} must implement one of #{described}",
             location: constant.location,
-            evidence: ProtocolEvidence.for(constant, methods, unresolved),
+            evidence: ProtocolEvidence.for(constant, methods, unresolved, scope),
             confidence: unresolved.empty? ? :high : :medium
           )
         end
@@ -151,7 +154,19 @@ module ArchSpec
     # Builds the shared "methods: ..." evidence string for the protocol rules
     # and resolves the classes in a component. Internal helper.
     module ProtocolEvidence
+      VALID_SCOPES = %i[instance class].freeze
+
       module_function
+
+      def validate_scope(scope)
+        return scope if VALID_SCOPES.include?(scope)
+
+        raise Error, "protocol scope: must be :instance or :class, got #{scope.inspect}"
+      end
+
+      def describe(method_name, scope)
+        scope == :class ? ".#{method_name}" : "##{method_name}"
+      end
 
       def constants_for(graph, source)
         component = graph.components[source]
@@ -160,8 +175,10 @@ module ArchSpec
         graph.constants_for_component(source).select(&:class?).uniq(&:name)
       end
 
-      def for(constant, methods, unresolved)
-        evidence = "#{constant.name} methods: #{methods.empty? ? '(none)' : methods.to_a.sort.join(', ')}"
+      def for(constant, methods, unresolved, scope = :instance)
+        listed = methods.empty? ? '(none)' : methods.to_a.sort.join(', ')
+        label = scope == :class ? 'class methods' : 'methods'
+        evidence = "#{constant.name} #{label}: #{listed}"
         return evidence if unresolved.empty?
 
         "#{evidence}; unresolved ancestors: #{unresolved.to_a.sort.join(', ')}"

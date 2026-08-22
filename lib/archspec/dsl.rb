@@ -92,14 +92,26 @@ module ArchSpec
       # or explicit constant.
       #
       #   component :services, in: "app/services/**/*.rb"
+      #   component :domain, in: "app/models/**/*.rb", except: "app/models/**/*_workflow.rb"
       #   component :billing, namespace: "Billing"
       #   component :legacy, constants: %w[OldReport OldExport]
       #
+      # +except:+ removes files from what +in:+ matched, so a handful of files
+      # can form their own component with their own rules instead of a hole in
+      # this one's allowlist. It never widens anything: the carved-out component
+      # states its own dependencies.
+      #
       # Returns an ArchSpec::DSL::ComponentProxy for attaching rules. The
       # component is also available by name later in the file.
-      def component(name, in: nil, namespace: nil, constants: nil)
+      def component(name, in: nil, except: nil, namespace: nil, constants: nil)
         add_component(
-          ComponentSpec.new(name, files: binding.local_variable_get(:in), namespace: namespace, constants: constants)
+          ComponentSpec.new(
+            name,
+            files: binding.local_variable_get(:in),
+            except: except,
+            namespace: namespace,
+            constants: constants
+          )
         )
         ComponentProxy.new(self, name)
       end
@@ -295,29 +307,33 @@ module ArchSpec
       end
 
       # Requires every class in the component to implement all the named
-      # instance methods. Methods inherited from resolvable superclasses or
-      # mixins count.
+      # methods. Methods inherited from resolvable superclasses or mixins
+      # count. Pass <tt>scope: :class</tt> for a class-side protocol, which
+      # counts class methods, methods from +extend+ed modules, and the
+      # superclass chain's class methods.
       #
       #   commands.must_implement :perform
+      #   jobs.must_implement :perform_later, scope: :class
       #
       # Rule id: +protocol.must_implement+.
-      def must_implement(*methods)
+      def must_implement(*methods, scope: :instance)
         raise Error, 'must_implement requires at least one method' if methods.flatten.compact.empty?
 
-        methods.each do |method_name|
-          add_rule(Rules::MustImplementRule.new(name, method_name))
+        methods.flatten.each do |method_name|
+          add_rule(Rules::MustImplementRule.new(name, method_name, scope: scope))
         end
         self
       end
 
       # Requires every class in the component to implement at least one of the
-      # named instance methods. Useful when a protocol allows either name.
+      # named methods. Useful when a protocol allows either name. Takes the
+      # same +scope:+ as +must_implement+.
       #
       #   commands.must_implement_one_of :perform, :call
       #
       # Rule id: +protocol.must_implement_one_of+.
-      def must_implement_one_of(*methods)
-        add_rule(Rules::MustImplementOneOfRule.new(name, methods))
+      def must_implement_one_of(*methods, scope: :instance)
+        add_rule(Rules::MustImplementOneOfRule.new(name, methods, scope: scope))
         self
       end
 

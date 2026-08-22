@@ -331,6 +331,25 @@ class CLITest < ArchSpecTest
     end
   end
 
+  def test_explain_file_names_the_pattern_that_excluded_it
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :domain, in: "app/models/**/*.rb", except: "app/models/**/*_workflow.rb"
+      RUBY
+
+      write "#{root}/app/models/checkout_workflow.rb", "class CheckoutWorkflow; end\n"
+
+      output = StringIO.new
+      status = Dir.chdir(root) do
+        ArchSpec::CLI.run(['explain', 'app/models/checkout_workflow.rb'], output: output, error: StringIO.new)
+      end
+
+      assert_equal 0, status
+      assert_match(/components: \(none\)/, output.string)
+      assert_match(%r{excluded from:\n    domain: excluded by except pattern app/models/\*\*/\*_workflow\.rb}, output.string)
+    end
+  end
+
   def test_explain_file_includes_suppressions
     with_project do |root|
       write "#{root}/Archspec.rb", <<~RUBY

@@ -27,6 +27,7 @@ module ArchSpec
         output.puts "  #{style.note('defined constants:')} #{graph.constants_for_path(path).map(&:name).join(', ')}"
         print_parse_errors(output, style, file)
         print_component_reasons(output, style, graph.component_assignment_reasons_for_path(path))
+        print_component_exclusions(output, style, graph.component_exclusion_reasons_for_path(path))
         print_suppressions(output, style, file)
         print_facts(output, style, graph.edges.select { |edge| edge.from_path == path })
       end
@@ -60,6 +61,15 @@ module ArchSpec
         output.puts "  #{style.note('components:')}"
         assignments.sort_by { |name, _reasons| name.to_s }.each do |name, reasons|
           output.puts "    #{name}: #{reasons.empty? ? '(no recorded reason)' : reasons.join('; ')}"
+        end
+      end
+
+      def print_component_exclusions(output, style, exclusions)
+        return if exclusions.empty?
+
+        output.puts "  #{style.note('excluded from:')}"
+        exclusions.sort_by { |name, _reasons| name.to_s }.each do |name, reasons|
+          output.puts "    #{name}: #{reasons.join('; ')}"
         end
       end
 

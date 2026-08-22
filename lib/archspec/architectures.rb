@@ -317,6 +317,7 @@ module ArchSpec
         dsl.component(
           name,
           in: selector[:in] || selector[:files],
+          except: selector[:except],
           namespace: selector[:namespace],
           constants: selector[:constants]
         )

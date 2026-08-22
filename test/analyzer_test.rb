@@ -460,4 +460,59 @@ class AnalyzerTest < ArchSpecTest
       assert_equal [:models], graph.component_names_for_path("#{root}/app/models/user.rb").to_a
     end
   end
+
+  def test_except_removes_files_from_what_in_matched
+    with_project do |root|
+      write "#{root}/app/models/order.rb", "class Order; end\n"
+      write "#{root}/app/models/checkout_workflow.rb", "class CheckoutWorkflow; end\n"
+
+      definition = ArchSpec.define do
+        component :domain, in: 'app/models/**/*.rb', except: 'app/models/**/*_workflow.rb'
+        component :workflows, in: 'app/models/**/*_workflow.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      domain = graph.components[:domain]
+      workflows = graph.components[:workflows]
+
+      assert_equal [File.join(root, 'app/models/order.rb')], domain.files.to_a
+      assert_equal Set['Order'], domain.constants
+      assert_equal Set['CheckoutWorkflow'], workflows.constants
+      assert_equal ['excluded by except pattern app/models/**/*_workflow.rb'],
+                   domain.exclusion_reasons[File.join(root, 'app/models/checkout_workflow.rb')].to_a
+    end
+  end
+
+  def test_except_leaves_namespace_and_constant_selectors_alone
+    with_project do |root|
+      write "#{root}/app/models/billing/invoice_workflow.rb", "module Billing; class InvoiceWorkflow; end; end\n"
+
+      definition = ArchSpec.define do
+        component :billing, in: 'app/models/**/*.rb', except: 'app/models/**/*_workflow.rb', namespace: 'Billing'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      billing = graph.components[:billing]
+
+      assert billing.includes_constant?('Billing::InvoiceWorkflow')
+      assert billing.files.include?(File.join(root, 'app/models/billing/invoice_workflow.rb'))
+    end
+  end
+
+  def test_except_patterns_merge_across_repeated_declarations
+    with_project do |root|
+      write "#{root}/app/models/order.rb", "class Order; end\n"
+      write "#{root}/app/models/checkout_workflow.rb", "class CheckoutWorkflow; end\n"
+      write "#{root}/app/models/legacy_report.rb", "class LegacyReport; end\n"
+
+      definition = ArchSpec.define do
+        component :domain, in: 'app/models/**/*.rb', except: 'app/models/**/*_workflow.rb'
+        component :domain, except: 'app/models/legacy_*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal Set['Order'], graph.components[:domain].constants
+    end
+  end
 end

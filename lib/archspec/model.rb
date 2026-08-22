@@ -127,6 +127,16 @@ module ArchSpec
       file_reasons[path].add(reason) if reason
     end
 
+    def remove_file(path, reason: nil)
+      files.delete(path)
+      file_reasons.delete(path)
+      exclusion_reasons[path].add(reason) if reason
+    end
+
+    def exclusion_reasons
+      @exclusion_reasons ||= Hash.new { |hash, key| hash[key] = Set.new }
+    end
+
     def add_constant(name, path:, reason: nil)
       constants.add(name)
       @constant_occurrences.add([name, path])
@@ -223,6 +233,14 @@ module ArchSpec
           end
         end
 
+        spec.except_patterns.each do |pattern|
+          each_matching_file(pattern) do |path|
+            next unless files_matched_by_pattern.delete?(path)
+
+            component.remove_file(path, reason: "excluded by except pattern #{pattern}")
+          end
+        end
+
         constants.each do |constant|
           matched_file = files_matched_by_pattern.include?(constant.path)
           matched_constant = spec.matches_constant?(constant.name)
@@ -303,43 +321,23 @@ module ArchSpec
     # and include/prepend mixins. Returns [methods, unresolved ancestor names];
     # a non-empty second element means the answer is incomplete.
     def effective_instance_methods(name, visited = Set.new)
-      normalized = normalize_constant(name)
-      return [Set.new, Set.new] if visited.include?(normalized)
-
-      visited.add(normalized)
-      return [Set.new, Set.new] if RESOLVED_ROOTS.include?(normalized)
-
-      nodes = constants_named(normalized)
-      return [Set.new, Set[normalized]] if nodes.empty?
-
-      methods = Set.new
-      unresolved = Set.new
-
-      nodes.each do |node|
-        methods.merge(node.instance_methods)
-
+      effective_methods(name, visited) do |node|
         mixins = node.mixins[:include].to_a + node.mixins[:prepend].to_a
-
-        mixins.each do |ancestor|
-          resolved_name = resolve_constant_reference(
-            ancestor,
-            node.name,
-            lexical_nesting: [node.name] + node.nesting
-          )
-          ancestor_methods, ancestor_unresolved = effective_instance_methods(resolved_name, visited)
-          methods.merge(ancestor_methods)
-          unresolved.merge(ancestor_unresolved)
-        end
-
-        if node.superclass
-          resolved_name = resolve_constant_reference(node.superclass, node.name, lexical_nesting: node.nesting)
-          ancestor_methods, ancestor_unresolved = effective_instance_methods(resolved_name, visited)
-          methods.merge(ancestor_methods)
-          unresolved.merge(ancestor_unresolved)
-        end
+        [node.instance_methods, mixins.map { |ancestor| [ancestor, :instance] }, :instance]
       end
+    end
 
-      [methods, unresolved]
+    # A class's methods on the class side: its own, those of every module it
+    # +extend+s (their instance methods land on the singleton), and the class
+    # methods of its superclass chain.
+    def effective_class_methods(name, visited = Set.new)
+      effective_methods(name, visited) do |node|
+        [node.class_methods, node.mixins[:extend].to_a.map { |ancestor| [ancestor, :instance] }, :class]
+      end
+    end
+
+    def effective_methods_in_scope(name, scope)
+      scope == :class ? effective_class_methods(name) : effective_instance_methods(name)
     end
 
     def component_assignment_reasons_for_path(path)
@@ -347,6 +345,14 @@ module ArchSpec
         next unless component.files.include?(path)
 
         reasons[component.name] = component.file_reasons[path].to_a.sort
+      end
+    end
+
+    def component_exclusion_reasons_for_path(path)
+      components.values.each_with_object({}) do |component, reasons|
+        next unless component.exclusion_reasons.key?(path)
+
+        reasons[component.name] = component.exclusion_reasons[path].to_a.sort
       end
     end
 
@@ -372,6 +378,57 @@ module ArchSpec
     end
 
     private
+
+    # Walks a constant's ancestry collecting methods. The block maps a node to
+    # its own methods in the requested scope, the mixins to follow with the
+    # scope to read them in, and the scope to read the superclass chain in.
+    # Superclass resolution and the cycle guard are shared by both walks.
+    def effective_methods(name, visited, &scope_of)
+      normalized = normalize_constant(name)
+      return [Set.new, Set.new] if visited.include?(normalized)
+
+      visited.add(normalized)
+      return [Set.new, Set.new] if RESOLVED_ROOTS.include?(normalized)
+
+      nodes = constants_named(normalized)
+      return [Set.new, Set[normalized]] if nodes.empty?
+
+      methods = Set.new
+      unresolved = Set.new
+
+      nodes.each do |node|
+        own_methods, mixins, superclass_scope = yield(node)
+        methods.merge(own_methods)
+
+        mixins.each do |ancestor, scope|
+          resolved_name = resolve_constant_reference(
+            ancestor,
+            node.name,
+            lexical_nesting: [node.name] + node.nesting
+          )
+          ancestor_methods, ancestor_unresolved = walk_ancestor(resolved_name, scope, visited, &scope_of)
+          methods.merge(ancestor_methods)
+          unresolved.merge(ancestor_unresolved)
+        end
+
+        if node.superclass
+          resolved_name = resolve_constant_reference(node.superclass, node.name, lexical_nesting: node.nesting)
+          ancestor_methods, ancestor_unresolved = walk_ancestor(resolved_name, superclass_scope, visited, &scope_of)
+          methods.merge(ancestor_methods)
+          unresolved.merge(ancestor_unresolved)
+        end
+      end
+
+      [methods, unresolved]
+    end
+
+    def walk_ancestor(name, scope, visited, &scope_of)
+      if scope == :instance
+        effective_instance_methods(name, visited)
+      else
+        effective_methods(name, visited, &scope_of)
+      end
+    end
 
     def each_matching_file(pattern)
       glob = File.absolute_path(pattern, root)

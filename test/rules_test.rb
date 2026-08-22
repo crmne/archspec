@@ -808,4 +808,114 @@ class RulesTest < ArchSpecTest
 
     assert_match(/no_cycles references unknown component: controlers/, error.message)
   end
+
+  def test_must_implement_with_class_scope_counts_extended_modules_and_superclasses
+    with_project do |root|
+      write "#{root}/app/jobs/enqueueable.rb", <<~RUBY
+        module Enqueueable
+          def perform_later
+          end
+        end
+      RUBY
+
+      write "#{root}/app/jobs/application_job.rb", <<~RUBY
+        class ApplicationJob
+          def self.perform_later
+          end
+        end
+      RUBY
+
+      write "#{root}/app/jobs/import_job.rb", <<~RUBY
+        class ImportJob
+          extend Enqueueable
+        end
+      RUBY
+
+      write "#{root}/app/jobs/export_job.rb", <<~RUBY
+        class ExportJob < ApplicationJob
+        end
+      RUBY
+
+      write "#{root}/app/jobs/broken_job.rb", <<~RUBY
+        class BrokenJob
+          include Enqueueable
+
+          def perform_later
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :jobs, in: 'app/jobs/**/*.rb'
+        jobs.must_implement :perform_later, scope: :class
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_equal 'BrokenJob must implement .perform_later', diagnostics.first.message
+      assert_match(/BrokenJob class methods: \(none\)/, diagnostics.first.evidence)
+      assert_equal :high, diagnostics.first.confidence
+    end
+  end
+
+  def test_class_scope_protocols_downgrade_confidence_for_unresolved_extended_modules
+    with_project do |root|
+      write "#{root}/app/jobs/import_job.rb", <<~RUBY
+        class ImportJob
+          extend SomeGem::Enqueueable
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :jobs, in: 'app/jobs/**/*.rb'
+        jobs.must_implement_one_of :perform_later, :enqueue, scope: :class
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_equal :medium, diagnostics.first.confidence
+      assert_match(/unresolved ancestors: SomeGem::Enqueueable/, diagnostics.first.evidence)
+    end
+  end
+
+  def test_instance_protocols_ignore_extended_modules
+    with_project do |root|
+      write "#{root}/app/jobs/enqueueable.rb", <<~RUBY
+        module Enqueueable
+          def perform
+          end
+        end
+      RUBY
+
+      write "#{root}/app/jobs/import_job.rb", <<~RUBY
+        class ImportJob
+          extend Enqueueable
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :jobs, in: 'app/jobs/**/*.rb'
+        jobs.must_implement :perform
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_equal 'ImportJob must implement #perform', diagnostics.first.message
+      assert_match(/ImportJob methods: \(none\)/, diagnostics.first.evidence)
+    end
+  end
+
+  def test_protocol_scope_must_be_instance_or_class
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :jobs, in: 'app/jobs/**/*.rb'
+        jobs.must_implement :perform, scope: :singleton
+      end
+    end
+
+    assert_match(/protocol scope: must be :instance or :class, got :singleton/, error.message)
+  end
 end

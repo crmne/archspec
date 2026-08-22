@@ -25,7 +25,11 @@ Todo ids are computed from the rule, path, message, and evidence, not the line n
 component :controllers, in: "app/controllers/**/*.rb"
 component :models,      in: "app/models/**/*.rb"
 component :billing,     namespace: "Billing"
+component :domain,      in: "app/models/**/*.rb", except: "app/models/**/*_workflow.rb"
+component :workflows,   in: "app/models/**/*_workflow.rb"
 ```
+
+`except:` removes files from what `in:` matched. A few files that need wider grants than their layer become their own component with their own allowlist, instead of a hole in the layer's. The same keyword works inside the hash form every architecture accepts, so a layer in `layers:` can read `{ in: "app/models/**/*.rb", except: "app/models/**/*_workflow.rb" }`.
 
 Declare one component per subdirectory with `each_directory`, which is handy for engines and packs:
 

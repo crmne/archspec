@@ -448,4 +448,67 @@ class ArchitecturesTest < ArchSpecTest
       assert(diagnostics.any? { |diagnostic| diagnostic.message.match?(/models must not depend on controllers/) })
     end
   end
+
+  def test_layers_accept_except_to_carve_out_a_component
+    with_project do |root|
+      write "#{root}/app/controllers/orders_controller.rb", "class OrdersController; end\n"
+      write "#{root}/app/services/checkout.rb", "class Checkout; end\n"
+      write "#{root}/app/models/order.rb", "class Order; end\n"
+      write "#{root}/app/mailers/order_mailer.rb", "class OrderMailer; end\n"
+      write "#{root}/app/models/checkout_workflow.rb", <<~RUBY
+        class CheckoutWorkflow
+          def run
+            OrderMailer.new
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        architecture :layered, layers: {
+          interface: 'app/controllers/**/*.rb',
+          application: 'app/services/**/*.rb',
+          domain: { in: 'app/models/**/*.rb', except: 'app/models/**/*_workflow.rb' }
+        }
+        component :notifications, in: 'app/mailers/**/*.rb'
+        component :workflows, in: 'app/models/**/*_workflow.rb'
+        workflows.can_only_use :notifications
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_every_preset_accepts_except_in_the_hash_form
+    definition = ArchSpec.define do
+      architecture :rails, components: {
+        controllers: 'app/controllers/**/*.rb',
+        models: { in: 'app/models/**/*.rb', except: 'app/models/**/*_workflow.rb' }
+      }
+      architecture :hexagonal,
+                   application: 'app/application/**/*.rb',
+                   domain: { in: 'app/domain/**/*.rb', except: 'app/domain/support/**/*.rb' },
+                   ports: 'app/ports/**/*.rb',
+                   adapters: 'app/adapters/**/*.rb'
+      architecture :modular_monolith,
+                   components: { billing: { in: 'packs/billing/**/*.rb', except: 'packs/billing/spec/**/*.rb' } },
+                   allow: { billing: [] }
+    end
+
+    assert_equal ['app/models/**/*_workflow.rb'], definition.component_specs[:models].except_patterns
+    assert_equal ['app/domain/support/**/*.rb'], definition.component_specs[:domain].except_patterns
+    assert_equal ['packs/billing/spec/**/*.rb'], definition.component_specs[:billing].except_patterns
+  end
+
+  def test_presets_are_unchanged_without_except
+    layers = { interface: 'app/controllers/**/*.rb', domain: 'app/models/**/*.rb' }
+    plain = ArchSpec.define { architecture :layered, layers: layers }
+    hashed = ArchSpec.define do
+      architecture :layered, layers: layers.transform_values { |pattern| { in: pattern } }
+    end
+
+    assert_equal plain.rules.map { |rule| [rule.class, rule.id] }, hashed.rules.map { |rule| [rule.class, rule.id] }
+    assert_equal plain.component_specs.transform_values(&:file_patterns),
+                 hashed.component_specs.transform_values(&:file_patterns)
+    assert(plain.component_specs.values.all? { |spec| spec.except_patterns.empty? })
+  end
 end
