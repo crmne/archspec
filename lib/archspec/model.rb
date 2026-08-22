@@ -124,7 +124,7 @@ module ArchSpec
   end
 
   class Component
-    attr_reader :name, :files, :constants, :file_reasons, :constant_reasons
+    attr_reader :name, :files, :constants, :constant_occurrences, :file_reasons, :constant_reasons
 
     def initialize(name)
       @name = name.to_sym
@@ -238,7 +238,7 @@ module ArchSpec
             location: SourceLocation.point(path, reference.line, 1),
             lexical_nesting: []
           )
-          @facts_origins[edges.last] = file.relative_path
+          record_facts_origin(edges.last, file.relative_path)
         end
 
         file.generated_methods.each do |entry|
@@ -251,6 +251,16 @@ module ArchSpec
 
     def facts_present?
       @facts_present
+    end
+
+    def record_facts_origin(edge, relative_path)
+      @facts_origins[edge] = relative_path
+    end
+
+    # Installs components as a snapshot recorded them, in place of matching
+    # patterns against a tree that may no longer exist.
+    def restore_components(restored)
+      @components = restored.to_h { |component| [component.name, component] }
     end
 
     def facts_file_for(edge)

@@ -12,6 +12,8 @@ component :analysis, in: %w[
 component :domain, in: %w[
   lib/archspec/todo.rb
   lib/archspec/facts.rb
+  lib/archspec/snapshot.rb
+  lib/archspec/delta.rb
   lib/archspec/component_spec.rb
   lib/archspec/definition.rb
   lib/archspec/diagnostic.rb
