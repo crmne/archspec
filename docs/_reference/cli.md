@@ -1,7 +1,7 @@
 ---
 title: CLI
 nav_order: 2
-description: Reference every ArchSpec command-line option for checking projects, explaining files, emitting JSON, managing baselines, reflecting Active Record facts, and choosing config files.
+description: Reference every ArchSpec command-line option for checking projects, taking snapshots, grading changes against a baseline, explaining files, emitting JSON, reflecting Active Record facts, and choosing config files.
 seo:
   title: ArchSpec command-line interface
 ---
@@ -66,6 +66,25 @@ bundle exec archspec check app/models/user.rb app/services
 ```
 
 This is the fast loop after an agent or a person edits a few files. It cannot be combined with `--update-todo`.
+
+## snapshot
+
+```sh
+bundle exec archspec snapshot
+bundle exec archspec snapshot --output tmp/archspec-before
+```
+
+Writes the analysed graph and a receipt under `.archspec/` so a later check has a before to grade against. See [Baseline](baseline/).
+
+## check --baseline
+
+```sh
+bundle exec archspec check --baseline
+bundle exec archspec check --baseline --mode strict
+bundle exec archspec check app/models --baseline tmp/archspec-before
+```
+
+Grades the change against the snapshot instead of failing the tree: what it introduced, resolved, or declared. Exits `1` when the mode fails the change, `3` when the snapshot is not comparable and nothing was graded. See [Baseline](baseline/).
 
 ## todo
 

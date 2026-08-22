@@ -69,6 +69,15 @@ bundle exec archspec check
 
 ArchSpec exits with `0` when the rules pass and non-zero when they fail.
 
+On an existing app, take a snapshot first and grade each change against it, so a check reports what the change introduced rather than every breach the app already had:
+
+```sh
+bundle exec archspec snapshot
+bundle exec archspec check --baseline
+```
+
+See [Baseline](../reference/baseline/).
+
 ## Read a Failure
 
 A failure shows the message and rule, the offending code, and the evidence
