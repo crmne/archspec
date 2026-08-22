@@ -233,7 +233,10 @@ module ArchSpec
       return unless Graph::DEPENDENCY_EDGE_TYPES.include?(edge.type)
       return :facts if graph.facts_file_for(edge)
 
-      graph.constants_named(graph.resolve_edge_constant(edge)).any? ? :lexical : :unresolved
+      resolution = graph.resolve_edge(edge)
+      return :"#{resolution.name} via #{resolution.ancestor}" if resolution.determination == :ancestry
+
+      resolution.determination
     end
 
     def producer_of(edge)
