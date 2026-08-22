@@ -22,11 +22,13 @@ module ArchSpec
     ].freeze
 
     DEFAULT_CACHE_DIRECTORY = '.archspec/cache'
+    RESOLVERS = %i[rubydex].freeze
 
     attr_accessor :name, :root_path, :todo_path, :facts_path, :cache_path, :base_dir, :static_associations
     SHIPPED_FORMATS = %w[text json github sarif].freeze
+    RESOLVERS = %i[rubydex].freeze
 
-    attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules, :registered_formatters
+    attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules, :registered_formatters, :resolvers
 
     def initialize(name = nil)
       @name = name
@@ -41,6 +43,28 @@ module ArchSpec
       @component_specs = {}
       @rules = []
       @registered_formatters = {}
+      @resolvers = []
+      @resolvers = []
+    end
+
+    def add_resolver(name)
+      @resolvers |= [name.to_sym]
+    end
+
+    # Where a declared resolver keeps its index between runs: beside the parse
+    # cache, under the directory the snapshot owns.
+    def resolver_cache_path
+      File.join(File.dirname(cache_path || DEFAULT_CACHE_DIRECTORY), 'resolvers')
+    end
+
+    def add_resolver(name)
+      @resolvers |= [name.to_sym]
+    end
+
+    # Where a declared resolver keeps its index between runs: beside the parse
+    # cache, under the directory the snapshot owns.
+    def resolver_cache_path
+      File.join(File.dirname(cache_path || DEFAULT_CACHE_DIRECTORY), 'resolvers')
     end
 
     def add_formatter(name, formatter)

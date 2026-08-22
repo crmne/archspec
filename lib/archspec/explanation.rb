@@ -231,12 +231,19 @@ module ArchSpec
 
     def determination_of(edge)
       return unless Graph::DEPENDENCY_EDGE_TYPES.include?(edge.type)
-      return :facts if graph.facts_file_for(edge)
+      if graph.facts_file_for(edge)
+        return graph.resolvers.any? && producer_of(edge) == 'archspec-rubydex' ? :rubydex : :facts
+      end
 
       resolution = graph.resolve_edge(edge)
-      return :"#{resolution.name} via #{resolution.ancestor}" if resolution.determination == :ancestry
+      case resolution.determination
+      when :ancestry then :"#{resolution.name} via #{resolution.ancestor}"
+      when :converged then :"converged, both #{resolution.name}"
+      else
+        return :"disagreed, parser #{resolution.name}, resolver #{resolution.other}" if resolution.cause == :disagreed
 
-      resolution.determination
+        resolution.determination
+      end
     end
 
     def producer_of(edge)

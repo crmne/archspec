@@ -95,11 +95,20 @@ module ArchSpec
   end
 
   # How a reference reached its target: lexically, through an ancestor the
-  # referencing constant inherits or mixes in, or not at all, with the cause
-  # that stopped the walk. It never enters a diagnostic's message.
-  Resolution = ValueObject.define(:name, :determination, :ancestor, :cause) do
+  # referencing constant inherits or mixes in, by two resolvers agreeing, or
+  # not at all, with the cause that stopped the walk. A disagreement carries
+  # the other resolver's answer. It never enters a diagnostic's message.
+  Resolution = ValueObject.define(:name, :determination, :ancestor, :cause, :other) do
     def resolved?
       determination != :unresolved
+    end
+
+    def converged(other_name)
+      Resolution.new(name, :converged, ancestor, nil, other_name)
+    end
+
+    def disagreed(other_name)
+      Resolution.new(name, :unresolved, ancestor, :disagreed, other_name)
     end
   end
 
@@ -184,8 +193,12 @@ module ArchSpec
     :resolved_references, :unresolved_references, :unresolved_names, :dynamic_features,
     :other_receiver_calls, :ignored_files, :parse_error_files, :producers, :corrupt_cache_entries,
     :unused_suppressions, :stale_todo_entries, :ancestry_resolved, :ancestor_unresolved,
-    :ambiguous_references, :refused_names, :facts_entries
+    :ambiguous_references, :refused_names, :facts_entries, :resolvers
   ) do
+    def disagreed_references
+      resolvers.values.sum { |counts| counts.fetch(:disagreed, 0) }
+    end
+
     def dynamic_feature_count
       dynamic_features.values.sum { |carriers| carriers.size }
     end
@@ -195,6 +208,7 @@ module ArchSpec
     def clauses
       [
         clause(unresolved_references, 'unresolved constant reference'),
+        clause(disagreed_references, 'reference the resolvers disagree on', 'references the resolvers disagree on'),
         clause(dynamic_feature_count, 'dynamic feature'),
         clause(other_receiver_calls, 'call with an untyped receiver', 'calls with untyped receivers'),
         clause(ignored_files, 'ignored file'),
@@ -225,6 +239,7 @@ module ArchSpec
         producers: producers,
         corrupt_cache_entries: corrupt_cache_entries,
         facts_entries: facts_entries,
+        resolvers: resolvers,
         unused_suppressions: unused_suppressions,
         stale_todo_entries: stale_todo_entries
       }
@@ -275,6 +290,34 @@ module ArchSpec
       @dating_note = nil
       @indexes = nil
       @effective_methods_memo = {}
+      @resolver_answers = {}
+      @resolver_runs = {}
+    end
+
+    # Records what a second resolver answered for each reference it saw, by
+    # file, line and column, so resolve_edge can set the parser's answer
+    # beside it, and how the run went, for the census.
+    def record_resolver(name, answers, cache:, seconds:, resolver_only:)
+      answers.each do |(path, line), entries|
+        @resolver_answers[[path, line]] = entries.map { |column, target| [column, normalize_constant(target)] }
+      end
+      @resolver_runs[name.to_s] = { cache: cache, seconds: seconds, resolver_only: resolver_only }
+      @census = nil
+      @effective_methods_memo.delete_if { |key, _| key.first == :resolve }
+    end
+
+    def resolvers
+      @resolver_runs.keys
+    end
+
+    # The resolutions at a location two resolvers answered differently.
+    def disagreements_for(constant_name, path)
+      dependency_edges.filter_map do |edge|
+        next unless edge.from_path == path && edge.from_constant == constant_name
+
+        resolution = resolve_edge(edge)
+        resolution if resolution.cause == :disagreed
+      end
     end
 
     # Records the names a component declares public, so a cut can name the
@@ -508,7 +551,10 @@ module ArchSpec
     def target_components_for(edge)
       return Set.new unless DEPENDENCY_EDGE_TYPES.include?(edge.type)
 
-      resolved = resolve_edge_constant(edge)
+      resolution = resolve_edge(edge)
+      return Set.new unless resolution.resolved?
+
+      resolved = resolution.name
       constants_named(resolved).each_with_object(Set.new) do |constant, names|
         names.merge(component_names_for_constant(resolved, path: constant.path))
       end
@@ -525,8 +571,37 @@ module ArchSpec
       resolve_edge(edge).name
     end
 
+    # The parser's resolution, set beside a second resolver's answer for the
+    # same reference when one ran: the same name from both is converged, a
+    # different name for the reference at that column is a disagreement and no
+    # edge, and a reference the other resolver did not answer keeps the
+    # parser's answer as it was. An answer without a column stands for its
+    # whole line, and then only a name no reference on the line resolved to
+    # counts as a disagreement.
     def resolve_edge(edge)
-      resolve(edge.to, edge.from_constant, edge.lexical_nesting)
+      resolution = resolve(edge.to, edge.from_constant, edge.lexical_nesting)
+      answers = @resolver_answers[[edge.from_path, edge.location.line]]
+      return resolution if answers.nil? || facts_file_for(edge)
+      return resolution unless resolution.resolved? && constants_named(resolution.name).any?
+
+      at_column, anywhere = answers.partition { |column, _| column == edge.location.column }
+      candidates = (at_column.empty? ? anywhere : at_column).map(&:last)
+      agreeing = candidates.find { |answer| answer == resolution.name || resolution.name.start_with?("#{answer}::") }
+      return resolution.converged(agreeing) if agreeing
+      return resolution if candidates.empty?
+
+      disputed = at_column.empty? ? candidates.reject { |answer| line_names(edge).include?(answer) } : candidates
+      disputed.empty? ? resolution : resolution.disagreed(disputed.sort.first)
+    end
+
+    # The names the parser resolved on an edge's line, so an answer without a
+    # column that belongs to a neighbouring reference is not a disagreement.
+    def line_names(edge)
+      indexes.fetch(:dependency_edges).filter_map do |candidate|
+        next unless candidate.from_path == edge.from_path && candidate.location.line == edge.location.line
+
+        resolve(candidate.to, candidate.from_constant, candidate.lexical_nesting).name
+      end
     end
 
     # Instance methods a constant responds to, walking resolvable superclasses
@@ -783,6 +858,9 @@ module ArchSpec
       other_receivers = 0
       producers = Hash.new(0)
 
+      converged = 0
+      disagreed = 0
+
       edges.each do |edge|
         case edge.type
         when *DEPENDENCY_EDGE_TYPES
@@ -790,6 +868,10 @@ module ArchSpec
           if resolution.resolved? && constants_named(resolution.name).any?
             resolved += 1
             through_ancestry += 1 if resolution.determination == :ancestry
+            converged += 1 if resolution.determination == :converged
+          elsif resolution.cause == :disagreed
+            disagreed += 1
+            refused_names.add("#{resolution.name} or #{resolution.other}")
           elsif %i[ancestor_unresolved ambiguous].include?(resolution.cause)
             refused[resolution.cause] += 1
             refused_names.add(resolution.name)
@@ -820,8 +902,16 @@ module ArchSpec
         ancestor_unresolved: refused[:ancestor_unresolved],
         ambiguous_references: refused[:ambiguous],
         refused_names: refused_names.to_a.sort,
-        facts_entries: facts_present? ? facts_entries : nil
+        facts_entries: facts_present? ? facts_entries : nil,
+        resolvers: resolver_census(converged, disagreed, resolved)
       )
+    end
+
+    def resolver_census(converged, disagreed, resolved)
+      @resolver_runs.sort.to_h do |name, run|
+        [name, { converged: converged, parser_only: resolved - converged, resolver_only: run[:resolver_only],
+                 disagreed: disagreed, cache: run[:cache], seconds: run[:seconds] }]
+      end
     end
 
     # What each facts file stated, by entry type, and what of it the parser
@@ -903,12 +993,12 @@ module ArchSpec
     def resolve(name, from_constant, lexical_nesting, ancestry: true)
       absolute = name.to_s.start_with?('::')
       normalized = normalize_constant(name)
-      return Resolution.new(normalized, :lexical, nil, nil) if absolute
+      return Resolution.new(normalized, :lexical, nil, nil, nil) if absolute
 
       scopes = (lexical_nesting || inferred_nesting(from_constant)).map { |scope| normalize_constant(scope) }
       found = resolve_lexically(normalized, scopes)
-      return Resolution.new(found, :lexical, nil, nil) if found
-      return Resolution.new(normalized, :unresolved, nil, :undefined) unless ancestry
+      return Resolution.new(found, :lexical, nil, nil, nil) if found
+      return Resolution.new(normalized, :unresolved, nil, :undefined, nil) unless ancestry
 
       owner = normalize_constant(from_constant)
       @effective_methods_memo[[:resolve, owner, normalized, scopes]] ||= resolve_through_ancestry(normalized, owner, scopes)
@@ -925,7 +1015,7 @@ module ArchSpec
     # order and refuses wherever it could not show the reader the answer. The
     # qualified form walks from the prefix instead of the referencing constant.
     def resolve_through_ancestry(normalized, owner, scopes)
-      undefined = Resolution.new(normalized, :unresolved, nil, :undefined)
+      undefined = Resolution.new(normalized, :unresolved, nil, :undefined, nil)
       if normalized.include?('::')
         prefix, last = normalized.split(/::(?=[^:]+\z)/, 2)
         root = resolve_lexically(prefix, scopes)
@@ -953,14 +1043,14 @@ module ArchSpec
           found[ancestor] = candidate if constants_named(candidate).any?
         end
         targets = hits.values.uniq
-        return Resolution.new(targets.first, :ancestry, hits.keys.first, nil) if targets.size == 1
-        return Resolution.new(normalized, :unresolved, nil, :ambiguous) if targets.size > 1
+        return Resolution.new(targets.first, :ancestry, hits.keys.first, nil, nil) if targets.size == 1
+        return Resolution.new(normalized, :unresolved, nil, :ambiguous, nil) if targets.size > 1
 
         unresolved ||= position.find { |ancestor| constants_named(ancestor).empty? && !RESOLVED_ROOTS.include?(ancestor) }
       end
-      return Resolution.new(normalized, :unresolved, unresolved, :ancestor_unresolved) if unresolved
+      return Resolution.new(normalized, :unresolved, unresolved, :ancestor_unresolved, nil) if unresolved
 
-      Resolution.new(normalized, :unresolved, nil, :undefined)
+      Resolution.new(normalized, :unresolved, nil, :undefined, nil)
     end
 
     # Method resolution order from +name+ as positions: the modules it

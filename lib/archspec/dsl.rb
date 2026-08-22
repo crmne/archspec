@@ -94,6 +94,21 @@ module ArchSpec
         self.static_associations = associations == :static
       end
 
+      # Runs a second resolver inside every check and sets its answer beside
+      # the parser's on each constant reference: the two agreeing is a
+      # converged edge, a disagreement is no edge at all. The set is closed;
+      # +:rubydex+ indexes the workspace and its locked bundle, statically,
+      # and refuses by name when the gem or the bundle is missing.
+      #
+      #   resolver :rubydex
+      def resolver(name)
+        unless Definition::RESOLVERS.include?(name.to_s.to_sym)
+          raise Error, "unknown resolver #{name.inspect}; the resolvers are #{Definition::RESOLVERS.map(&:inspect).join(', ')}"
+        end
+
+        add_resolver(name)
+      end
+
       # Yields each subdirectory matching a glob, so you can declare one
       # component per engine or pack without hardcoding their names. Paths
       # resolve against the +Archspec.rb+ directory, not the working directory,

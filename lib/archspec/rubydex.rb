@@ -1,11 +1,13 @@
 # frozen_string_literal: true
 
+require 'digest'
 require 'fileutils'
 require 'pathname'
 require 'set'
 
 require_relative 'error'
 require_relative 'facts'
+require_relative 'snapshot'
 require_relative 'version'
 
 module ArchSpec
@@ -16,30 +18,60 @@ module ArchSpec
   # that boundary answered. The same discipline covers what else Rubydex
   # states about the workspace: a superclass or mixin the parser has none
   # for, a method it did not see defined, and a call whose receiver Rubydex
-  # resolved to a constant. Only <tt>archspec reflect --rubydex</tt> loads the
-  # gem, and +check+ merges the file it writes like any other.
+  # resolved to a constant. The gem loads only from
+  # <tt>archspec reflect --rubydex</tt> or a check whose architecture file
+  # declares <tt>resolver :rubydex</tt>; the latter merges the same facts in
+  # memory and sets every answer beside the parser's.
   module Rubydex
     extend self
 
     PRODUCER = 'archspec-rubydex'
+    INDEX_FORMAT = 1
+    RESOLVER_LABEL = "#{PRODUCER} (resolver)"
     WORKSPACE = 'rubydex-workspace'
     GEM = 'rubydex-gem'
     SINGLETON_SUFFIX = /::<[^>]+>\z/
 
-    Resolution = ValueObject.define(:file, :line, :target, :in_workspace)
+    Resolution = ValueObject.define(:file, :line, :column, :target, :in_workspace)
     Ancestry = ValueObject.define(:owner, :kind, :target, :file, :line, :in_workspace)
     Definition = ValueObject.define(:owner, :name, :scope, :visibility, :file, :line)
     Call = ValueObject.define(:file, :line, :method, :receiver, :in_workspace)
     MIXIN_KINDS = { 'Rubydex::Include' => 'includes', 'Rubydex::Prepend' => 'prepends',
                     'Rubydex::Extend' => 'extends' }.freeze
 
-    def run(graph, output:, root:)
-      found = index(root)
-      facts = facts_for(graph, found[:resolutions], misses: found[:misses], engine_version: ::Rubydex::VERSION,
-                        ancestry: found[:ancestry], definitions: found[:definitions], calls: found[:calls])
-      FileUtils.mkdir_p(File.dirname(output))
-      Facts.write(output, commit: Facts.commit_for(root), dirty: Facts.dirty?(root), **facts)
+    def run(graph, output:, root:, cache_directory: nil)
+      facts, = resolve(graph, root: root, cache_directory: cache_directory)
+      Facts.write_to(output, root: root, **facts)
       facts
+    end
+
+    # The facts a check merges when the resolver is declared: the same file
+    # reflect writes, built in memory, with every answer Rubydex gave recorded
+    # on the graph so each parser edge can be read beside it.
+    def facts_file(graph, root:, cache_directory: nil)
+      facts, found, cache, seconds = resolve(graph, root: root, cache_directory: cache_directory)
+      graph.record_resolver('rubydex', answers_by_reference(graph, found[:resolutions]), cache: cache, seconds: seconds,
+                                       resolver_only: facts[:references].size)
+      Facts.built(label: RESOLVER_LABEL, **facts)
+    end
+
+    # Indexes the workspace and its bundle, or reads the index kept from an
+    # identical tree and bundle, and turns the answers into facts the parser
+    # did not already have.
+    def resolve(graph, root:, cache_directory: nil)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      load_gem
+      gemfile = File.join(root, 'Gemfile')
+      raise Error, "no Gemfile at #{root}; reflect --rubydex indexes an application and its bundle" unless File.exist?(gemfile)
+
+      lockfile = bundle!(root)
+      cached = cache_directory && cache_path(cache_directory, root, lockfile, graph)
+      found = cached ? read_index(cached) : nil
+      cache = found ? 'hit' : 'miss'
+      found ||= index(root).tap { |indexed| write_index(cached, indexed) if cached }
+      facts = facts_for(graph, found[:resolutions], misses: found[:misses], engine_version: found[:engine_version],
+                        ancestry: found[:ancestry], definitions: found[:definitions], calls: found[:calls])
+      [facts, found, cache, Process.clock_gettime(Process::CLOCK_MONOTONIC) - started]
     end
 
     # Turns Rubydex resolutions into references the parser did not already
@@ -180,19 +212,71 @@ module ArchSpec
     end
 
     def index(root)
-      load_gem
-      gemfile = File.join(root, 'Gemfile')
-      raise Error, "no Gemfile at #{root}; reflect --rubydex indexes an application and its bundle" unless File.exist?(gemfile)
-
-      bundle!(root)
       graph = Dir.chdir(root) { build_index }
-      collect(graph, File.expand_path(root))
+      collect(graph, File.expand_path(root)).merge(engine_version: ::Rubydex::VERSION)
     end
 
     def bundle!(root)
-      return if File.readable?(File.join(root, 'Gemfile.lock'))
+      lockfile = File.join(root, 'Gemfile.lock')
+      return lockfile if File.readable?(lockfile)
 
       raise Error, "no Gemfile.lock at #{root}; reflect --rubydex indexes the locked bundle, never the workspace alone"
+    end
+
+    # One index per tree and bundle: the key is the lockfile's content, the
+    # two versions, the parsed set with its contents, and the content of any
+    # gem the lockfile points at a path rather than a version, which changes
+    # without the lockfile moving. Rubydex resolves across files, so a source
+    # edit indexes again; the warm path is an unchanged tree.
+    def cache_path(directory, root, lockfile, graph)
+      key = Digest::SHA256.hexdigest([File.read(lockfile), ::Rubydex::VERSION, VERSION,
+                                      Snapshot.parsed_set_digest(graph), path_gems_digest(root)].join("\0"))[0, 24]
+      File.join(File.expand_path(directory, root), "rubydex-#{key}.marshal")
+    end
+
+    def path_gems_digest(root)
+      require 'bundler'
+      sources = Dir.chdir(root) { ::Bundler.definition.sources.path_sources }
+      entries = sources.flat_map do |source|
+        Dir.glob(File.join(source.path.to_s, '**', '*.rb')).sort.map { |file| "#{file}\0#{Digest::SHA256.file(file).hexdigest}" }
+      end
+      Digest::SHA256.hexdigest(entries.join("\n"))
+    rescue ::Bundler::BundlerError, SystemCallError
+      ''
+    end
+
+    # One payload per key; an index from another tree or bundle under the same
+    # directory is removed when a new one is written, so the directory holds
+    # the current index and nothing else.
+    def write_index(path, found)
+      FileUtils.mkdir_p(File.dirname(path))
+      ignore = File.join(File.dirname(File.dirname(path)), '.gitignore')
+      File.write(ignore, "*\n") unless File.exist?(ignore)
+      Dir.glob(File.join(File.dirname(path), 'rubydex-*.marshal')).each { |stale| File.delete(stale) unless stale == path }
+      File.binwrite(path, Marshal.dump(found.merge(index_format: INDEX_FORMAT)))
+    end
+
+    def read_index(path)
+      return unless File.exist?(path)
+
+      found = Marshal.load(File.binread(path))
+      found if found.is_a?(Hash) && found[:index_format] == INDEX_FORMAT && found.key?(:resolutions)
+    rescue ArgumentError, TypeError, SystemCallError
+      nil
+    end
+
+    # Every answer Rubydex gave for a reference in a line the parser read, by
+    # file, line and column, apart from the name the line declares and
+    # +self+, which are no reference at all.
+    def answers_by_reference(graph, resolutions)
+      resolutions.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |resolution, answers|
+        path = File.expand_path(resolution.file, graph.root)
+        next unless graph.files.key?(path)
+        next if declared_at?(graph, path, resolution.line, resolution.target)
+        next if owner_for(graph, path, resolution.line) == graph.resolve_constant_reference("::#{resolution.target}")
+
+        answers[[path, resolution.line]] << [resolution.column, resolution.target]
+      end
     end
 
     # The engine lists the workspace and each locked gem's require paths. A
@@ -258,6 +342,7 @@ module ArchSpec
         resolutions << Resolution.new(
           file: uri.delete_prefix(workspace),
           line: reference.location.start_line + 1,
+          column: reference.location.start_column + 1,
           target: declaration.name.sub(SINGLETON_SUFFIX, ''),
           in_workspace: declaration.definitions.any? { |definition| definition.location.uri.to_s.start_with?(workspace) }
         )
@@ -370,9 +455,13 @@ module ArchSpec
       :disagreed
     end
 
+    # The name a line declares, and every namespace on the way to it: writing
+    # <tt>module Billing::Invoices</tt> names Billing without depending on it.
     def declared_at?(graph, path, line, target)
+      wanted = graph.resolve_constant_reference("::#{target}")
       graph.constants_for_path(path).any? do |constant|
-        constant.location.line == line && constant.name == graph.resolve_constant_reference("::#{target}")
+        constant.location.line == line &&
+          (constant.name == wanted || constant.name.start_with?("#{wanted}::"))
       end
     end
 

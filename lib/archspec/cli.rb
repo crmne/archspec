@@ -427,7 +427,7 @@ module ArchSpec
     def reflect_rubydex(definition, root, destination, output)
       destination = File.expand_path(destination || File.join(definition.facts_path, 'rubydex.yml'), root)
       graph = Analyzer.analyze(definition, root: root)
-      facts = Rubydex.run(graph, output: destination, root: root)
+      facts = Rubydex.run(graph, output: destination, root: root, cache_directory: definition.resolver_cache_path)
       output.puts "Wrote #{Pathname(destination).relative_path_from(Pathname(root))}"
       output.puts summary_line(facts)
       0

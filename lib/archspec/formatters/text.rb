@@ -45,7 +45,19 @@ module ArchSpec
         end
         output.puts facts_summary(graph)
         output.puts census_summary(graph)
+        output.puts resolvers_summary(graph) if graph.resolvers.any?
         output.puts dating_summary(graph) if graph.dating_note
+      end
+
+      # How the parser and a second resolver agreed, one line per resolver,
+      # so a run with a resolver declared never reads like one without.
+      def resolvers_summary(graph)
+        lines = graph.census.resolvers.map do |name, counts|
+          "#{name}: converged #{counts[:converged]}, parser only #{counts[:parser_only]}, " \
+            "#{name} only #{counts[:resolver_only]}, disagreed #{counts[:disagreed]} " \
+            "(index #{counts[:cache]}, #{format('%.2f', counts[:seconds])}s)"
+        end
+        "resolvers: #{lines.join('; ')}"
       end
 
       # Findings on lines older than their rule's date: listed under their own

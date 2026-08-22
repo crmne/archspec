@@ -91,6 +91,9 @@ module ArchSpec
     def merge_facts(graph, definition, root, only: nil)
       facts = Facts.load(definition.facts_path, root: root)
       facts = facts.with_file(Associations.facts_file(graph)) if definition.static_associations
+      if definition.resolvers.include?(:rubydex)
+        facts = facts.with_file(Rubydex.facts_file(graph, root: root, cache_directory: definition.resolver_cache_path))
+      end
       graph.merge_facts(facts, only: only)
     end
 
