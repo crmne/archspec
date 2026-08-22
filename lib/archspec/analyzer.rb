@@ -21,6 +21,7 @@ module ArchSpec
         SourceVisitor.visit(graph, path, result.value) if result.value
       end
 
+      graph.merge_facts(Facts.load(definition.facts_path, root: root))
       graph.assign_components(definition.component_specs.values)
       graph
     end

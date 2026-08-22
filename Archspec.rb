@@ -11,6 +11,7 @@ component :analysis, in: %w[
 ]
 component :domain, in: %w[
   lib/archspec/todo.rb
+  lib/archspec/facts.rb
   lib/archspec/component_spec.rb
   lib/archspec/definition.rb
   lib/archspec/diagnostic.rb
@@ -23,6 +24,7 @@ component :dsl, in: %w[
 ]
 component :rule_checks, in: 'lib/archspec/rules/**/*.rb'
 component :formatters, in: 'lib/archspec/formatters/**/*.rb'
+component :reflect, in: 'lib/archspec/reflect.rb'
 component :support, in: %w[
   lib/archspec/error.rb
   lib/archspec/value_object.rb
@@ -37,5 +39,6 @@ domain.cannot_use :analysis, :cli, :dsl, :formatters, :rule_checks
 rule_checks.cannot_use :analysis, :cli, :dsl, :formatters
 formatters.cannot_use :analysis, :cli, :dsl, :rule_checks
 dsl.cannot_use :analysis, :cli, :formatters
+reflect.cannot_use :analysis, :cli, :dsl, :formatters, :rule_checks
 
-no_cycles among: %i[public_api cli analysis domain dsl rule_checks formatters support]
+no_cycles among: %i[public_api cli analysis domain dsl rule_checks formatters reflect support]

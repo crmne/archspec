@@ -66,6 +66,15 @@ module ArchSpec
         self.todo_path = path.to_s
       end
 
+      # Points at the directory of facts files merged before rules run, written
+      # by <tt>archspec reflect</tt> or by another producer. Defaults to
+      # +archspec_facts+; an absent directory is reported, never an error.
+      #
+      #   facts "archspec_facts"
+      def facts(path = Facts::DEFAULT_DIRECTORY)
+        self.facts_path = path.to_s
+      end
+
       # Yields each subdirectory matching a glob, so you can declare one
       # component per engine or pack without hardcoding their names. Paths
       # resolve against the +Archspec.rb+ directory, not the working directory,

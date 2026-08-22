@@ -12,6 +12,17 @@ module ArchSpec
           files: graph.files.size,
           constants: graph.constants.size,
           facts: graph.edges.size,
+          facts_files: graph.facts_files.map do |file|
+            {
+              path: file.relative_path,
+              producer: file.producer,
+              producer_version: file.producer_version,
+              commit: file.commit,
+              dirty: file.dirty,
+              entries: file.entries,
+              misses: file.misses
+            }
+          end,
           violations: diagnostics.map { |diagnostic| diagnostic.to_h(root: graph.root) }
         )
       end

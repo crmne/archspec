@@ -14,10 +14,13 @@ description: Complete reference for the Archspec.rb DSL, including sources, comp
 source "app/**/*.rb", "lib/**/*.rb"
 ignore "tmp/**/*", "vendor/**/*"
 todo "archspec_todo.yml"
+facts "archspec_facts"
 ```
 {: data-title="Archspec.rb"}
 
 Todo ids are computed from the rule, path, message, and evidence, not the line number, so entries survive edits that shift code.
+
+`facts` names the directory of producer-written facts files merged before rules run; it defaults to `archspec_facts/`. See [Facts](facts/).
 
 ## Components
 

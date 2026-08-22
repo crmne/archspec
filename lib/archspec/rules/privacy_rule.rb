@@ -46,7 +46,8 @@ module ArchSpec
             rule: id,
             message: "#{resolved} is private to #{source}",
             location: edge.location,
-            evidence: "#{graph.edge_source_name(edge)} #{edge.verb} #{resolved}"
+            evidence: graph.edge_evidence(edge, resolved),
+            confidence: edge.confidence
           )
         end
       end

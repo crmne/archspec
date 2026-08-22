@@ -161,7 +161,8 @@ module ArchSpec
 
     RESOLVED_ROOTS = %w[Object BasicObject].freeze
 
-    attr_reader :root, :files, :constants, :edges, :components
+    attr_reader :root, :files, :constants, :edges, :components, :facts_files
+    attr_accessor :facts_directory
 
     def initialize(root)
       @root = File.expand_path(root)
@@ -170,6 +171,10 @@ module ArchSpec
       @constants_by_name = Hash.new { |hash, key| hash[key] = [] }
       @edges = []
       @components = {}
+      @facts_files = []
+      @facts_directory = nil
+      @facts_present = false
+      @facts_origins = {}.compare_by_identity
     end
 
     def add_file(path:, parse_errors:, suppressions: [])
@@ -196,6 +201,55 @@ module ArchSpec
                  lexical_nesting: nil)
       nesting = lexical_nesting&.map { |name| normalize_constant(name) }&.freeze
       edges << Edge.new(type, from_path, from_constant, to.to_s, location, confidence, receiver, nesting)
+    end
+
+    # Adds what a facts file states: each reference becomes an ordinary
+    # dependency edge whose confidence names its origin, and each generated
+    # method lands on the owning constant so a bare call to it counts as the
+    # component's own API. A target the parser never defined stays an
+    # unresolved name, exactly like a constant from a gem.
+    def merge_facts(facts)
+      @facts_directory = facts.directory
+      @facts_present = facts.present?
+
+      facts.files.each do |file|
+        facts_files << file
+
+        file.references.each do |reference|
+          path = File.expand_path(reference.file, root)
+          add_edge(
+            type: :references_constant,
+            from_path: path,
+            from_constant: normalize_constant(reference.owner),
+            to: reference.target,
+            location: SourceLocation.point(path, reference.line, 1),
+            confidence: :from_facts_file
+          )
+          @facts_origins[edges.last] = file.relative_path
+        end
+
+        file.generated_methods.each do |entry|
+          constants_named(entry.owner).each do |constant|
+            entry.names.each { |name| constant.add_instance_method(name, location: constant.location) }
+          end
+        end
+      end
+    end
+
+    def facts_present?
+      @facts_present
+    end
+
+    def facts_file_for(edge)
+      @facts_origins[edge]
+    end
+
+    # The evidence line for an edge, naming the facts file it came from when
+    # the parser did not see it.
+    def edge_evidence(edge, target = edge.to)
+      evidence = "#{edge_source_name(edge)} #{edge.verb} #{target}"
+      origin = facts_file_for(edge)
+      origin ? "#{evidence} (from #{origin})" : evidence
     end
 
     def constants_named(name)

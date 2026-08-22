@@ -49,7 +49,8 @@ module ArchSpec
               rule: id,
               message: "#{source} may not depend on #{target}",
               location: edge.location,
-              evidence: "#{graph.edge_source_name(edge)} #{edge.verb} #{edge.to}"
+              evidence: graph.edge_evidence(edge),
+              confidence: edge.confidence
             )
           end
         end
@@ -72,7 +73,8 @@ module ArchSpec
               rule: id,
               message: "#{source} must not depend on #{target}",
               location: edge.location,
-              evidence: "#{graph.edge_source_name(edge)} #{edge.verb} #{edge.to}"
+              evidence: graph.edge_evidence(edge),
+              confidence: edge.confidence
             )
           end
         end
@@ -116,7 +118,8 @@ module ArchSpec
               rule: id,
               message: message_for(offender),
               location: edge.location,
-              evidence: "#{graph.edge_source_name(edge)} #{edge.verb} #{edge.to}"
+              evidence: graph.edge_evidence(edge),
+              confidence: edge.confidence
             )
           end
         end
@@ -165,7 +168,8 @@ module ArchSpec
             rule: id,
             message: "#{source} must not reference #{referenced}",
             location: edge.location,
-            evidence: "#{graph.edge_source_name(edge)} #{edge.verb} #{edge.to}"
+            evidence: graph.edge_evidence(edge),
+            confidence: edge.confidence
           )
         end
       end

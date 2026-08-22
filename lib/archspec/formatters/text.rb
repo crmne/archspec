@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'pathname'
+
 module ArchSpec
   module Formatters
     # Prints diagnostics the way clang and herb do: a severity header with the
@@ -28,6 +30,7 @@ module ArchSpec
         if diagnostics.empty?
           output.puts "ArchSpec passed: #{graph.files.size} files, #{graph.constants.size} constants, " \
                       "#{graph.edges.size} facts checked."
+          output.puts facts_summary(graph)
           return
         end
 
@@ -40,6 +43,23 @@ module ArchSpec
 
         label = diagnostics.size == 1 ? 'architecture violation' : 'architecture violations'
         output.puts style.bold("#{diagnostics.size} #{label} found.")
+        output.puts facts_summary(graph)
+      end
+
+      # Names the facts files merged into the graph, or says the directory was
+      # absent, so a run without facts never reads like a run that agreed.
+      def facts_summary(graph)
+        directory = Pathname(graph.facts_directory.to_s).relative_path_from(Pathname(graph.root)).to_s
+        if graph.facts_files.empty?
+          state = graph.facts_present? ? 'empty' : 'absent'
+          return "facts: none (#{directory}/ #{state})"
+        end
+
+        merged = graph.facts_files.map do |file|
+          label = file.entries == 1 ? 'entry' : 'entries'
+          "#{file.relative_path} (#{file.producer} #{file.producer_version}, #{file.entries} #{label})"
+        end
+        "facts: #{merged.join(', ')}"
       end
 
       def print_diagnostic(output, style, graph, diagnostic, sources)
