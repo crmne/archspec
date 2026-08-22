@@ -255,6 +255,8 @@ It also runs against pinned checkouts of large real-world Rails apps to catch cr
 bundle exec rake torture
 ```
 
+Each app's `test/torture/<app>/expected.yml` records every diagnostic the pinned checkout produces, keyed by the same fingerprint the todo file uses, with a verdict: `true_positive`, `false_positive`, or `unjudged`. A run fails when the per-rule counts move, when a diagnostic appears that the record does not carry, or when a true positive disappears. `--update` records new diagnostics as `unjudged` and keeps every verdict already written; a verdict is written by a person editing the file, never by the tool, and a true positive only leaves the record by hand.
+
 ## License
 
 Released under the MIT License.

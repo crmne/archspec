@@ -2,3 +2,58 @@
 sha: 4cac48263809d806cee8660c6b1adc6e5d0c9445
 rules:
   dependencies.forbid: 10
+diagnostics:
+  0ab6ff052afba42496dac115:
+    rule: dependencies.forbid
+    path: app/services/user_authenticator.rb
+    message: services must not depend on controllers
+    evidence: UserAuthenticator references Users::OmniauthCallbacksController
+    verdict: unjudged
+  1c39cf10a18a1664f58bd15f:
+    rule: dependencies.forbid
+    path: app/services/tag_hashtag_data_source.rb
+    message: services must not depend on controllers
+    evidence: TagHashtagDataSource references TagsController
+    verdict: unjudged
+  2970844f961abf1c0814207a:
+    rule: dependencies.forbid
+    path: app/services/category/hierarchical_search.rb
+    message: services must not depend on controllers
+    evidence: Category::HierarchicalSearch references CategoriesController::MAX_CATEGORIES_LIMIT
+    verdict: unjudged
+  32927b922e5d3b826934150e:
+    rule: dependencies.forbid
+    path: app/services/user_api_key/device_auth.rb
+    message: services must not depend on controllers
+    evidence: UserApiKey::DeviceAuth::ALLOWED_PADDING_MODES references UserApiKeysController::ALLOWED_PADDING_MODES
+    verdict: unjudged
+  8564ef3f0ad87ef728a3bb7f:
+    rule: dependencies.forbid
+    path: app/models/site_setting.rb
+    message: models must not depend on controllers
+    evidence: SiteSetting references ListController
+    verdict: unjudged
+  bb75fc00947ceb0f3a9ac332:
+    rule: dependencies.forbid
+    path: app/services/user_api_key/device_auth.rb
+    message: services must not depend on controllers
+    evidence: UserApiKey::DeviceAuth::AUTH_API_VERSION references UserApiKeysController::AUTH_API_VERSION
+    verdict: unjudged
+  e99ec3f3a5fa34aafc3ff6a8:
+    rule: dependencies.forbid
+    path: app/models/topic.rb
+    message: models must not depend on controllers
+    evidence: Topic references ListController
+    verdict: unjudged
+  ec8234e285036f721bbd0108:
+    rule: dependencies.forbid
+    path: app/models/translation_override.rb
+    message: models must not depend on controllers
+    evidence: TranslationOverride references ExtraLocalesController
+    verdict: unjudged
+  f3f86b9efc2a947b97fce039:
+    rule: dependencies.forbid
+    path: app/services/tags/search.rb
+    message: services must not depend on controllers
+    evidence: Tags::Search references TagsController
+    verdict: unjudged

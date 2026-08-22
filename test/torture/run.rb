@@ -2,10 +2,16 @@
 # frozen_string_literal: true
 
 # Runs ArchSpec against a large open source Rails app pinned to a known
-# commit, then compares per-rule diagnostic counts against a snapshot.
+# commit, then compares every diagnostic against the recorded set in
+# expected.yml: one entry per diagnostic with the verdict a person gave it.
 #
 #   ruby test/torture/run.rb discourse
 #   ruby test/torture/run.rb mastodon --update
+#
+# A run fails when the per-rule counts move, when a diagnostic appears that
+# the record does not carry, or when a true positive disappears. --update
+# records new diagnostics as unjudged and keeps every verdict already
+# written; it refuses to drop a true positive, which only a hand edit may do.
 
 $LOAD_PATH.unshift File.expand_path('../../lib', __dir__)
 
@@ -14,6 +20,7 @@ require 'fileutils'
 require 'json'
 require 'stringio'
 require 'yaml'
+require_relative 'snapshot'
 
 APPS = {
   'discourse' => {
@@ -62,8 +69,8 @@ elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 abort "archspec crashed on #{app_name} (exit #{status})" unless [0, 1].include?(status)
 
 report = JSON.parse(output.string)
-counts = report.fetch('violations').group_by { |violation| violation.fetch('rule') }
-               .transform_values(&:size).sort.to_h
+violations = report.fetch('violations')
+counts = TortureSnapshot.counts_for(violations)
 
 puts format('%s @ %s: %d files, %d constants, %d facts in %.1fs',
             app_name, app.fetch(:sha)[0, 12], report.fetch('files'),
@@ -71,28 +78,59 @@ puts format('%s @ %s: %d files, %d constants, %d facts in %.1fs',
 counts.each { |rule, count| puts format('  %-40s %d', rule, count) }
 puts '  no violations' if counts.empty?
 
+def describe(entry, label)
+  format('  %-24s %-28s %s  %s', label, entry.fetch('rule'), entry.fetch('path'), entry.fetch('message'))
+end
+
+recorded = File.exist?(expected_path) ? TortureSnapshot.load(expected_path) : nil
+
 if update
-  File.write(expected_path, { 'sha' => app.fetch(:sha), 'rules' => counts }.to_yaml)
+  snapshot, retained = TortureSnapshot.update(recorded || {}, violations, sha: app.fetch(:sha))
+  unless retained.empty?
+    puts 'refusing to drop true positives no longer reported; edit the record by hand:'
+    recorded.fetch('diagnostics').each { |id, entry| puts describe(entry, id) if retained.include?(entry) }
+    exit 1
+  end
+  File.write(expected_path, snapshot.to_yaml)
   puts "wrote #{expected_path}"
   exit 0
 end
 
-unless File.exist?(expected_path)
+if recorded.nil?
   puts "no snapshot at #{expected_path}; run with --update to record one"
   exit 0
 end
 
-expected = YAML.safe_load_file(expected_path)
-abort 'snapshot SHA does not match pinned SHA; re-record with --update' if expected.fetch('sha') != app.fetch(:sha)
+abort 'snapshot SHA does not match pinned SHA; re-record with --update' if recorded.fetch('sha') != app.fetch(:sha)
 
-if expected.fetch('rules') == counts
-  puts 'matches snapshot'
-else
+if TortureSnapshot.legacy?(recorded)
+  puts 'record carries counts only; run with --update to record each diagnostic'
+end
+
+result = TortureSnapshot.compare(recorded, violations)
+
+unless result.added.empty?
+  puts 'added (not in the record):'
+  result.added.each { |id, entry| puts describe(entry, id) }
+end
+unless result.removed.empty?
+  puts 'removed (in the record, not reported):'
+  result.removed.each { |entry| puts describe(entry, entry.fetch('verdict')) }
+end
+puts "#{result.improved.size} false positive(s) no longer reported" unless result.improved.empty?
+
+if result.counts_changed
   puts 'MISMATCH against snapshot:'
-  (expected.fetch('rules').keys | counts.keys).sort.each do |rule|
-    was = expected.fetch('rules').fetch(rule, 0)
+  (recorded.fetch('rules').keys | counts.keys).sort.each do |rule|
+    was = recorded.fetch('rules').fetch(rule, 0)
     now = counts.fetch(rule, 0)
     puts format('  %-40s %d -> %d', rule, was, now) if was != now
   end
+end
+
+if result.pass?
+  puts 'matches snapshot'
+else
+  puts "FAILED: #{result.failures.join('; ')}"
   exit 1
 end

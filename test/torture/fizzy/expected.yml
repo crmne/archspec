@@ -4,3 +4,32 @@ rules:
   concerns.independence: 1
   dependencies.forbid: 1
   naming.forbidden: 2
+diagnostics:
+  2d3fec0d3ef563de7940a03b:
+    rule: concerns.independence
+    path: app/models/concerns/storage/tracked.rb
+    message: Storage::Tracked must not reference its includer Board
+    evidence: Storage::Tracked references Board
+    verdict: unjudged
+  8e8ffd2648cbbe5a0d95fd0c:
+    rule: dependencies.forbid
+    path: app/models/webhook.rb
+    message: models must not depend on controllers
+    evidence: Webhook references ApplicationController
+    verdict: unjudged
+  9ceeb430e0d66cba7d946670:
+    rule: naming.forbidden
+    path: app/mailers/concerns/mailers/unsubscribable.rb
+    message: 'Mailers::Unsubscribable must not define #set_unsubscribe_headers: use
+      attr_ readers and writers or plain names, not get_/set_'
+    evidence: Mailers::Unsubscribable defines instance method set_unsubscribe_headers
+      (matches /\A(get|set)_/)
+    verdict: unjudged
+  c6a90bb06c761f98c10643d5:
+    rule: naming.forbidden
+    path: app/models/notification/bundle.rb
+    message: 'Notification::Bundle must not define #set_default_window: use attr_
+      readers and writers or plain names, not get_/set_'
+    evidence: Notification::Bundle defines instance method set_default_window (matches
+      /\A(get|set)_/)
+    verdict: unjudged
