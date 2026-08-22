@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'digest'
 require 'open3'
 require 'optparse'
 require 'pathname'
@@ -10,16 +11,19 @@ module ArchSpec
   #
   #   archspec init
   #   archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
+  #   archspec check --baseline [DIR] [--mode ratchet|advisory|strict]
+  #   archspec snapshot [--config PATH] [--output DIR]
   #   archspec explain PATH_OR_CONSTANT
   #   archspec reflect [--config PATH] [--output PATH] [--static]
   #
   # #run returns the process exit status: 0 when clean, 1 when violations are
-  # found.
+  # found, 3 when a baseline could not be compared.
   module CLI
     extend self
 
     CONFIG_FILE = 'Archspec.rb'
     USAGE_ERROR_STATUS = 64
+    DECLINED_STATUS = 3
     TEMPLATE = <<~RUBY
       architecture :rails
     RUBY
@@ -37,6 +41,8 @@ module ArchSpec
         init(argv, output)
       when 'check'
         check(argv, output)
+      when 'snapshot'
+        snapshot(argv, output)
       when 'explain'
         explain(argv, output)
       when 'reflect'
@@ -63,7 +69,7 @@ module ArchSpec
     def help(argv, output)
       subject = argv.shift
       raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
-      if subject && !%w[init check explain reflect version].include?(subject)
+      if subject && !%w[init check snapshot explain reflect version].include?(subject)
         raise UsageError, "unknown command: #{subject}"
       end
 
@@ -105,6 +111,8 @@ module ArchSpec
         config: CONFIG_FILE,
         format: 'text',
         update_todo: false,
+        baseline: nil,
+        mode: nil,
         help: false
       }
 
@@ -115,6 +123,10 @@ module ArchSpec
         opts.on('--update-todo', 'Replace the configured todo with current violations') do
           options[:update_todo] = true
         end
+        opts.on('--baseline [DIR]', 'Grade the change against a snapshot (default .archspec)') do |value|
+          options[:baseline] = value || Snapshot::DEFAULT_DIRECTORY
+        end
+        opts.on('--mode MODE', 'With a baseline: ratchet, advisory, or strict') { |value| options[:mode] = value }
         opts.on('-h', '--help', 'Show this help') { options[:help] = true }
       end
       parser.parse!(argv)
@@ -125,6 +137,11 @@ module ArchSpec
       end
 
       raise Error, 'cannot combine --update-todo with path arguments' if options[:update_todo] && argv.any?
+      raise Error, 'cannot combine --update-todo with --baseline' if options[:update_todo] && options[:baseline]
+      raise UsageError, '--mode needs --baseline' if options[:mode] && !options[:baseline]
+
+      mode = options[:mode] || 'ratchet'
+      raise UsageError, "unknown mode: #{mode.inspect}" unless Delta.modes.include?(mode)
 
       formatter = formatter_for(options[:format])
       definition, root = load_definition(options[:config])
@@ -132,6 +149,12 @@ module ArchSpec
       todo_path = todo_path_for(definition, root)
       todo = options[:update_todo] ? Todo.empty(root: root) : Todo.load(todo_path, root: root)
       diagnostics = Evaluator.evaluate(definition, graph, todo: todo)
+
+      if options[:baseline]
+        return check_against_baseline(options, argv, output, formatter, definition, root, graph, todo, diagnostics,
+                                      mode)
+      end
+
       diagnostics = scope_to_paths(diagnostics, argv, root)
 
       if options[:update_todo]
@@ -150,6 +173,62 @@ module ArchSpec
 
       formatter.print(output, graph: graph, diagnostics: diagnostics)
       diagnostics.empty? ? 0 : 1
+    end
+
+    # Compares receipts before anything else: two snapshots that were not
+    # produced the same way decline with their own exit status, so a run that
+    # could not compare never reads as a run that passed.
+    def check_against_baseline(options, paths, output, formatter, definition, root, graph, todo, diagnostics, mode)
+      baseline = Snapshot.load(options[:baseline], root: root)
+      current = Snapshot.receipt_for(graph, definition, definition_digest: definition_digest(options[:config]),
+                                                        commit: nil, dirty: false)
+      if (cause = current.incomparable_with(baseline.receipt))
+        output.puts "archspec: declined: #{cause}; take a new snapshot and check again."
+        return DECLINED_STATUS
+      end
+
+      baseline_diagnostics = Evaluator.evaluate(definition, baseline.graph, todo: todo)
+      delta = Delta.between(baseline, graph, diagnostics, baseline_diagnostics, root: root,
+                                                                                changed_files: GitTree.changed_files(root, baseline.receipt.commit))
+      delta = delta.scoped { |bucket| scope_to_paths(bucket, paths, root) }
+
+      formatter.print_delta(output, graph: graph, diagnostics: scope_to_paths(diagnostics, paths, root), delta: delta,
+                                    mode: mode)
+      delta.failed?(mode) ? 1 : 0
+    end
+
+    def snapshot(argv, output)
+      options = { config: CONFIG_FILE, output: Snapshot::DEFAULT_DIRECTORY, help: false }
+      parser = OptionParser.new do |opts|
+        opts.banner = usage('snapshot').strip
+        opts.on('--config PATH', 'Use a different architecture file') { |value| options[:config] = value }
+        opts.on('--output DIR', 'Write the snapshot here instead of .archspec') { |value| options[:output] = value }
+        opts.on('-h', '--help', 'Show this help') { options[:help] = true }
+      end
+      parser.parse!(argv)
+
+      if options[:help]
+        output.puts parser
+        return 0
+      end
+
+      raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
+
+      definition, root = load_definition(options[:config])
+      graph = Analyzer.analyze(definition, root: root)
+      snapshot = Snapshot.write(options[:output], graph: graph, definition: definition,
+                                                  definition_digest: definition_digest(options[:config]),
+                                                  commit: GitTree.commit(root), dirty: GitTree.dirty?(root))
+
+      directory = Pathname(File.expand_path(options[:output], root)).relative_path_from(Pathname(root))
+      at = snapshot.receipt.commit ? " at #{snapshot.receipt.commit[0, 12]}#{' (dirty)' if snapshot.receipt.dirty}" : ''
+      output.puts "Wrote #{directory}/ (#{graph.files.size} files, #{graph.constants.size} constants, " \
+                  "#{graph.edges.size} facts)#{at}."
+      0
+    end
+
+    def definition_digest(config_path)
+      Digest::SHA256.file(File.expand_path(config_path)).hexdigest
     end
 
     def explain(argv, output)
@@ -294,7 +373,10 @@ module ArchSpec
       when 'init'
         'Usage: archspec init [PATH] [--force]'
       when 'check'
-        'Usage: archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]'
+        'Usage: archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo] ' \
+          '[--baseline [DIR]] [--mode ratchet|advisory|strict]'
+      when 'snapshot'
+        'Usage: archspec snapshot [--config PATH] [--output DIR]'
       when 'explain'
         'Usage: archspec explain PATH_OR_CONSTANT [--config PATH]'
       when 'reflect'
@@ -306,6 +388,8 @@ module ArchSpec
           Usage:
             archspec init [PATH] [--force]
             archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
+            archspec check [PATHS...] --baseline [DIR] [--mode ratchet|advisory|strict]
+            archspec snapshot [--config PATH] [--output DIR]
             archspec explain PATH_OR_CONSTANT [--config PATH]
             archspec reflect [--config PATH] [--output PATH] [--static]
             archspec version

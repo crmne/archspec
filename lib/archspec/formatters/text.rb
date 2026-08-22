@@ -46,6 +46,69 @@ module ArchSpec
         output.puts facts_summary(graph)
       end
 
+      # The delta against a baseline: what the change introduced, resolved and
+      # declared, in that order, each under the same code frame as a plain
+      # check. Findings carried from the baseline are counted, and printed only
+      # in strict mode, which is what makes the ratchet a ratchet.
+      def print_delta(output = $stdout, graph:, diagnostics:, delta:, mode:)
+        style = Style.new(output)
+        sources = Hash.new { |hash, path| hash[path] = read_lines(path) }
+
+        print_bucket(output, style, graph, delta.introduced, 'introduced', sources)
+        print_bucket(output, style, graph, delta.resolved, 'resolved', sources, frames: false)
+        print_bucket(output, style, graph, delta.declared, 'declared', sources,
+                     note: 'declared by this change, pre-existing in the file')
+        print_bucket(output, style, graph, delta.carried, 'carried', sources) if mode == 'strict'
+
+        output.puts style.bold(delta_summary(delta, mode))
+        output.puts "baseline: #{baseline_summary(delta)}"
+        output.puts "edges: #{edge_summary(delta)}"
+        output.puts "changed files: #{delta.changed_files_read ? 'read from git' : 'not read; every new finding counts as introduced'}"
+        output.puts "current: #{diagnostics.size} #{diagnostics.size == 1 ? 'violation' : 'violations'} in all"
+        output.puts facts_summary(graph)
+      end
+
+      def print_bucket(output, style, graph, bucket, label, sources, frames: true, note: nil)
+        return if bucket.empty?
+
+        output.puts style.bold("#{label} (#{bucket.size}):")
+        output.puts
+        bucket.each do |diagnostic|
+          if frames
+            print_diagnostic(output, style, graph, diagnostic, sources)
+            output.puts "  #{style.note('note:')} #{note}\n\n" if note
+          else
+            output.puts "  #{diagnostic.location.relative_path(graph.root)}: #{diagnostic.message} [#{diagnostic.rule}]"
+          end
+        end
+        output.puts unless frames
+      end
+
+      def delta_summary(delta, mode)
+        counts = "#{delta.introduced.size} introduced, #{delta.resolved.size} resolved, " \
+                 "#{delta.declared.size} declared, #{delta.carried.size} carried"
+        if delta.failed?(mode)
+          "Architecture regressed (#{mode}): #{counts}."
+        else
+          "Architecture held (#{mode}): #{counts}."
+        end
+      end
+
+      def baseline_summary(delta)
+        receipt = delta.receipt
+        return 'no commit recorded' unless receipt.commit
+
+        "#{receipt.commit[0, 12]}#{' (dirty)' if receipt.dirty}"
+      end
+
+      def edge_summary(delta)
+        return 'unchanged' if delta.edges_added.empty? && delta.edges_removed.empty?
+
+        parts = delta.edges_added.map { |type, count| "+#{count} #{type}" } +
+                delta.edges_removed.map { |type, count| "-#{count} #{type}" }
+        parts.join(', ')
+      end
+
       # Names the facts files merged into the graph, or says the directory was
       # absent, so a run without facts never reads like a run that agreed.
       def facts_summary(graph)
