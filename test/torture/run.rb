@@ -7,13 +7,17 @@
 #
 #   ruby test/torture/run.rb discourse
 #   ruby test/torture/run.rb mastodon --update
+#   ruby test/torture/run.rb fizzy --resolver rubydex
 #
 # A run fails when the per-rule counts move, when a diagnostic appears that
 # the record does not carry, when a true positive disappears, or when the run
 # takes longer than the ceiling the record carries. --update records new
 # diagnostics as unjudged and keeps every verdict already written; it refuses
 # to drop a true positive, which only a hand edit may do, and keeps a ceiling
-# once one is written. The synthetic app is generated rather than fetched:
+# once one is written. --resolver declares a second resolver in the copied
+# architecture file and prints how its answers converged with the parser's;
+# the record stays the parser's, so what appears or vanishes is judged by
+# hand. The synthetic app is generated rather than fetched:
 # the issue #3 shape, 879 files across 26 packs that all reach each other.
 
 $LOAD_PATH.unshift File.expand_path('../../lib', __dir__)
@@ -47,7 +51,9 @@ APPS = {
 
 app_name = ARGV.first
 update = ARGV.include?('--update')
-abort "Usage: ruby test/torture/run.rb #{APPS.keys.join('|')} [--update]" unless APPS.key?(app_name)
+resolver = ARGV[ARGV.index('--resolver') + 1] if ARGV.include?('--resolver')
+abort "Usage: ruby test/torture/run.rb #{APPS.keys.join('|')} [--update] [--resolver NAME]" unless APPS.key?(app_name)
+abort 'the record is the parser\'s; judge a resolver run by hand, never with --update' if update && resolver
 
 app = APPS.fetch(app_name)
 repo_root = File.expand_path('../..', __dir__)
@@ -72,6 +78,7 @@ else
   end
 
   FileUtils.cp(config_source, File.join(checkout, 'Archspec.rb'))
+  File.write(File.join(checkout, 'Archspec.rb'), "\nresolver :#{resolver}\n", mode: 'a') if resolver
 end
 
 output = StringIO.new
@@ -90,6 +97,11 @@ puts format('%s @ %s: %d files, %d constants, %d facts in %.1fs',
             report.fetch('constants'), report.fetch('facts'), elapsed)
 counts.each { |rule, count| puts format('  %-40s %d', rule, count) }
 puts '  no violations' if counts.empty?
+report.fetch('census').fetch('resolvers', {}).each do |name, convergence|
+  puts format('  %s: converged %d, parser only %d, %s only %d, disagreed %d (index %s, %.2fs)', name,
+              convergence.fetch('converged'), convergence.fetch('parser_only'), name, convergence.fetch('resolver_only'),
+              convergence.fetch('disagreed'), convergence.fetch('cache'), convergence.fetch('seconds'))
+end
 
 def describe(entry, label)
   format('  %-24s %-28s %s  %s', label, entry.fetch('rule'), entry.fetch('path'), entry.fetch('message'))
