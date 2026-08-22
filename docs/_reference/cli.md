@@ -86,6 +86,24 @@ bundle exec archspec check app/models/user.rb app/services
 
 This is the fast loop after an agent or a person edits a few files. It cannot be combined with `--update-todo`.
 
+## check --format github
+
+```sh
+bundle exec archspec check --format github
+```
+
+Prints one GitHub Actions workflow command per finding, so a job step annotates the pull request diff on the offending span with the rule as the title and the message, reason and action as the text. Failing findings are errors, findings older than a rule's `since:` date are warnings, and the facts, census and dating lines are notices, so the job says what was not seen as well as what was found. Under `--baseline`, introduced findings are errors, declared ones warnings, resolved ones notices, and carried ones warnings only in strict mode. No token and no upload are involved; the exit status is the same as the text format's.
+
+## check --format sarif
+
+```sh
+bundle exec archspec check --format sarif > archspec.sarif
+```
+
+Prints a SARIF 2.1.0 log with one run: a rule per rule id carrying the rule's `because:` as its description and its docs page as the help link, and a result per finding with the span, the fingerprint the todo file uses under `partialFingerprints`, and the confidence, caveat, date verdict, suggested action and evidence as properties. Upload it with the code-scanning action and the findings appear in the Security tab and inline on the diff, persisting across runs by fingerprint. Under `--baseline` each result carries its bucket and the run carries the mode, the baseline commit and the edge counts; resolved findings are included at no level so the history shows them going away. Keys print in a fixed order, so the document is stable for the same tree.
+
+A format of your own is registered from `Archspec.rb` with `formatter`; see [Configuration](configuration/).
+
 ## snapshot
 
 ```sh

@@ -10,7 +10,7 @@ module ArchSpec
   # dispatches the +init+, +check+, +explain+, and +version+ subcommands.
   #
   #   archspec init
-  #   archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo] [--housekeeping]
+  #   archspec check [PATHS...] [--config PATH] [--format text|json|github|sarif] [--update-todo] [--housekeeping]
   #   archspec check --baseline [DIR] [--mode ratchet|advisory|strict]
   #   archspec snapshot [--config PATH] [--output DIR]
   #   archspec explain PATH_OR_CONSTANT
@@ -29,6 +29,13 @@ module ArchSpec
     RUBY
 
     class UsageError < Error; end
+
+    FORMATTERS = {
+      'text' => Formatters::Text,
+      'json' => Formatters::JSON,
+      'github' => Formatters::GitHub,
+      'sarif' => Formatters::SARIF
+    }.freeze
 
     def run(argv, output: $stdout, error: $stderr)
       argv = argv.dup
@@ -120,7 +127,7 @@ module ArchSpec
       parser = OptionParser.new do |opts|
         opts.banner = usage('check').strip
         opts.on('--config PATH', 'Use a different architecture file') { |value| options[:config] = value }
-        opts.on('--format FORMAT', 'Output text or json') { |value| options[:format] = value }
+        opts.on('--format FORMAT', 'Output text, json, github, sarif, or a format Archspec.rb registers') { |value| options[:format] = value }
         opts.on('--update-todo', 'Replace the configured todo with current violations') do
           options[:update_todo] = true
         end
@@ -148,8 +155,13 @@ module ArchSpec
       mode = options[:mode] || 'ratchet'
       raise UsageError, "unknown mode: #{mode.inspect}" unless Delta.modes.include?(mode)
 
-      formatter = formatter_for(options[:format])
-      definition, root = load_definition(options[:config])
+      formatter = FORMATTERS[options[:format]]
+      definition, root = load_definition_for_format(options[:config], options[:format], formatter)
+      formatter ||= formatter_for(options[:format], definition)
+      if options[:baseline] && !formatter.respond_to?(:print_delta)
+        raise UsageError, "format #{options[:format].inspect} cannot print a baseline check; " \
+                          "#{formatter.inspect} has no print_delta"
+      end
       graph = analyze_for_check(definition, root, argv, options)
       todo_path = todo_path_for(definition, root)
       todo = options[:update_todo] ? Todo.empty(root: root) : Todo.load(todo_path, root: root)
@@ -415,14 +427,23 @@ module ArchSpec
       File.expand_path(definition.todo_path, root)
     end
 
-    def formatter_for(name)
-      case name
-      when 'text'
-        Formatters::Text
-      when 'json'
-        Formatters::JSON
-      else
-        raise UsageError, "unknown format: #{name.inspect}"
+    # An unknown format is a usage error even without a spec to load: the
+    # spec is read only to find a format it may have registered.
+    def load_definition_for_format(config_path, format, shipped)
+      load_definition(config_path)
+    rescue Error
+      raise if shipped || File.exist?(config_path)
+
+      formatter_for(format, Definition.new)
+    end
+
+    # Shipped formats first, then the ones Archspec.rb registered, so a
+    # registered name may replace a shipped one and an unknown name lists
+    # everything that would have worked.
+    def formatter_for(name, definition)
+      registry = FORMATTERS.merge(definition.registered_formatters)
+      registry.fetch(name) do
+        raise UsageError, "unknown format: #{name.inspect} (registered: #{registry.keys.join(', ')})"
       end
     end
 
@@ -431,7 +452,7 @@ module ArchSpec
       when 'init'
         'Usage: archspec init [PATH] [--force]'
       when 'check'
-        'Usage: archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo] ' \
+        'Usage: archspec check [PATHS...] [--config PATH] [--format text|json|github|sarif] [--update-todo] ' \
           '[--housekeeping] [--baseline [DIR]] [--mode ratchet|advisory|strict]'
       when 'snapshot'
         'Usage: archspec snapshot [--config PATH] [--output DIR]'
@@ -445,7 +466,7 @@ module ArchSpec
         <<~TEXT
           Usage:
             archspec init [PATH] [--force]
-            archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo] [--housekeeping]
+            archspec check [PATHS...] [--config PATH] [--format text|json|github|sarif] [--update-todo] [--housekeeping]
             archspec check [PATHS...] --baseline [DIR] [--mode ratchet|advisory|strict]
             archspec snapshot [--config PATH] [--output DIR]
             archspec explain PATH_OR_CONSTANT [--config PATH]

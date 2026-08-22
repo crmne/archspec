@@ -120,6 +120,14 @@ Every rule-creating call takes `because:` and `since:`. The reason prints beside
 
 Every finding that can be cut from the graph also carries an action: for a dependency or privacy breach, the public constant of the target component that already reaches what was reached, else the component the offender's other dependencies mostly land in; for a cycle, the edge with the fewest dependencies behind it; for a concern, the reference to move out of it. When the graph has nothing to point at, the action says `no cut the graph can see` rather than guess.
 
+## Formatters
+
+```ruby
+formatter :junit, JunitFormatter
+```
+
+Registers an output format under a name, selectable with `archspec check --format junit`. The object answers `print(output, graph:, diagnostics:)` and, to take part in a baseline check, `print_delta(output, graph:, diagnostics:, delta:, mode:)`; without the second a `--baseline` run under that format is a usage error. It receives the same graph and diagnostics the shipped `text`, `json`, `github` and `sarif` formats read, and registering one of those names replaces it. See [CLI](cli/) for the two CI formats.
+
 ## Suppressions
 
 ```ruby

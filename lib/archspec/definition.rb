@@ -24,7 +24,7 @@ module ArchSpec
     DEFAULT_CACHE_DIRECTORY = '.archspec/cache'
 
     attr_accessor :name, :root_path, :todo_path, :facts_path, :cache_path, :base_dir, :static_associations
-    attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules
+    attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules, :registered_formatters
 
     def initialize(name = nil)
       @name = name
@@ -38,6 +38,11 @@ module ArchSpec
       @ignore_patterns = DEFAULT_IGNORE_PATTERNS.dup
       @component_specs = {}
       @rules = []
+      @registered_formatters = {}
+    end
+
+    def add_formatter(name, formatter)
+      @registered_formatters[name.to_s] = formatter
     end
 
     def add_source_patterns(patterns)

@@ -113,6 +113,20 @@ app/models/user.rb
      2:3 │ references UsersController
 ```
 
+## Show It in CI
+
+```yaml
+- run: bundle exec archspec check --format github
+- run: bundle exec archspec check --format sarif > archspec.sarif
+  if: always()
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: archspec.sarif
+```
+
+The first step annotates the pull request diff on every offending span and fails the job as the plain check would; the second writes a SARIF log the code-scanning action turns into alerts in the Security tab, persisting across runs by the same id the todo file uses. Either step alone is enough; see [CLI]({% link _reference/cli.md %}).
+
 ## Commit the Spec
 
 Treat `Archspec.rb` like a test file. A rule should describe a boundary the team is willing to enforce.

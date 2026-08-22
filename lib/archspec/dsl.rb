@@ -184,6 +184,19 @@ module ArchSpec
         add_rule(rule)
       end
 
+      # Registers an output format under a name, selectable with
+      # <tt>archspec check --format NAME</tt>. A formatter responds to
+      # <tt>print(output, graph:, diagnostics:)</tt> and, to take part in a
+      # baseline check, <tt>print_delta(output, graph:, diagnostics:, delta:,
+      # mode:)</tt>. A shipped name registered again is replaced.
+      #
+      #   formatter :junit, JunitFormatter
+      def formatter(name, formatter)
+        raise Error, "formatter #{name.inspect} must respond to print" unless formatter.respond_to?(:print)
+
+        add_formatter(name, formatter)
+      end
+
       def method_missing(name, ...)
         return ComponentProxy.new(self, name) if component?(name)
 
