@@ -122,6 +122,12 @@ bundle exec archspec reflect --output archspec_facts/rails.yml
 
 Boots the application through `bin/rails runner` and writes the Active Record associations, with their resolved classes, to the facts directory. This is the only command that loads the app; `check` merges the file it writes and stays static. See [Facts]({% link _reference/facts.md %}).
 
+```sh
+bundle exec archspec reflect --rubydex
+```
+
+Writes `archspec_facts/rubydex.yml` with the constant references Rubydex resolves and the parser cannot, without booting. Needs the `rubydex` gem in the bundle; nothing else loads it.
+
 ## explain
 
 ```sh

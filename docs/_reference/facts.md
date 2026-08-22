@@ -91,3 +91,13 @@ bundle exec archspec reflect --output archspec_facts/rails.yml
 ```
 
 The one ArchSpec command that boots the application. It runs through `bin/rails runner`, eager-loads, asks every Active Record model for `reflect_on_all_associations`, and writes `archspec_facts/rails.yml` with the real resolved class names. Polymorphic associations and reflections that raise are counted as misses, not guessed. The output is sorted and carries no timestamps, so two runs on the same tree write the same file. Run it when associations change, commit the file, and `check` keeps working without booting anything.
+
+## Constants through Rubydex
+
+```sh
+bundle exec archspec reflect --rubydex
+```
+
+A second resolver for the same file format. [Rubydex](https://github.com/Shopify/rubydex) indexes the workspace and its locked bundle, so it resolves what the parser's lexical lookup cannot: a constant defined in a gem, or reached through a superclass or an included module. The producer writes `archspec_facts/rubydex.yml` with only those references, each marked `rubydex-workspace` when the target is defined under the root and `rubydex-gem` when it is not. A reference the parser already resolved is counted as `already_resolved` and not written, so no edge appears twice; one the two resolvers disagree on is counted as `disagreed` and left out. The other counts are `unresolved` (Rubydex found no declaration), `self` (`self` inside a class), `declaration` (the name a `class` line defines), `outside_source` (a file the architecture file does not analyze) and `diagnostic`.
+
+The gem is required only by this command: add `rubydex` to the development group and run under `bundle exec`. Without the gem, a `Gemfile` or a `Gemfile.lock` the command refuses rather than indexing the workspace alone. References into gems reach `check` as names the tree does not define, which is how gem constants already behave: `cannot_reference_constants` sees them and component rules do not.
