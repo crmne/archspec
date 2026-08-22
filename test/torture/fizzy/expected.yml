@@ -10,13 +10,15 @@ diagnostics:
     path: app/models/concerns/storage/tracked.rb
     message: Storage::Tracked must not reference its includer Board
     evidence: Storage::Tracked references Board
-    verdict: unjudged
+    verdict: true_positive
+    note: tracked.rb:32 calls Board.find_by inside track_board_transfer, and board.rb:2 includes ::Storage::Tracked; the concern names its own includer
   8e8ffd2648cbbe5a0d95fd0c:
     rule: dependencies.forbid
     path: app/models/webhook.rb
     message: models must not depend on controllers
     evidence: Webhook references ApplicationController
-    verdict: unjudged
+    verdict: true_positive
+    note: webhook.rb:53 builds ApplicationController.renderer; the canonical Rails way to render off-request, still a model reaching a controller under the vanilla preset
   9ceeb430e0d66cba7d946670:
     rule: naming.forbidden
     path: app/mailers/concerns/mailers/unsubscribable.rb
@@ -24,7 +26,8 @@ diagnostics:
       attr_ readers and writers or plain names, not get_/set_'
     evidence: Mailers::Unsubscribable defines instance method set_unsubscribe_headers
       (matches /\A(get|set)_/)
-    verdict: unjudged
+    verdict: true_positive
+    note: unsubscribable.rb:8 defines set_unsubscribe_headers, a set_ prefix the ruby_conventions preset forbids
   c6a90bb06c761f98c10643d5:
     rule: naming.forbidden
     path: app/models/notification/bundle.rb
@@ -32,4 +35,5 @@ diagnostics:
       readers and writers or plain names, not get_/set_'
     evidence: Notification::Bundle defines instance method set_default_window (matches
       /\A(get|set)_/)
-    verdict: unjudged
+    verdict: true_positive
+    note: bundle.rb:60 defines set_default_window, a set_ prefix the ruby_conventions preset forbids

@@ -8,52 +8,61 @@ diagnostics:
     path: app/services/user_authenticator.rb
     message: services must not depend on controllers
     evidence: UserAuthenticator references Users::OmniauthCallbacksController
-    verdict: unjudged
+    verdict: true_positive
+    note: user_authenticator.rb:7 passes Users::OmniauthCallbacksController as the default authenticator_finder
   1c39cf10a18a1664f58bd15f:
     rule: dependencies.forbid
     path: app/services/tag_hashtag_data_source.rb
     message: services must not depend on controllers
     evidence: TagHashtagDataSource references TagsController
-    verdict: unjudged
+    verdict: true_positive
+    note: tag_hashtag_data_source.rb:75 and :97 return TagsController as the data source's controller
   2970844f961abf1c0814207a:
     rule: dependencies.forbid
     path: app/services/category/hierarchical_search.rb
     message: services must not depend on controllers
     evidence: Category::HierarchicalSearch references CategoriesController::MAX_CATEGORIES_LIMIT
-    verdict: unjudged
+    verdict: true_positive
+    note: hierarchical_search.rb:16 reads CategoriesController::MAX_CATEGORIES_LIMIT for its limit
   32927b922e5d3b826934150e:
     rule: dependencies.forbid
     path: app/services/user_api_key/device_auth.rb
     message: services must not depend on controllers
     evidence: UserApiKey::DeviceAuth::ALLOWED_PADDING_MODES references UserApiKeysController::ALLOWED_PADDING_MODES
-    verdict: unjudged
+    verdict: true_positive
+    note: device_auth.rb:20 aliases UserApiKeysController::ALLOWED_PADDING_MODES
   8564ef3f0ad87ef728a3bb7f:
     rule: dependencies.forbid
     path: app/models/site_setting.rb
     message: models must not depend on controllers
     evidence: SiteSetting references ListController
-    verdict: unjudged
+    verdict: true_positive
+    note: site_setting.rb:221 calls ListController.best_period_with_topics_for
   bb75fc00947ceb0f3a9ac332:
     rule: dependencies.forbid
     path: app/services/user_api_key/device_auth.rb
     message: services must not depend on controllers
     evidence: UserApiKey::DeviceAuth::AUTH_API_VERSION references UserApiKeysController::AUTH_API_VERSION
-    verdict: unjudged
+    verdict: true_positive
+    note: device_auth.rb:19 aliases UserApiKeysController::AUTH_API_VERSION
   e99ec3f3a5fa34aafc3ff6a8:
     rule: dependencies.forbid
     path: app/models/topic.rb
     message: models must not depend on controllers
     evidence: Topic references ListController
-    verdict: unjudged
+    verdict: true_positive
+    note: topic.rb:621 calls ListController.best_period_for
   ec8234e285036f721bbd0108:
     rule: dependencies.forbid
     path: app/models/translation_override.rb
     message: models must not depend on controllers
     evidence: TranslationOverride references ExtraLocalesController
-    verdict: unjudged
+    verdict: true_positive
+    note: translation_override.rb:99 calls ExtraLocalesController.clear_cache!
   f3f86b9efc2a947b97fce039:
     rule: dependencies.forbid
     path: app/services/tags/search.rb
     message: services must not depend on controllers
     evidence: Tags::Search references TagsController
-    verdict: unjudged
+    verdict: true_positive
+    note: search.rb:120 calls TagsController.tag_counts_json

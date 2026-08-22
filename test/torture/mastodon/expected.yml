@@ -8,82 +8,96 @@ diagnostics:
     path: app/services/reblog_service.rb
     message: services must not depend on controllers
     evidence: ReblogService includes Authorization
-    verdict: unjudged
+    verdict: true_positive
+    note: Authorization lives in app/controllers/concerns/authorization.rb, inside the rails preset's controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   0c75815b1ddfa5f025648646:
     rule: dependencies.forbid
     path: app/models/trends/preview_card_batch.rb
     message: models must not depend on controllers
     evidence: Trends::PreviewCardBatch includes Authorization
-    verdict: unjudged
+    verdict: true_positive
+    note: Authorization lives in app/controllers/concerns/authorization.rb, inside the rails preset's controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   1807c39bbe582b3becf4da3f:
     rule: dependencies.forbid
     path: app/services/vote_service.rb
     message: services must not depend on controllers
     evidence: VoteService includes Authorization
-    verdict: unjudged
+    verdict: true_positive
+    note: Authorization lives in app/controllers/concerns/authorization.rb, inside the rails preset's controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   40831f7d2c7c0d44dee1a4a6:
     rule: dependencies.forbid
     path: app/models/admin/base_action.rb
     message: models must not depend on controllers
     evidence: Admin::BaseAction includes Authorization
-    verdict: unjudged
+    verdict: true_positive
+    note: Authorization lives in app/controllers/concerns/authorization.rb, inside the rails preset's controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   5ed1b4e211e1150cff49438c:
     rule: dependencies.forbid
     path: app/models/form/base_batch.rb
     message: models must not depend on controllers
     evidence: Form::BaseBatch includes AccountableConcern
-    verdict: unjudged
+    verdict: true_positive
+    note: AccountableConcern lives in app/controllers/concerns/accountable_concern.rb, inside the controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   69cf01e1dac8242fdc98dd8e:
     rule: dependencies.forbid
     path: app/services/favourite_service.rb
     message: services must not depend on controllers
     evidence: FavouriteService includes Authorization
-    verdict: unjudged
+    verdict: true_positive
+    note: Authorization lives in app/controllers/concerns/authorization.rb, inside the rails preset's controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   81b8c0c599d5d9635580fb45:
     rule: dependencies.forbid
     path: app/models/form/status_filter_batch_action.rb
     message: models must not depend on controllers
     evidence: Form::StatusFilterBatchAction includes AccountableConcern
-    verdict: unjudged
+    verdict: true_positive
+    note: AccountableConcern lives in app/controllers/concerns/accountable_concern.rb, inside the controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   9bffdcf1245c71493ab4b975:
     rule: dependencies.forbid
     path: app/models/form/status_filter_batch_action.rb
     message: models must not depend on controllers
     evidence: Form::StatusFilterBatchAction includes Authorization
-    verdict: unjudged
+    verdict: true_positive
+    note: Authorization lives in app/controllers/concerns/authorization.rb, inside the rails preset's controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   9ebaf9ae2f9b04cffc1d5e35:
     rule: dependencies.forbid
     path: app/models/trends/status_batch.rb
     message: models must not depend on controllers
     evidence: Trends::StatusBatch includes Authorization
-    verdict: unjudged
+    verdict: true_positive
+    note: Authorization lives in app/controllers/concerns/authorization.rb, inside the rails preset's controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   a78248d6e2bf7a1eeba4d64c:
     rule: dependencies.forbid
     path: app/services/resolve_url_service.rb
     message: services must not depend on controllers
     evidence: ResolveURLService includes Authorization
-    verdict: unjudged
+    verdict: true_positive
+    note: Authorization lives in app/controllers/concerns/authorization.rb, inside the rails preset's controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   c7e09e14df1d7d2e5dd0bc78:
     rule: dependencies.forbid
     path: app/models/trends/tag_batch.rb
     message: models must not depend on controllers
     evidence: Trends::TagBatch includes Authorization
-    verdict: unjudged
+    verdict: true_positive
+    note: Authorization lives in app/controllers/concerns/authorization.rb, inside the rails preset's controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   d8c3d18c616623d0566fbf17:
     rule: dependencies.forbid
     path: app/models/trends/preview_card_provider_batch.rb
     message: models must not depend on controllers
     evidence: Trends::PreviewCardProviderBatch includes Authorization
-    verdict: unjudged
+    verdict: true_positive
+    note: Authorization lives in app/controllers/concerns/authorization.rb, inside the rails preset's controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   dee207039c0a0a86467751fe:
     rule: dependencies.forbid
     path: app/models/admin/base_action.rb
     message: models must not depend on controllers
     evidence: Admin::BaseAction includes AccountableConcern
-    verdict: unjudged
+    verdict: true_positive
+    note: AccountableConcern lives in app/controllers/concerns/accountable_concern.rb, inside the controllers component; the include is real, the cure is moving the shared concern out of app/controllers
   f0a05c6a011d509d0a6a26ea:
     rule: dependencies.forbid
     path: app/models/form/base_batch.rb
     message: models must not depend on controllers
     evidence: Form::BaseBatch includes Authorization
-    verdict: unjudged
+    verdict: true_positive
+    note: Authorization lives in app/controllers/concerns/authorization.rb, inside the rails preset's controllers component; the include is real, the cure is moving the shared concern out of app/controllers
