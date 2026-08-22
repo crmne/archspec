@@ -9,28 +9,105 @@ module ArchSpec
     def analyze(definition, root:)
       root = File.expand_path(root)
       graph = Graph.new(root)
+      cache = cache_for(definition, root)
 
       graph.ignored_files = ignored_files(definition, root).to_a.sort
+      ruby_files(definition, root).each { |path| read_file(graph, path, cache) }
 
+      merge_facts(graph, definition, root)
+      graph.assign_components(definition.component_specs.values)
+      graph
+    end
+
+    # Re-reads only the files under +paths+ and takes every other file's facts
+    # from +reused+, a graph restored from a snapshot of the same tree. A file
+    # the snapshot does not hold is read like any other, so the result is the
+    # graph a full run would build when the snapshot is current.
+    def analyze_scoped(definition, root:, reused:, paths:)
+      root = File.expand_path(root)
+      graph = Graph.new(root)
+      cache = cache_for(definition, root)
+      scoped = paths.map { |path| File.expand_path(path, root) }
+      held = reused.constants.group_by(&:path)
+      held_edges = reused.edges.group_by(&:from_path)
+      read = Set.new
+
+      graph.ignored_files = ignored_files(definition, root).to_a.sort
       ruby_files(definition, root).each do |path|
-        result = Prism.parse_file(path)
-        graph.add_file(
-          path: path,
-          parse_errors: parse_errors_for(path, result.errors),
-          suppressions: suppressions_for(result.comments)
-        )
-
-        SourceVisitor.visit(graph, path, result.value) if result.value
+        if !under?(path, scoped) && reused.files.key?(path)
+          copy_file(graph, reused, path, held.fetch(path, []), held_edges.fetch(path, []))
+        else
+          read_file(graph, path, cache)
+          read.add(path)
+        end
       end
 
-      facts = Facts.load(definition.facts_path, root: root)
-      facts = facts.with_file(Associations.facts_file(graph)) if definition.static_associations
-      graph.merge_facts(facts)
+      merge_facts(graph, definition, root, only: read)
       graph.assign_components(definition.component_specs.values)
       graph
     end
 
     private
+
+    def read_file(graph, path, cache)
+      if cache && (entry = cache.fetch(path))
+        ParseCache.replay(graph, path, entry)
+        return
+      end
+
+      constants_from = graph.constants.size
+      edges_from = graph.edges.size
+      result = Prism.parse_file(path)
+      graph.add_file(
+        path: path,
+        parse_errors: parse_errors_for(path, result.errors),
+        suppressions: suppressions_for(result.comments)
+      )
+      SourceVisitor.visit(graph, path, result.value) if result.value
+      cache&.store(path, ParseCache.record(graph, path, constants_from: constants_from, edges_from: edges_from))
+    end
+
+    def copy_file(graph, reused, path, constants, edges)
+      file = reused.files.fetch(path)
+      graph.add_file(path: path, parse_errors: file.parse_errors, suppressions: file.suppressions)
+      constants.each do |held|
+        constant = graph.add_constant(name: held.name, kind: held.kind, path: path, location: held.location,
+                                      nesting: held.nesting)
+        constant.superclass = held.superclass
+        constant.abstract = held.abstract?
+        held.method_definitions.each do |definition|
+          if definition.scope == :class
+            constant.add_class_method(definition.name, location: definition.location, visibility: definition.visibility)
+          else
+            constant.add_instance_method(definition.name, location: definition.location,
+                                                          visibility: definition.visibility)
+          end
+        end
+        held.mixins.each { |kind, names| names.each { |name| constant.add_mixin(kind, name) } }
+        held.associations.each { |declaration| constant.add_association(declaration) }
+      end
+      edges.each do |edge|
+        graph.add_edge(type: edge.type, from_path: path, from_constant: edge.from_constant, to: edge.to,
+                       location: edge.location, confidence: edge.confidence, receiver: edge.receiver,
+                       lexical_nesting: edge.lexical_nesting)
+        origin = reused.facts_file_for(edge)
+        graph.record_facts_origin(graph.edges.last, origin) if origin
+      end
+    end
+
+    def merge_facts(graph, definition, root, only: nil)
+      facts = Facts.load(definition.facts_path, root: root)
+      facts = facts.with_file(Associations.facts_file(graph)) if definition.static_associations
+      graph.merge_facts(facts, only: only)
+    end
+
+    def cache_for(definition, root)
+      ParseCache.new(definition.cache_path, root: root) if definition.cache_path
+    end
+
+    def under?(path, scoped)
+      scoped.any? { |scope| path == scope || path.start_with?("#{scope}/") }
+    end
 
     def ruby_files(definition, root)
       ignored = ignored_files(definition, root)

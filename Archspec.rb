@@ -8,6 +8,7 @@ component :cli, in: 'lib/archspec/cli.rb'
 component :analysis, in: %w[
   lib/archspec/analyzer.rb
   lib/archspec/evaluator.rb
+  lib/archspec/parse_cache.rb
 ]
 component :domain, in: %w[
   lib/archspec/todo.rb

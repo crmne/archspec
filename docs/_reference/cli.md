@@ -35,6 +35,8 @@ bundle exec archspec check --format json
 
 Runs all rules. The command exits non-zero when violations are found.
 
+With paths, only violations in those files are reported. When the definition declares a `cache` and a snapshot taken under the same version and patterns exists in `.archspec/`, a path-scoped run re-reads the named paths and takes every other file's facts from the snapshot, so the loop after an edit costs the edit, not the tree; otherwise every file is read as before. See [Baseline](baseline/) for taking a snapshot and [Configuration](configuration/) for the cache.
+
 Each violation prints as a diagnostic block: the message and rule id, the offending code with the exact span underlined, and the evidence ArchSpec found as a note. On a terminal the output is colored; set `NO_COLOR` to disable.
 
 ```text

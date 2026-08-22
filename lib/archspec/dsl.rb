@@ -75,6 +75,16 @@ module ArchSpec
       #
       #   facts "archspec_facts"
       #   facts "archspec_facts", associations: :static
+      # Names the directory where the facts extracted from each file are kept
+      # between runs, keyed by the file's content and the gem version, so a
+      # check re-reads only what changed. Off unless declared; the directory
+      # ignores itself in git.
+      #
+      #   cache ".archspec/cache"
+      def cache(path = Definition::DEFAULT_CACHE_DIRECTORY)
+        self.cache_path = path.to_s
+      end
+
       def facts(path = Facts::DEFAULT_DIRECTORY, associations: nil)
         unless associations.nil? || associations == :static
           raise Error, "facts associations: must be :static, got #{associations.inspect}"

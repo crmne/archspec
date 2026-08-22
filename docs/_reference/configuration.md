@@ -15,12 +15,15 @@ source "app/**/*.rb", "lib/**/*.rb"
 ignore "tmp/**/*", "vendor/**/*"
 todo "archspec_todo.yml"
 facts "archspec_facts"
+cache ".archspec/cache"
 ```
 {: data-title="Archspec.rb"}
 
 Todo ids are computed from the rule, path, message, and evidence, not the line number, so entries survive edits that shift code.
 
 `facts` names the directory of producer-written facts files merged before rules run; it defaults to `archspec_facts/`. With `associations: :static` the Active Record associations the source states outright are merged on every check without booting. See [Facts](facts/).
+
+`cache` keeps what the parser extracted from each file between runs, keyed by the file's content and the gem and parser versions, so a check re-reads only what changed, and lets a path-scoped check reuse a snapshot for every file it does not name. It is off until declared; the directory defaults to `.archspec/cache/` and ignores itself in git. The output with and without the cache is the same, byte for byte.
 
 ## Components
 

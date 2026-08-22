@@ -150,7 +150,7 @@ module ArchSpec
 
       formatter = formatter_for(options[:format])
       definition, root = load_definition(options[:config])
-      graph = Analyzer.analyze(definition, root: root)
+      graph = analyze_for_check(definition, root, argv, options)
       todo_path = todo_path_for(definition, root)
       todo = options[:update_todo] ? Todo.empty(root: root) : Todo.load(todo_path, root: root)
       diagnostics = Evaluator.evaluate(definition, graph, todo: todo, housekeeping: options[:housekeeping])
@@ -178,6 +178,33 @@ module ArchSpec
 
       formatter.print(output, graph: graph, diagnostics: diagnostics)
       diagnostics.empty? ? 0 : 1
+    end
+
+    # A path-scoped run over a snapshot of the same tree re-reads only the
+    # named paths; every other file's facts come from the snapshot. It is
+    # part of what the cache directive opts into, because loading a snapshot
+    # costs more than parsing a small tree, and without a snapshot, or with
+    # one taken under other settings, every file is read.
+    def analyze_for_check(definition, root, paths, options)
+      scoped = paths.any? && definition.cache_path && !options[:update_todo] && !options[:baseline]
+      reused = reusable_snapshot(definition, root) if scoped
+      return Analyzer.analyze(definition, root: root) unless reused
+
+      Analyzer.analyze_scoped(definition, root: root, reused: reused.graph, paths: paths)
+    end
+
+    def reusable_snapshot(definition, root)
+      directory = File.expand_path(Snapshot::DEFAULT_DIRECTORY, root)
+      return unless File.exist?(File.join(directory, Snapshot::RECEIPT_FILE))
+
+      snapshot = Snapshot.load(directory, root: root)
+      receipt = snapshot.receipt
+      patterns = (definition.analysis_patterns + definition.ignore_patterns).sort
+      return unless receipt.archspec_version == ArchSpec::VERSION && receipt.root == root && receipt.patterns == patterns
+
+      snapshot
+    rescue Error
+      nil
     end
 
     # Compares receipts before anything else: two snapshots that were not
