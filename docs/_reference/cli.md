@@ -151,34 +151,33 @@ Writes `archspec_facts/rubydex.yml` with the constant references Rubydex resolve
 ```sh
 bundle exec archspec explain app/models/user.rb
 bundle exec archspec explain Billing::Invoice
+bundle exec archspec explain models
+bundle exec archspec explain app/models/user.rb --format json
 ```
 
-Shows what ArchSpec knows about a file or constant: defined constants, component assignment reasons, suppressions, and outgoing facts.
+Answers the questions a failing check raises about one subject: a file, a constant, or a component. The first line says where the answer was read from. With a snapshot in `.archspec/` taken by this version of the same tree, `explain` reads it and names its commit; otherwise it analyses the working tree and names the cause, whether no snapshot exists, the files it read changed on disk, the tree moved to another commit, or the patterns changed. The two never look alike.
+
+For a file: the constants it defines, its components and the reasons, parse errors and suppressions as before; then the incoming facts, grouped by kind with each source and its components; the outgoing facts, each marked with how it resolved and which producer supplied it when a facts file did; what the run could not see in the file (unresolved references, dynamic features, calls on receivers of unknown kind); the rules that name its components with their reasons; every finding in the file with the same reason, action, date verdict and confidence `check` prints; and what would change if the file left every component, listed as the findings that would start failing and the findings that would stop being checked. A rule that cannot be recomputed without the file's component is listed as not computed, never as unaffected.
+
+For a constant, the same, plus its ancestry as the graph resolved it: each superclass and mixin link names what it resolved to and how, and an ancestor the graph does not define ends its branch as unresolved. For a component: its files and constants, its public face, fan-in and fan-out by neighbouring component, and the rules and findings that touch it. `--format json` emits the same sections as one object. See [Explain]({% link _reference/explain.md %}) for the sections in full.
 
 ```text
+read from: the snapshot at 3f2a9c1d4e5b
+
 app/models/user.rb
 
   defined constants: User
   components:
     models: matched file pattern app/models/**/*.rb
-  suppressions:
-    2-3 │ dependencies.forbid -- migrating legacy coupling
+  incoming facts:
+    references:
+      app/services/create_user.rb:3:5 │ CreateUser (services)
   outgoing facts:
-    1:14 │ inherits from ApplicationRecord
-     2:3 │ calls has_many
-     9:5 │ references UsersController
-```
-
-Explaining a constant shows where it is defined, its components, its superclass, and its methods:
-
-```text
-User
-
-  kind: class
-  file: app/models/user.rb:1
-  components:
-    models: defined in matched file
-  superclass: ApplicationRecord
-  instance methods: controller_peek, summary
-  class methods: find_active
+    1:14 │ inherits from ApplicationRecord (unresolved)
+  could not see:
+    unresolved references: ApplicationRecord
+  rules:
+    dependencies.forbid -- models stay off the request
+  findings: (none)
+  if this left every component: no rule's verdict changes
 ```
