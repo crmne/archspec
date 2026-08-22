@@ -101,6 +101,28 @@ class ResolversTest < ArchSpecTest
     end
   end
 
+  def test_an_answer_that_continues_the_parsers_path_is_agreement
+    files = {
+      'app/models/post.rb' => "class Post\n  def tag = Billing::VERSION::STRING\nend\n",
+      'app/models/billing.rb' => "module Billing\n  module VERSION\n    STRING = '1'\n  end\nend\n"
+    }
+    with_answers(files, resolution('app/models/post.rb', 2, 'Billing::VERSION')) do |graph|
+      assert_equal :converged, graph.resolve_edge(reference_edge(graph, 'Post', 'Billing::VERSION::STRING')).determination
+    end
+  end
+
+  def test_an_answer_naming_the_prefix_of_a_neighbouring_path_is_not_a_disagreement
+    files = {
+      'app/models/post.rb' => "class Post\n  LIMIT = Settings::Redis.new unless defined?(LIMIT)\nend\n",
+      'app/models/settings.rb' => "module Settings\n  class Redis; end\nend\n"
+    }
+    with_answers(files, resolution('app/models/post.rb', 2, 'Settings')) do |graph|
+      edge = graph.edges.find { |candidate| candidate.type == :references_constant && candidate.to == 'LIMIT' }
+
+      assert_equal :lexical, graph.resolve_edge(edge).determination
+    end
+  end
+
   def test_a_declared_resolver_whose_gem_is_absent_fails_the_check_by_name
     with_project do |root|
       POST_AND_USER.each { |path, source| write "#{root}/#{path}", source }

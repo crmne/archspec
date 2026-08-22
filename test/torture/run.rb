@@ -132,7 +132,8 @@ if TortureSnapshot.legacy?(recorded)
   puts 'record carries counts only; run with --update to record each diagnostic'
 end
 
-result = TortureSnapshot.compare(recorded, violations, elapsed: elapsed)
+result = TortureSnapshot.compare(recorded, violations, elapsed: resolver ? nil : elapsed)
+puts 'the ceiling is the parser\'s; a resolver run reports its time and is not held to it' if resolver
 
 unless result.added.empty?
   puts 'added (not in the record):'

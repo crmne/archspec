@@ -586,20 +586,26 @@ module ArchSpec
 
       at_column, anywhere = answers.partition { |column, _| column == edge.location.column }
       candidates = (at_column.empty? ? anywhere : at_column).map(&:last)
-      agreeing = candidates.find { |answer| answer == resolution.name || resolution.name.start_with?("#{answer}::") }
+      agreeing = candidates.find { |answer| same_reference?(answer, resolution.name) }
       return resolution.converged(agreeing) if agreeing
       return resolution if candidates.empty?
 
-      disputed = at_column.empty? ? candidates.reject { |answer| line_names(edge).include?(answer) } : candidates
+      names = at_column.empty? ? line_names(edge) : []
+      disputed = candidates.reject { |answer| names.any? { |name| same_reference?(answer, name) } }
       disputed.empty? ? resolution : resolution.disagreed(disputed.sort.first)
+    end
+
+    # Two answers name one reference when they are equal or one is a path the
+    # other continues: a resolver that stopped at Billing::VERSION where the
+    # parser read Billing::VERSION::STRING did not read a different constant.
+    def same_reference?(answer, name)
+      answer == name || name.start_with?("#{answer}::") || answer.start_with?("#{name}::")
     end
 
     # The names the parser resolved on an edge's line, so an answer without a
     # column that belongs to a neighbouring reference is not a disagreement.
     def line_names(edge)
-      indexes.fetch(:dependency_edges).filter_map do |candidate|
-        next unless candidate.from_path == edge.from_path && candidate.location.line == edge.location.line
-
+      indexes.fetch(:dependency_edges_by_line).fetch([edge.from_path, edge.location.line], EMPTY_EDGES).map do |candidate|
         resolve(candidate.to, candidate.from_constant, candidate.lexical_nesting).name
       end
     end
@@ -708,6 +714,9 @@ module ArchSpec
 
       dynamic_by_path = Hash.new { |hash, key| hash[key] = [] }
       edges.each { |edge| dynamic_by_path[edge.from_path] << edge if edge.type == :dynamic_feature }
+      dependency = edges.select { |edge| DEPENDENCY_EDGE_TYPES.include?(edge.type) }
+      by_line = Hash.new { |hash, key| hash[key] = [] }
+      dependency.each { |edge| by_line[[edge.from_path, edge.location.line]] << edge }
 
       {
         components_by_path: by_path,
@@ -715,7 +724,8 @@ module ArchSpec
         constants_by_component: by_component,
         constants_by_path: constants_by_path,
         dynamic_features_by_path: dynamic_by_path,
-        dependency_edges: edges.select { |edge| DEPENDENCY_EDGE_TYPES.include?(edge.type) }
+        dependency_edges: dependency,
+        dependency_edges_by_line: by_line
       }
     end
 
@@ -812,17 +822,19 @@ module ArchSpec
     end
 
     def merge_calls(file, only)
+      typed = edges.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |edge, seen|
+        seen[[edge.from_path, edge.location.line, edge.to]] << edge if edge.type == :calls_named_method && edge.receiver == :constant
+      end
       file.calls.each do |entry|
         path = File.expand_path(entry.file, root)
         next if only && !only.include?(path)
 
-        typed = edges.select do |edge|
-          edge.type == :calls_named_method && edge.from_path == path && edge.location.line == entry.line &&
-            edge.to == entry.method && edge.receiver == :constant
-        end
-        unless typed.empty?
+        unless typed.fetch([path, entry.line, entry.method], EMPTY_EDGES).empty?
           wanted = normalize_constant(entry.receiver)
-          agreed = typed.any? { |edge| edge.receiver_constant.nil? || resolve_constant_reference(edge.receiver_constant, edge.from_constant, lexical_nesting: edge.lexical_nesting) == wanted }
+          agreed = typed.fetch([path, entry.line, entry.method]).any? do |edge|
+            edge.receiver_constant.nil? ||
+              resolve_constant_reference(edge.receiver_constant, edge.from_constant, lexical_nesting: edge.lexical_nesting) == wanted
+          end
           next @facts_merges[file.relative_path][agreed ? 'already_resolved' : 'conflict'] += 1
         end
 

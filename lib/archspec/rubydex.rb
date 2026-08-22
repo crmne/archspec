@@ -30,7 +30,7 @@ module ArchSpec
     RESOLVER_LABEL = "#{PRODUCER} (resolver)"
     WORKSPACE = 'rubydex-workspace'
     GEM = 'rubydex-gem'
-    SINGLETON_SUFFIX = /::<[^>]+>\z/
+    SINGLETON_SCOPE = /::<[^>]+>/
 
     Resolution = ValueObject.define(:file, :line, :column, :target, :in_workspace)
     Ancestry = ValueObject.define(:owner, :kind, :target, :file, :line, :in_workspace)
@@ -343,7 +343,7 @@ module ArchSpec
           file: uri.delete_prefix(workspace),
           line: reference.location.start_line + 1,
           column: reference.location.start_column + 1,
-          target: declaration.name.sub(SINGLETON_SUFFIX, ''),
+          target: declaration.name.sub(SINGLETON_SCOPE, ''),
           in_workspace: declaration.definitions.any? { |definition| definition.location.uri.to_s.start_with?(workspace) }
         )
       end
@@ -363,7 +363,7 @@ module ArchSpec
         next unless receiver.is_a?(::Rubydex::Namespace)
 
         calls << Call.new(file: uri.delete_prefix(workspace), line: reference.location.start_line + 1,
-                          method: reference.name.to_s, receiver: receiver.name.sub(SINGLETON_SUFFIX, ''),
+                          method: reference.name.to_s, receiver: receiver.name.sub(SINGLETON_SCOPE, ''),
                           in_workspace: in_workspace?(receiver, workspace))
       end
 
@@ -419,7 +419,7 @@ module ArchSpec
           uri = definition.location.uri.to_s
           next unless uri.start_with?(workspace)
 
-          definitions << Definition.new(owner: declaration.name.sub(SINGLETON_SUFFIX, ''),
+          definitions << Definition.new(owner: declaration.name.sub(SINGLETON_SCOPE, ''),
                                         name: member.unqualified_name.to_s.delete_suffix('()'),
                                         scope: scope, visibility: member.visibility.to_s, file: uri.delete_prefix(workspace),
                                         line: definition.location.start_line + 1)
