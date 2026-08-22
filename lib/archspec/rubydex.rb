@@ -2,6 +2,7 @@
 
 require 'fileutils'
 require 'pathname'
+require 'set'
 
 require_relative 'error'
 require_relative 'facts'
@@ -12,7 +13,10 @@ module ArchSpec
   # references Rubydex resolved to one declaration where the parser's lexical
   # lookup found nothing. Rubydex reads the workspace and its bundle, so the
   # targets it names may live in a gem; the determination says which side of
-  # that boundary answered. Only <tt>archspec reflect --rubydex</tt> loads the
+  # that boundary answered. The same discipline covers what else Rubydex
+  # states about the workspace: a superclass or mixin the parser has none
+  # for, a method it did not see defined, and a call whose receiver Rubydex
+  # resolved to a constant. Only <tt>archspec reflect --rubydex</tt> loads the
   # gem, and +check+ merges the file it writes like any other.
   module Rubydex
     extend self
@@ -23,10 +27,16 @@ module ArchSpec
     SINGLETON_SUFFIX = /::<[^>]+>\z/
 
     Resolution = ValueObject.define(:file, :line, :target, :in_workspace)
+    Ancestry = ValueObject.define(:owner, :kind, :target, :file, :line, :in_workspace)
+    Definition = ValueObject.define(:owner, :name, :scope, :visibility, :file, :line)
+    Call = ValueObject.define(:file, :line, :method, :receiver, :in_workspace)
+    MIXIN_KINDS = { 'Rubydex::Include' => 'includes', 'Rubydex::Prepend' => 'prepends',
+                    'Rubydex::Extend' => 'extends' }.freeze
 
     def run(graph, output:, root:)
-      resolutions, misses = index(root)
-      facts = facts_for(graph, resolutions, misses: misses, engine_version: ::Rubydex::VERSION)
+      found = index(root)
+      facts = facts_for(graph, found[:resolutions], misses: found[:misses], engine_version: ::Rubydex::VERSION,
+                        ancestry: found[:ancestry], definitions: found[:definitions], calls: found[:calls])
       FileUtils.mkdir_p(File.dirname(output))
       Facts.write(output, commit: Facts.commit_for(root), dirty: Facts.dirty?(root), **facts)
       facts
@@ -36,7 +46,7 @@ module ArchSpec
     # have. Free of the gem so the comparison is tested with stand-ins: a
     # resolution is a file, a line, the resolved target and whether the
     # target is defined under the root.
-    def facts_for(graph, resolutions, misses: {}, engine_version: nil)
+    def facts_for(graph, resolutions, misses: {}, engine_version: nil, ancestry: [], definitions: [], calls: [])
       counts = Hash.new(0)
       misses.each { |cause, count| counts[cause.to_s] += count }
       references = []
@@ -69,11 +79,105 @@ module ArchSpec
         producer_version: engine_version ? "#{VERSION} rubydex #{engine_version}" : VERSION,
         references: references.uniq,
         generated_methods: [],
+        ancestry: ancestry_facts(graph, ancestry, counts),
+        definitions: definition_facts(graph, definitions, counts),
+        calls: call_facts(graph, calls, counts),
         misses: counts.sort.to_h
       }
     end
 
     private
+
+    def ancestry_facts(graph, entries, counts)
+      entries.filter_map do |entry|
+        owner = owner_node(graph, entry.owner, entry.file)
+        unless owner
+          counts['ancestry_outside_source'] += 1
+          next
+        end
+
+        wanted = graph.resolve_constant_reference("::#{entry.target}")
+        recorded = if entry.kind == 'inherits'
+                     owner.superclass && graph.resolve_constant_reference(owner.superclass, owner.name,
+                                                                            lexical_nesting: owner.nesting)
+                   else
+                     owner.mixins.fetch(entry.kind.delete_suffix('s').to_sym).map do |name|
+                       graph.resolve_constant_reference(name, owner.name, lexical_nesting: owner.nesting)
+                     end.find { |name| name == wanted }
+                   end
+        if recorded == wanted
+          counts['ancestry_already_resolved'] += 1
+          next
+        end
+        if recorded
+          counts['ancestry_disagreed'] += 1
+          next
+        end
+
+        FactsAncestry.new(owner: owner.name, kind: entry.kind, target: entry.target, file: entry.file,
+                          line: entry.line, determination: entry.in_workspace ? WORKSPACE : GEM)
+      end.uniq
+    end
+
+    def definition_facts(graph, entries, counts)
+      entries.filter_map do |entry|
+        owner = owner_node(graph, entry.owner, entry.file)
+        unless owner
+          counts['definition_outside_source'] += 1
+          next
+        end
+
+        known = entry.scope == 'class' ? owner.class_methods : owner.instance_methods
+        if known.include?(entry.name.to_sym)
+          counts['definition_already_resolved'] += 1
+          next
+        end
+
+        FactsDefinition.new(owner: owner.name, name: entry.name, scope: entry.scope, visibility: entry.visibility,
+                            file: entry.file, line: entry.line, determination: WORKSPACE)
+      end.uniq
+    end
+
+    # A call is written only where the parser saw a receiver it could not
+    # type. A bare call the parser recorded as implicit self is the same
+    # fact Rubydex states as a receiver of the enclosing class, not a typed
+    # receiver it lacked, so it is counted rather than written.
+    def call_facts(graph, entries, counts)
+      receivers = graph.edges.each_with_object(Hash.new { |hash, key| hash[key] = Set.new }) do |edge, seen|
+        next unless edge.type == :calls_named_method
+
+        seen[[edge.from_path, edge.location.line, edge.to]] << edge.receiver
+      end
+
+      entries.filter_map do |entry|
+        path = File.expand_path(entry.file, graph.root)
+        unless graph.files.key?(path)
+          counts['call_outside_source'] += 1
+          next
+        end
+        seen = receivers[[path, entry.line, entry.method]]
+        if seen.include?(:constant)
+          counts['call_already_resolved'] += 1
+          next
+        end
+        if seen.include?(:none)
+          counts['call_implicit_self'] += 1
+          next
+        end
+
+        FactsCall.new(owner: owner_for(graph, path, entry.line), file: entry.file, line: entry.line,
+                      method: entry.method, receiver: entry.receiver,
+                      determination: entry.in_workspace ? WORKSPACE : GEM)
+      end.uniq
+    end
+
+    def owner_node(graph, name, file)
+      path = File.expand_path(file, graph.root)
+      return nil unless graph.files.key?(path)
+
+      nodes = graph.constants_named(name).reject { |constant| constant.kind == :constant }
+      nodes.find { |constant| constant.path == path } || nodes.first
+    end
 
     def index(root)
       load_gem
@@ -113,6 +217,9 @@ module ArchSpec
       workspace = "file://#{root}/"
       misses = Hash.new(0)
       resolutions = []
+      ancestry = []
+      definitions = []
+      calls = []
 
       graph.constant_references.each do |reference|
         uri = reference.location.uri.to_s
@@ -134,8 +241,80 @@ module ArchSpec
         )
       end
 
+      graph.declarations.each do |declaration|
+        next unless declaration.is_a?(::Rubydex::Namespace) && !declaration.is_a?(::Rubydex::SingletonClass)
+
+        collect_ancestry(declaration, workspace, ancestry, misses)
+        collect_definitions(declaration, workspace, definitions)
+      end
+
+      graph.method_references.each do |reference|
+        uri = reference.location.uri.to_s
+        next unless uri.start_with?(workspace)
+
+        receiver = reference.receiver
+        next unless receiver.is_a?(::Rubydex::Namespace)
+        next if receiver.name.end_with?('>')
+
+        calls << Call.new(file: uri.delete_prefix(workspace), line: reference.location.start_line + 1,
+                          method: reference.name.to_s, receiver: receiver.name.sub(SINGLETON_SUFFIX, ''),
+                          in_workspace: in_workspace?(receiver, workspace))
+      end
+
       misses['diagnostic'] = graph.diagnostics.count { |diagnostic| diagnostic.location.uri.to_s.start_with?(workspace) }
-      [resolutions, misses]
+      { resolutions: resolutions, ancestry: ancestry, definitions: definitions, calls: calls, misses: misses }
+    end
+
+    def collect_ancestry(declaration, workspace, ancestry, misses)
+      declaration.definitions.each do |definition|
+        uri = definition.location.uri.to_s
+        next unless uri.start_with?(workspace)
+
+        file = uri.delete_prefix(workspace)
+        line = definition.location.start_line + 1
+        if definition.respond_to?(:superclass) && definition.superclass
+          add_ancestry(ancestry, misses, declaration, 'inherits', definition.superclass, file, line, workspace)
+        end
+        next unless definition.respond_to?(:mixins)
+
+        definition.mixins.each do |mixin|
+          kind = MIXIN_KINDS[mixin.class.name]
+          add_ancestry(ancestry, misses, declaration, kind, mixin.constant_reference, file, line, workspace) if kind
+        end
+      end
+    end
+
+    def add_ancestry(ancestry, misses, owner, kind, reference, file, line, workspace)
+      target = reference.respond_to?(:declaration) ? reference.declaration : nil
+      return misses['ancestry_unresolved'] += 1 if target.nil? || target.name.end_with?('>')
+
+      ancestry << Ancestry.new(owner: owner.name, kind: kind, target: target.name, file: file, line: line,
+                               in_workspace: in_workspace?(target, workspace))
+    end
+
+    def collect_definitions(declaration, workspace, definitions)
+      declaration.members.each do |member|
+        next unless member.is_a?(::Rubydex::Method)
+
+        scope = declaration.is_a?(::Rubydex::SingletonClass) ? 'class' : 'instance'
+        member.definitions.each do |definition|
+          uri = definition.location.uri.to_s
+          next unless uri.start_with?(workspace)
+
+          definitions << Definition.new(owner: declaration.name.sub(SINGLETON_SUFFIX, ''),
+                                        name: member.unqualified_name.to_s.delete_suffix('()'),
+                                        scope: scope, visibility: member.visibility.to_s, file: uri.delete_prefix(workspace),
+                                        line: definition.location.start_line + 1)
+        end
+      end
+      return if declaration.is_a?(::Rubydex::SingletonClass)
+
+      singleton = declaration.members.find { |member| member.is_a?(::Rubydex::SingletonClass) }
+      collect_definitions(singleton, workspace, definitions) if singleton
+    end
+
+    def in_workspace?(declaration, workspace)
+      declaration.definitions.any? { |definition| definition.location.uri.to_s.start_with?(workspace) }
     end
 
     def parser_edges_by_line(graph)

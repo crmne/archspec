@@ -111,7 +111,8 @@ module ArchSpec
     :location,
     :confidence,
     :receiver,
-    :lexical_nesting
+    :lexical_nesting,
+    :receiver_constant
   ) do
     VERBS = {
       references_constant: 'references',
@@ -183,7 +184,7 @@ module ArchSpec
     :resolved_references, :unresolved_references, :unresolved_names, :dynamic_features,
     :other_receiver_calls, :ignored_files, :parse_error_files, :producers, :corrupt_cache_entries,
     :unused_suppressions, :stale_todo_entries, :ancestry_resolved, :ancestor_unresolved,
-    :ambiguous_references, :refused_names
+    :ambiguous_references, :refused_names, :facts_entries
   ) do
     def dynamic_feature_count
       dynamic_features.values.sum { |carriers| carriers.size }
@@ -223,6 +224,7 @@ module ArchSpec
         parse_error_files: parse_error_files,
         producers: producers,
         corrupt_cache_entries: corrupt_cache_entries,
+        facts_entries: facts_entries,
         unused_suppressions: unused_suppressions,
         stale_todo_entries: stale_todo_entries
       }
@@ -265,6 +267,7 @@ module ArchSpec
       @facts_directory = nil
       @facts_present = false
       @facts_origins = {}.compare_by_identity
+      @facts_merges = Hash.new { |hash, key| hash[key] = Hash.new(0) }
       @ignored_files = []
       @corrupt_cache_entries = 0
       @census = nil
@@ -326,47 +329,38 @@ module ArchSpec
     end
 
     def add_edge(type:, from_path:, from_constant:, to:, location:, confidence: :high, receiver: nil,
-                 lexical_nesting: nil)
+                 lexical_nesting: nil, receiver_constant: nil)
       nesting = lexical_nesting&.map { |name| normalize_constant(name) }&.freeze
-      edges << Edge.new(type, from_path, from_constant, to.to_s, location, confidence, receiver, nesting)
+      edges << Edge.new(type, from_path, from_constant, to.to_s, location, confidence, receiver, nesting,
+                        receiver_constant)
       forget_indexes
     end
 
     # Adds what a facts file states: each reference becomes an ordinary
     # dependency edge whose confidence names its origin, and each generated
     # method lands on the owning constant so a bare call to it counts as the
-    # component's own API. A target the parser never defined stays an
-    # unresolved name, exactly like a constant from a gem.
+    # component's own API. Ancestry, definitions and calls become the facts
+    # the visitor would have produced, and only where it produced none: the
+    # parser is never overridden, so an entry it already had is counted as
+    # already resolved and one that contradicts it as a conflict. A target
+    # the parser never defined stays an unresolved name, exactly like a
+    # constant from a gem.
     def merge_facts(facts, only: nil)
       @facts_directory = facts.directory
       @facts_present = facts.present?
 
       facts.files.each do |file|
         facts_files << file
-
-        file.references.each do |reference|
-          path = File.expand_path(reference.file, root)
-          next if only && !only.include?(path)
-
-          add_edge(
-            type: :references_constant,
-            from_path: path,
-            from_constant: normalize_constant(reference.owner),
-            to: reference.target,
-            location: SourceLocation.point(path, reference.line, 1),
-            lexical_nesting: []
-          )
-          record_facts_origin(edges.last, file.relative_path)
-        end
-
-        file.generated_methods.each do |entry|
-          constants_named(entry.owner).each do |constant|
-            next if only && !only.include?(constant.path)
-
-            entry.names.each { |name| constant.add_instance_method(name, location: constant.location) }
-          end
-        end
+        merge_references(file, only)
+        merge_generated_methods(file, only)
+        merge_ancestry(file, only)
+        merge_definitions(file, only)
+        merge_calls(file, only)
       end
+    end
+
+    def facts_merges
+      @facts_merges
     end
 
     def facts_present?
@@ -658,6 +652,121 @@ module ArchSpec
       [methods.dup, unresolved.dup]
     end
 
+    def merge_references(file, only)
+      file.references.each do |reference|
+        path = File.expand_path(reference.file, root)
+        next if only && !only.include?(path)
+
+        add_edge(
+          type: :references_constant,
+          from_path: path,
+          from_constant: normalize_constant(reference.owner),
+          to: reference.target,
+          location: SourceLocation.point(path, reference.line, 1),
+          lexical_nesting: []
+        )
+        record_facts_origin(edges.last, file.relative_path)
+      end
+    end
+
+    def merge_generated_methods(file, only)
+      file.generated_methods.each do |entry|
+        constants_named(entry.owner).each do |constant|
+          next if only && !only.include?(constant.path)
+
+          entry.names.each { |name| constant.add_instance_method(name, location: constant.location) }
+        end
+      end
+    end
+
+    def merge_ancestry(file, only)
+      file.ancestry.each do |entry|
+        path = File.expand_path(entry.file, root)
+        next if only && !only.include?(path)
+
+        owner = owner_for_facts(entry.owner, path)
+        next @facts_merges[file.relative_path]['unowned'] += 1 unless owner
+
+        wanted = normalize_constant(entry.target)
+        if entry.kind == 'inherits'
+          if owner.superclass
+            recorded = resolve_constant_reference(owner.superclass, owner.name, lexical_nesting: owner.nesting)
+            cause = recorded == wanted ? 'already_resolved' : 'conflict'
+            next @facts_merges[file.relative_path][cause] += 1
+          end
+          owner.superclass = entry.target
+          add_edge(type: :inherits_from, from_path: path, from_constant: owner.name, to: entry.target,
+                   location: SourceLocation.point(path, entry.line, 1), confidence: :from_facts_file)
+        else
+          kind = entry.kind.delete_suffix('s').to_sym
+          recorded = owner.mixins.fetch(kind).any? do |name|
+            resolve_constant_reference(name, owner.name, lexical_nesting: owner.nesting) == wanted
+          end
+          next @facts_merges[file.relative_path]['already_resolved'] += 1 if recorded
+
+          owner.add_mixin(kind, entry.target)
+          add_edge(type: entry.kind.to_sym, from_path: path, from_constant: owner.name, to: entry.target,
+                   location: SourceLocation.point(path, entry.line, 1), confidence: :from_facts_file)
+        end
+        record_facts_origin(edges.last, file.relative_path)
+      end
+    end
+
+    def merge_definitions(file, only)
+      file.definitions.each do |entry|
+        path = File.expand_path(entry.file, root)
+        next if only && !only.include?(path)
+
+        owner = owner_for_facts(entry.owner, path)
+        next @facts_merges[file.relative_path]['unowned'] += 1 unless owner
+
+        name = entry.name.to_sym
+        known = entry.scope == 'class' ? owner.class_methods : owner.instance_methods
+        next @facts_merges[file.relative_path]['already_resolved'] += 1 if known.include?(name)
+
+        location = SourceLocation.point(path, entry.line, 1)
+        visibility = entry.visibility.to_sym
+        if entry.scope == 'class'
+          owner.add_class_method(name, location: location, visibility: visibility)
+        else
+          owner.add_instance_method(name, location: location, visibility: visibility)
+        end
+      end
+    end
+
+    def merge_calls(file, only)
+      file.calls.each do |entry|
+        path = File.expand_path(entry.file, root)
+        next if only && !only.include?(path)
+
+        typed = edges.any? do |edge|
+          edge.type == :calls_named_method && edge.from_path == path && edge.location.line == entry.line &&
+            edge.to == entry.method && edge.receiver == :constant
+        end
+        next @facts_merges[file.relative_path]['already_resolved'] += 1 if typed
+
+        add_edge(
+          type: :calls_named_method,
+          from_path: path,
+          from_constant: normalize_constant(entry.owner),
+          to: entry.method,
+          location: SourceLocation.point(path, entry.line, 1),
+          confidence: :from_facts_file,
+          receiver: :constant,
+          receiver_constant: entry.receiver
+        )
+        record_facts_origin(edges.last, file.relative_path)
+      end
+    end
+
+    # The node a facts entry speaks about: the owner as defined in the entry's
+    # own file, else wherever the parser defined it, never a file the parser
+    # did not read.
+    def owner_for_facts(name, path)
+      nodes = constants_named(name).reject { |constant| constant.kind == :constant }
+      nodes.find { |constant| constant.path == path } || nodes.first
+    end
+
     def take_census
       resolved = 0
       through_ancestry = 0
@@ -704,8 +813,19 @@ module ArchSpec
         ancestry_resolved: through_ancestry,
         ancestor_unresolved: refused[:ancestor_unresolved],
         ambiguous_references: refused[:ambiguous],
-        refused_names: refused_names.to_a.sort
+        refused_names: refused_names.to_a.sort,
+        facts_entries: facts_present? ? facts_entries : nil
       )
+    end
+
+    # What each facts file stated, by entry type, and what of it the parser
+    # already had or contradicted, so a file that added nothing is told apart
+    # from a file that was not read.
+    def facts_entries
+      facts_files.sort_by(&:relative_path).to_h do |file|
+        [file.relative_path, { producer: file.producer, entries: file.counts,
+                               skipped: @facts_merges[file.relative_path].sort.to_h }]
+      end
     end
 
     def producer_of(edge)

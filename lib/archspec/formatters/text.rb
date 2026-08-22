@@ -148,9 +148,18 @@ module ArchSpec
 
         merged = graph.facts_files.map do |file|
           label = file.entries == 1 ? 'entry' : 'entries'
-          "#{file.relative_path} (#{file.producer} #{file.producer_version}, #{file.entries} #{label})"
+          stated = file.counts.reject { |_type, count| count.zero? }.map { |type, count| "#{count} #{type}" }
+          detail = [stated.size > 1 ? stated.join(', ') : nil, skipped_summary(graph.facts_merges[file.relative_path])].compact
+          "#{file.relative_path} (#{file.producer} #{file.producer_version}, #{file.entries} #{label}" \
+            "#{detail.any? ? ": #{detail.join('; ')}" : ''})"
         end
         "facts: #{merged.join(', ')}"
+      end
+
+      def skipped_summary(skipped)
+        return nil if skipped.nil? || skipped.empty?
+
+        "skipped #{skipped.sort.map { |cause, count| "#{count} #{cause.tr('_', ' ')}" }.join(', ')}"
       end
 
       def print_diagnostic(output, style, graph, diagnostic, sources)

@@ -64,10 +64,10 @@ class FactsTest < ArchSpecTest
   def test_unknown_format_versions_are_refused
     with_project do |root|
       write_models(root)
-      write "#{root}/archspec_facts/rails.yml", facts_yaml.sub('format: 1', 'format: 2')
+      write "#{root}/archspec_facts/rails.yml", facts_yaml.sub('format: 1', 'format: 3')
 
       error = assert_raises(ArchSpec::Error) { diagnostics_for(definition, root) }
-      assert_match 'format 2 is not 1', error.message
+      assert_match 'format 3 is not 2', error.message
     end
   end
 
@@ -130,7 +130,10 @@ class FactsTest < ArchSpecTest
 
       assert_equal [{ 'path' => 'archspec_facts/rails.yml', 'producer' => 'archspec-reflect',
                       'producer_version' => '1.0.1', 'commit' => nil, 'dirty' => false,
-                      'entries' => 1, 'misses' => { 'polymorphic' => 2 } }], payload['facts_files']
+                      'entries' => 1,
+                      'entries_by_type' => { 'references' => 1, 'generated_methods' => 0, 'ancestry' => 0,
+                                             'definitions' => 0, 'calls' => 0 },
+                      'skipped' => {}, 'misses' => { 'polymorphic' => 2 } }], payload['facts_files']
       assert_equal 'high', payload['violations'].first['confidence']
     end
   end

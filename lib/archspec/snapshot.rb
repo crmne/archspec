@@ -319,6 +319,7 @@ module ArchSpec
           'confidence' => edge.confidence.to_s,
           'receiver' => edge.receiver&.to_s,
           'lexical_nesting' => edge.lexical_nesting&.to_a,
+          'receiver_constant' => edge.receiver_constant,
           'facts_file' => graph.facts_file_for(edge)
         }
       end
@@ -409,7 +410,8 @@ module ArchSpec
           location: restored_location(absolute, document.fetch('location')),
           confidence: document.fetch('confidence').to_sym,
           receiver: document['receiver']&.to_sym,
-          lexical_nesting: document['lexical_nesting']
+          lexical_nesting: document['lexical_nesting'],
+          receiver_constant: document['receiver_constant']
         )
         graph.record_facts_origin(graph.edges.last, document['facts_file']) if document['facts_file']
       end

@@ -1,7 +1,7 @@
 ---
 title: Facts
 nav_order: 3
-description: Merge facts a static parse cannot see, such as the classes Active Record associations resolve to, from producer-written files, and write them with reflect.
+description: Merge facts a static parse cannot see, from association targets to ancestry and typed calls, out of producer-written files, and write them with reflect.
 seo:
   title: ArchSpec facts files and archspec reflect
 ---
@@ -20,7 +20,7 @@ The directory defaults to `archspec_facts/`. `check` stays fully static: it read
 ## The file
 
 ```yaml
-format: 1
+format: 2
 producer: archspec-reflect
 producer_version: 1.0.1
 commit: 3f2a9c1d4e5b6a7c8d9e0f1a2b3c4d5e6f7a8b9c
@@ -92,6 +92,41 @@ bundle exec archspec reflect --output archspec_facts/rails.yml
 
 The one ArchSpec command that boots the application. It runs through `bin/rails runner`, eager-loads, asks every Active Record model for `reflect_on_all_associations`, and writes `archspec_facts/rails.yml` with the real resolved class names. Polymorphic associations and reflections that raise are counted as misses, not guessed. The output is sorted and carries no timestamps, so two runs on the same tree write the same file. Run it when associations change, commit the file, and `check` keeps working without booting anything.
 
+## Ancestry, definitions and calls
+
+Format 2 adds three lists a producer can state beside references and generated methods, each entry naming the producer's determination the way a reference does:
+
+```yaml
+ancestry:
+  - owner: Invoice
+    kind: inherits
+    target: Billing::Document
+    file: app/models/invoice.rb
+    line: 1
+    determination: rubydex-workspace
+definitions:
+  - owner: Invoice
+    name: total
+    scope: instance
+    visibility: public
+    file: app/models/invoice.rb
+    line: 9
+    determination: rubydex-workspace
+calls:
+  - owner: Billing::Report
+    file: app/services/billing/report.rb
+    line: 14
+    method: destroy_all
+    receiver: Invoice
+    determination: rubydex-workspace
+```
+
+`check` merges them as the facts the parser would have produced. An `inherits` entry becomes an `inherits_from` edge and the owner's superclass, a mixin entry (`includes`, `prepends`, `extends`) the matching edge and mixin, so `no_cycles`, `cannot_reference_includers` and the ancestry walk behind `must_implement` see them. A definition becomes an instance or class method with its visibility, so protocols and the own-API exemption see it. A call becomes a `calls_named_method` edge whose receiver is the named constant, so `cannot_call` sees a typed call the parser recorded with an untyped receiver.
+
+The parser is never overridden. An entry the parser already had is counted as `already_resolved` for that file and left alone; an `inherits` entry that contradicts the superclass the parser read is counted as `conflict` and left alone. Both counts print in the facts line and in the JSON `facts_files` and `census.facts_entries`, per file and per entry type, so a file that added nothing reads differently from a file that was not read.
+
+Format 1 files keep loading, with the three lists empty. Every producer ArchSpec ships writes format 2: `reflect` still states references and generated methods only, the static association producer adds the `inherits` chain it walked to `ApplicationRecord` with determination `index`, and the Rubydex producer writes all three lists under the rule below.
+
 ## Constants through Rubydex
 
 ```sh
@@ -99,5 +134,7 @@ bundle exec archspec reflect --rubydex
 ```
 
 A second resolver for the same file format. [Rubydex](https://github.com/Shopify/rubydex) indexes the workspace and its locked bundle, so it resolves what the parser's lexical lookup cannot: a constant defined in a gem, or reached through a superclass or an included module. The producer writes `archspec_facts/rubydex.yml` with only those references, each marked `rubydex-workspace` when the target is defined under the root and `rubydex-gem` when it is not. A reference the parser already resolved is counted as `already_resolved` and not written, so no edge appears twice; one the two resolvers disagree on is counted as `disagreed` and left out. The other counts are `unresolved` (Rubydex found no declaration), `self` (`self` inside a class), `declaration` (the name a `class` line defines), `outside_source` (a file the architecture file does not analyze) and `diagnostic`.
+
+Under the same rule the producer writes what else Rubydex resolved and the parser did not: a superclass or mixin the parser has none for (`extend self` is the common case), a method the parser did not see defined, and a call whose receiver Rubydex resolved to a constant where the parser saw a variable. A call the parser recorded as implicit self is counted as `call_implicit_self`, not written, since the enclosing class is not a receiver the parser lacked.
 
 The gem is required only by this command: add `rubydex` to the development group and run under `bundle exec`. Without the gem, a `Gemfile` or a `Gemfile.lock` the command refuses rather than indexing the workspace alone. References into gems reach `check` as names the tree does not define, which is how gem constants already behave: `cannot_reference_constants` sees them and component rules do not.

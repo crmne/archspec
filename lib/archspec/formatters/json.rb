@@ -46,6 +46,8 @@ module ArchSpec
               commit: file.commit,
               dirty: file.dirty,
               entries: file.entries,
+              entries_by_type: file.counts,
+              skipped: graph.facts_merges[file.relative_path].sort.to_h,
               misses: file.misses
             }
           end,

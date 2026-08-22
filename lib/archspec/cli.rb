@@ -368,7 +368,12 @@ module ArchSpec
       misses = facts[:misses].map { |cause, count| "#{cause} #{count}" }.join(', ')
       references = facts[:references].size
       label = references == 1 ? 'reference' : 'references'
-      misses.empty? ? "#{references} #{label}, no misses" : "#{references} #{label}; misses: #{misses}"
+      stated = [[:ancestry, 'ancestry'], [:definitions, 'definitions'], [:calls, 'calls']].filter_map do |key, name|
+        count = facts.fetch(key, []).size
+        "#{count} #{name}" if count.positive?
+      end
+      counted = ([("#{references} #{label}")] + stated).join(', ')
+      misses.empty? ? "#{counted}, no misses" : "#{counted}; misses: #{misses}"
     end
 
     def load_definition(config_path)

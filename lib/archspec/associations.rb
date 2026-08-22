@@ -62,8 +62,30 @@ module ArchSpec
         producer_version: VERSION,
         references: references,
         generated_methods: [],
+        ancestry: ancestry_for(graph, index),
         misses: misses.sort.to_h
       }
+    end
+
+    # The superclass chain the index walked for each model, stated as the
+    # inherits facts it trusted: one per hop, up to the last model before the
+    # record root, with the same determination the walk gives an association.
+    def ancestry_for(graph, index)
+      index.models.sort_by(&:name).flat_map do |model|
+        node = model
+        index.ancestors_of(model).map do |ancestor|
+          entry = FactsAncestry.new(
+            owner: node.name,
+            kind: 'inherits',
+            target: ancestor.name,
+            file: Pathname(node.path).relative_path_from(Pathname(graph.root)).to_s,
+            line: node.location.line,
+            determination: 'index'
+          )
+          node = ancestor
+          entry
+        end
+      end.uniq
     end
 
     # The models an application declares: every class whose superclass chain
@@ -97,6 +119,19 @@ module ArchSpec
         resolve_by_name(declaration, owner)
       end
 
+      def ancestors_of(owner)
+        chain = []
+        node = owner
+        while node&.superclass
+          resolved = graph.resolve_constant_reference(node.superclass, node.name, lexical_nesting: node.nesting)
+          node = @records.find { |record| record.name == resolved }
+          break if node.nil? || chain.include?(node)
+
+          chain << node
+        end
+        chain
+      end
+
       private
 
       def collect_records
@@ -117,18 +152,6 @@ module ArchSpec
         RECORD_ROOTS.include?(resolved) || records.any? { |record| record.name == resolved }
       end
 
-      def ancestors_of(owner)
-        chain = []
-        node = owner
-        while node&.superclass
-          resolved = graph.resolve_constant_reference(node.superclass, node.name, lexical_nesting: node.nesting)
-          node = @records.find { |record| record.name == resolved }
-          break if node.nil? || chain.include?(node)
-
-          chain << node
-        end
-        chain
-      end
 
       def restated?(declaration, owner)
         ancestors_of(owner).any? do |ancestor|
