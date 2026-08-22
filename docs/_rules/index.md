@@ -36,7 +36,7 @@ ArchSpec reports each violation with its message and rule id, the offending code
 
 ## Reasons, Dates and Actions
 
-Every rule takes `because:`, printed with each finding, and `since:`, a date the rule holds from; findings older than the date are reported but do not fail. Each finding carries the smallest cut the graph can see, or says that it sees none. See [Configuration]({% link _reference/configuration.md %}#reasons-dates-and-actions).
+Every rule takes `because:`, printed with each finding, and `since:`, a date the rule holds from; findings older than the date are reported but do not fail, at the cost of one `git blame` per file that holds such a finding. Each finding carries the smallest cut the graph can see, or says that it sees none. See [Configuration]({% link _reference/configuration.md %}#reasons-dates-and-actions).
 
 ## Suppressing a Rule
 

@@ -170,6 +170,45 @@ class ReasonDateTest < ArchSpecTest
     end
   end
 
+  def test_since_reads_blame_with_an_accented_author_under_an_ascii_default
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User\n  UsersController\nend\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+      git(root, 'init', '-q')
+      git(root, 'add', '.')
+      commit(root, 'old breach', '2020-06-01T12:00:00Z', author: 'Zoë Müller')
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        component :controllers, in: "app/controllers/**/*.rb"
+        models.cannot_use :controllers, since: "2024-01-01"
+      RUBY
+
+      verdict = with_default_external(Encoding::US_ASCII) do
+        ArchSpec::LineAge.new(root).verdict('app/models/user.rb', 2, Date.new(2024, 1, 1))
+      end
+
+      assert_equal :before, verdict
+    end
+  end
+
+  def test_since_asks_git_once_per_witness_file
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User\n  UsersController\n  UsersController\nend\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+      git(root, 'init', '-q')
+      git(root, 'add', '.')
+      commit(root, 'old breach', '2020-06-01T12:00:00Z')
+
+      ages = ArchSpec::LineAge.new(root)
+      calls = 0
+      ages.define_singleton_method(:blame) { |path| calls += 1; super(path) }
+      ages.verdict('app/models/user.rb', 2, Date.new(2024, 1, 1))
+      ages.verdict('app/models/user.rb', 3, Date.new(2024, 1, 1))
+
+      assert_equal 1, calls
+    end
+  end
+
   def test_since_without_git_counts_as_undated_and_says_so_once
     with_project do |root|
       write_models_and_controllers(root)
@@ -215,10 +254,20 @@ class ReasonDateTest < ArchSpecTest
     system('git', '-C', root, *args, out: File::NULL, err: File::NULL) || raise("git #{args.join(' ')} failed")
   end
 
-  def commit(root, message, date)
+  def with_default_external(encoding)
+    previous = Encoding.default_external
+    verbose, $VERBOSE = $VERBOSE, nil
+    Encoding.default_external = encoding
+    yield
+  ensure
+    Encoding.default_external = previous
+    $VERBOSE = verbose
+  end
+
+  def commit(root, message, date, author: 'test')
     env = {
       'GIT_AUTHOR_DATE' => date, 'GIT_COMMITTER_DATE' => date,
-      'GIT_AUTHOR_NAME' => 'test', 'GIT_AUTHOR_EMAIL' => 'test@example.com',
+      'GIT_AUTHOR_NAME' => author, 'GIT_AUTHOR_EMAIL' => 'test@example.com',
       'GIT_COMMITTER_NAME' => 'test', 'GIT_COMMITTER_EMAIL' => 'test@example.com'
     }
     system(env, 'git', '-C', root, 'commit', '-q', '-m', message, out: File::NULL, err: File::NULL) ||
