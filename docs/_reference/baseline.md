@@ -1,7 +1,7 @@
 ---
 title: Baseline
 nav_order: 4
-description: Pin the architecture as a snapshot with a receipt, then grade a change against it so a check reports what the change introduced, resolved, or declared instead of failing the whole tree.
+description: Pin the architecture as a snapshot with a receipt, then grade a change against it so a check reports what it introduced, resolved, or declared.
 seo:
   title: ArchSpec snapshots and baseline checks
 ---

@@ -39,7 +39,7 @@ def api_title(title)
               .sub(/\AArchSpec::/, '')
   return 'ArchSpec Ruby API Reference' if name == 'ArchSpec'
 
-  name = "#{name} reference" if %w[CLI DSL].include?(name)
+  name = "#{name} reference" if %w[CLI DSL].include?(name) || name.length < 6
   "#{name} | ArchSpec API"
 end
 

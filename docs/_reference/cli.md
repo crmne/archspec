@@ -1,7 +1,7 @@
 ---
 title: CLI
 nav_order: 2
-description: Reference every ArchSpec command-line option for checking projects, taking snapshots, grading changes against a baseline, explaining files, emitting JSON, reflecting Active Record facts, and choosing config files.
+description: Every ArchSpec command-line option for checking projects, taking snapshots, grading changes against a baseline, explaining files, and reflecting facts.
 seo:
   title: ArchSpec command-line interface
 ---
@@ -35,7 +35,7 @@ bundle exec archspec check --format json
 
 Runs all rules. The command exits non-zero when violations are found.
 
-With paths, only violations in those files are reported. When a snapshot taken under the same version and patterns exists in `.archspec/` with its binary payload, a path-scoped run re-reads the named paths and takes every other file's facts from the snapshot, so the loop after an edit costs the edit, not the tree; a snapshot with only its YAML graph is reused when the definition declares a `cache`, and otherwise every file is read as before. See [Baseline](baseline/) for taking a snapshot and [Configuration](configuration/) for the cache.
+With paths, only violations in those files are reported. When a snapshot taken under the same version and patterns exists in `.archspec/` with its binary payload, a path-scoped run re-reads the named paths and takes every other file's facts from the snapshot, so the loop after an edit costs the edit, not the tree; a snapshot with only its YAML graph is reused when the definition declares a `cache`, and otherwise every file is read as before. See [Baseline]({% link _reference/baseline.md %}) for taking a snapshot and [Configuration]({% link _reference/configuration.md %}) for the cache.
 
 Each violation prints as a diagnostic block: the message and rule id, the offending code with the exact span underlined, and the evidence ArchSpec found as a note. On a terminal the output is colored; set `NO_COLOR` to disable.
 
@@ -89,7 +89,7 @@ bundle exec archspec snapshot
 bundle exec archspec snapshot --output tmp/archspec-before
 ```
 
-Writes the analysed graph and a receipt under `.archspec/` so a later check has a before to grade against. See [Baseline](baseline/).
+Writes the analysed graph and a receipt under `.archspec/` so a later check has a before to grade against. See [Baseline]({% link _reference/baseline.md %}).
 
 ## check --baseline
 
@@ -99,7 +99,7 @@ bundle exec archspec check --baseline --mode strict
 bundle exec archspec check app/models --baseline tmp/archspec-before
 ```
 
-Grades the change against the snapshot instead of failing the tree: what it introduced, resolved, or declared. Exits `1` when the mode fails the change, `3` when the snapshot is not comparable and nothing was graded. See [Baseline](baseline/).
+Grades the change against the snapshot instead of failing the tree: what it introduced, resolved, or declared. Exits `1` when the mode fails the change, `3` when the snapshot is not comparable and nothing was graded. See [Baseline]({% link _reference/baseline.md %}).
 
 ## todo
 
@@ -116,7 +116,7 @@ bundle exec archspec reflect
 bundle exec archspec reflect --output archspec_facts/rails.yml
 ```
 
-Boots the application through `bin/rails runner` and writes the Active Record associations, with their resolved classes, to the facts directory. This is the only command that loads the app; `check` merges the file it writes and stays static. See [Facts](facts/).
+Boots the application through `bin/rails runner` and writes the Active Record associations, with their resolved classes, to the facts directory. This is the only command that loads the app; `check` merges the file it writes and stays static. See [Facts]({% link _reference/facts.md %}).
 
 ## explain
 

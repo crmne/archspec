@@ -1,7 +1,7 @@
 ---
 title: Facts
 nav_order: 3
-description: Merge facts a static parse cannot see, such as the classes Active Record associations resolve to, from a directory of producer-written files, and write the Active Record file with archspec reflect.
+description: Merge facts a static parse cannot see, such as the classes Active Record associations resolve to, from producer-written files, and write them with reflect.
 seo:
   title: ArchSpec facts files and archspec reflect
 ---

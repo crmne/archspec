@@ -76,7 +76,7 @@ bundle exec archspec snapshot
 bundle exec archspec check --baseline
 ```
 
-See [Baseline](../reference/baseline/).
+See [Baseline]({% link _reference/baseline.md %}).
 
 ## Read a Failure
 
