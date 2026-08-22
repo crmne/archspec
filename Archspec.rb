@@ -32,6 +32,7 @@ component :formatters, in: 'lib/archspec/formatters/**/*.rb'
 component :reflect, in: %w[
   lib/archspec/reflect.rb
   lib/archspec/associations.rb
+  lib/archspec/rubydex.rb
 ]
 component :support, in: %w[
   lib/archspec/error.rb

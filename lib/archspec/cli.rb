@@ -14,7 +14,7 @@ module ArchSpec
   #   archspec check --baseline [DIR] [--mode ratchet|advisory|strict]
   #   archspec snapshot [--config PATH] [--output DIR]
   #   archspec explain PATH_OR_CONSTANT
-  #   archspec reflect [--config PATH] [--output PATH] [--static]
+  #   archspec reflect [--config PATH] [--output PATH] [--static | --rubydex]
   #
   # #run returns the process exit status: 0 when clean, 1 when violations are
   # found, 3 when a baseline could not be compared.
@@ -298,7 +298,7 @@ module ArchSpec
     # <tt>bin/rails runner</tt>, the only ArchSpec command that boots the app.
     # The facts file it writes is what +check+ merges on later static runs.
     def reflect(argv, output)
-      options = { config: CONFIG_FILE, output: nil, static: false, help: false }
+      options = { config: CONFIG_FILE, output: nil, static: false, rubydex: false, help: false }
       parser = OptionParser.new do |opts|
         opts.banner = usage('reflect').strip
         opts.on('--config PATH', 'Use a different architecture file') { |value| options[:config] = value }
@@ -307,6 +307,9 @@ module ArchSpec
         end
         opts.on('--static', 'Resolve associations from the source alone, without booting') do
           options[:static] = true
+        end
+        opts.on('--rubydex', 'Resolve constants through Rubydex and the bundle, without booting') do
+          options[:rubydex] = true
         end
         opts.on('-h', '--help', 'Show this help') { options[:help] = true }
       end
@@ -318,9 +321,11 @@ module ArchSpec
       end
 
       raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
+      raise UsageError, '--static and --rubydex name different producers; run them separately' if options[:static] && options[:rubydex]
 
       definition, root = load_definition(options[:config])
       return reflect_static(definition, root, options[:output], output) if options[:static]
+      return reflect_rubydex(definition, root, options[:output], output) if options[:rubydex]
 
       runner = File.join(root, 'bin', 'rails')
       raise Error, "no bin/rails at #{root}; reflect runs inside a Rails application" unless File.executable?(runner)
@@ -344,6 +349,15 @@ module ArchSpec
       destination = File.expand_path(destination || File.join(definition.facts_path, 'associations.yml'), root)
       graph = Analyzer.analyze(definition, root: root)
       facts = Associations.write(graph, output: destination, root: root)
+      output.puts "Wrote #{Pathname(destination).relative_path_from(Pathname(root))}"
+      output.puts summary_line(facts)
+      0
+    end
+
+    def reflect_rubydex(definition, root, destination, output)
+      destination = File.expand_path(destination || File.join(definition.facts_path, 'rubydex.yml'), root)
+      graph = Analyzer.analyze(definition, root: root)
+      facts = Rubydex.run(graph, output: destination, root: root)
       output.puts "Wrote #{Pathname(destination).relative_path_from(Pathname(root))}"
       output.puts summary_line(facts)
       0
@@ -419,7 +433,7 @@ module ArchSpec
       when 'explain'
         'Usage: archspec explain PATH_OR_CONSTANT [--config PATH]'
       when 'reflect'
-        'Usage: archspec reflect [--config PATH] [--output PATH] [--static]'
+        'Usage: archspec reflect [--config PATH] [--output PATH] [--static | --rubydex]'
       when 'version'
         'Usage: archspec version'
       when ''
@@ -430,7 +444,7 @@ module ArchSpec
             archspec check [PATHS...] --baseline [DIR] [--mode ratchet|advisory|strict]
             archspec snapshot [--config PATH] [--output DIR]
             archspec explain PATH_OR_CONSTANT [--config PATH]
-            archspec reflect [--config PATH] [--output PATH] [--static]
+            archspec reflect [--config PATH] [--output PATH] [--static | --rubydex]
             archspec version
             archspec help [COMMAND]
         TEXT

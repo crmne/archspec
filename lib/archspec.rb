@@ -33,6 +33,7 @@ require_relative 'archspec/formatters/json'
 require_relative 'archspec/formatters/explanation'
 require_relative 'archspec/reflect'
 require_relative 'archspec/associations'
+require_relative 'archspec/rubydex'
 require_relative 'archspec/cli'
 
 # ArchSpec turns your application's architecture into executable checks.
