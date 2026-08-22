@@ -236,7 +236,7 @@ module ArchSpec
     EMPTY_EDGES = [].freeze
 
     attr_reader :root, :files, :constants, :edges, :components, :facts_files
-    attr_accessor :facts_directory, :ignored_files, :corrupt_cache_entries
+    attr_accessor :facts_directory, :ignored_files, :corrupt_cache_entries, :dating_note
 
     def initialize(root)
       @root = File.expand_path(root)
@@ -252,8 +252,20 @@ module ArchSpec
       @ignored_files = []
       @corrupt_cache_entries = 0
       @census = nil
+      @public_names = Hash.new { |hash, key| hash[key] = Set.new }
+      @dating_note = nil
       @indexes = nil
       @effective_methods_memo = {}
+    end
+
+    # Records the names a component declares public, so a cut can name the
+    # public face of a component a private reference should go through.
+    def declare_public(component, names)
+      @public_names[component.to_sym].merge(names.map { |name| normalize_constant(name) })
+    end
+
+    def public_names_for(component)
+      @public_names[component.to_sym]
     end
 
     def add_file(path:, parse_errors:, suppressions: [])

@@ -8,6 +8,7 @@ module ArchSpec
     STALE_TODO_RULE = 'housekeeping.stale_todo'
 
     def evaluate(definition, graph, todo: Todo.empty, housekeeping: false)
+      declare_public_names(definition, graph)
       diagnostics = parser_diagnostics(graph) + definition.rules.flat_map { |rule| rule.evaluate(graph) }
 
       # Deduplicate before rejecting. One statement can raise several diagnostics
@@ -34,11 +35,38 @@ module ArchSpec
       graph.record_housekeeping(unused_suppressions: unused.size, stale_todo_entries: stale.size)
 
       reported = reported.map { |diagnostic| doubt_near_dynamic_features(graph, diagnostic) }
+      reported = date_against_rules(graph, reported)
       reported += housekeeping_diagnostics(graph, todo, unused, stale) if housekeeping
       reported
     end
 
     private
+
+    # Public declarations are read off the rules that make them, before any
+    # rule runs, so a cut reported by another rule can name them.
+    def declare_public_names(definition, graph)
+      definition.rules.each do |rule|
+        next unless rule.respond_to?(:public_names)
+
+        graph.declare_public(rule.source, rule.public_names(graph))
+      end
+    end
+
+    # A finding from a dated rule asks git when its witness line last changed.
+    # Only dated rules pay for the question, and one cause for an unanswerable
+    # line is kept on the graph so the run prints it once.
+    def date_against_rules(graph, diagnostics)
+      return diagnostics if diagnostics.none?(&:dated)
+
+      ages = LineAge.new(graph.root)
+      dated = diagnostics.map do |diagnostic|
+        next diagnostic unless diagnostic.dated
+
+        diagnostic.with_since(ages.verdict(diagnostic.location.path, diagnostic.location.line, diagnostic.dated))
+      end
+      graph.dating_note = ages.note
+      dated
+    end
 
     def parser_diagnostics(graph)
       graph.files.values.flat_map do |file|

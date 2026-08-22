@@ -18,6 +18,8 @@ component :domain, in: %w[
   lib/archspec/component_spec.rb
   lib/archspec/definition.rb
   lib/archspec/diagnostic.rb
+  lib/archspec/cut.rb
+  lib/archspec/line_age.rb
   lib/archspec/model.rb
   lib/archspec/source_location.rb
 ]

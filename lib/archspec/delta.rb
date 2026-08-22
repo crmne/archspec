@@ -82,10 +82,13 @@ module ArchSpec
       [edge.type, edge.from_path, edge.from_constant, edge.to, edge.receiver]
     end
 
+    # A finding older than its rule's date is reported, never failed, in any
+    # mode.
     def failed?(mode)
+      failing = introduced.reject(&:predates_rule?)
       case mode
-      when 'ratchet' then introduced.any?
-      when 'strict' then introduced.any? || carried.any?
+      when 'ratchet' then failing.any?
+      when 'strict' then failing.any? || carried.reject(&:predates_rule?).any?
       else false
       end
     end

@@ -94,6 +94,27 @@ module ArchSpec
     DEFAULT_CONCERNS = 'app/**/concerns/**/*.rb'
 
     CONTROLLER_METHODS = %i[render redirect_to params session cookies flash].freeze
+
+    # The reason each preset rule prints with its findings, one line per rule,
+    # taken from the preset's guide.
+    REASONS = {
+      controllers_reach: 'controllers orchestrate a request; models, services, helpers, mailers and jobs are all they reach',
+      stay_out_of_controllers: 'models and services run outside a request too, so nothing in them may know the controller',
+      controller_api: 'render, redirect_to, params, session, cookies and flash exist only inside a request',
+      no_cycles: 'two components that depend on each other change as one unit in practice',
+      concerns: 'a concern that names its includer knows who uses it, which couples the two',
+      layered: 'a layer depends inward only; the layer below never knows the one above',
+      hexagonal_application: 'the application reaches the outside world through ports, never through an adapter',
+      hexagonal_domain: 'the domain knows nothing of the outside world',
+      hexagonal_ports: 'ports are the interfaces adapters implement; the dependency runs the other way',
+      hexagonal_adapters: 'an adapter plugs into the application; adapters never depend on each other',
+      modular_allow: 'a package reaches only the packages it declares',
+      modular_public: 'only the public surface of a package is reached from outside it',
+      cqrs_split: 'commands and queries stay apart so reads and writes can change separately',
+      cqrs_reads: 'a query never writes',
+      events: 'an event knows nothing of who publishes or subscribes to it',
+      event_parties: 'publishers and subscribers meet only through events'
+    }.freeze
     MUTATING_METHODS = %i[
       create create!
       delete delete_all
@@ -157,19 +178,20 @@ module ArchSpec
       define_components(dsl, components)
 
       forbidden = (share_helpers ? %i[controllers] : %i[controllers helpers]) & components.keys
-      proxy_for(dsl, :controllers).can_only_use(*components.keys & %i[models services helpers mailers jobs])
+      proxy_for(dsl, :controllers).can_only_use(*components.keys & %i[models services helpers mailers jobs],
+                                                because: REASONS[:controllers_reach])
 
       (%i[models services] & components.keys).each do |name|
         proxy = proxy_for(dsl, name)
-        proxy.cannot_use(*forbidden)
-        proxy.cannot_call(*controller_api, receiver: :none) unless controller_api.empty?
+        proxy.cannot_use(*forbidden, because: REASONS[:stay_out_of_controllers])
+        proxy.cannot_call(*controller_api, receiver: :none, because: REASONS[:controller_api]) unless controller_api.empty?
       end
     end
 
     def rails_strict(dsl, components:, controller_api:, share_helpers:, concerns:)
       components = normalize_map(components)
       rails(dsl, components: components, controller_api: controller_api, share_helpers: share_helpers)
-      dsl.no_cycles(among: components.keys)
+      dsl.no_cycles(among: components.keys, because: REASONS[:no_cycles])
       independent_concerns(dsl, concerns)
     end
 
@@ -190,10 +212,10 @@ module ArchSpec
 
       names.each_with_index do |name, index|
         allowed = names[(index + 1)..] || []
-        proxy_for(dsl, name).can_only_use(*allowed)
+        proxy_for(dsl, name).can_only_use(*allowed, because: REASONS[:layered])
       end
 
-      dsl.no_cycles(among: names)
+      dsl.no_cycles(among: names, because: REASONS[:no_cycles])
     end
 
     def hexagonal(dsl, application:, domain:, ports:, adapters:)
@@ -205,11 +227,11 @@ module ArchSpec
       )
       define_components(dsl, roles)
 
-      proxy_for(dsl, :application).can_only_use :domain, :ports
-      proxy_for(dsl, :domain).cannot_use :adapters
-      proxy_for(dsl, :ports).cannot_use :adapters
-      proxy_for(dsl, :adapters).can_only_use :application, :domain, :ports
-      dsl.no_cycles(among: roles.keys)
+      proxy_for(dsl, :application).can_only_use :domain, :ports, because: REASONS[:hexagonal_application]
+      proxy_for(dsl, :domain).cannot_use :adapters, because: REASONS[:hexagonal_domain]
+      proxy_for(dsl, :ports).cannot_use :adapters, because: REASONS[:hexagonal_ports]
+      proxy_for(dsl, :adapters).can_only_use :application, :domain, :ports, because: REASONS[:hexagonal_adapters]
+      dsl.no_cycles(among: roles.keys, because: REASONS[:no_cycles])
     end
 
     def clean(dsl, frameworks:, interface_adapters:, use_cases:, entities:)
@@ -232,13 +254,13 @@ module ArchSpec
 
       components.each_key do |name|
         allowed = Array(allow[name] || allow[name.to_s])
-        proxy_for(dsl, name).can_only_use(*allowed)
+        proxy_for(dsl, name).can_only_use(*allowed, because: REASONS[:modular_allow])
 
         patterns = Array(public[name] || public[name.to_s])
-        proxy_for(dsl, name).public_api(*patterns) if patterns.any?
+        proxy_for(dsl, name).public_api(*patterns, because: REASONS[:modular_public]) if patterns.any?
       end
 
-      dsl.no_cycles(among: components.keys)
+      dsl.no_cycles(among: components.keys, because: REASONS[:no_cycles])
     end
 
     def cqrs(dsl, commands:, queries:, read_models:, mutating_methods:)
@@ -246,20 +268,20 @@ module ArchSpec
       components[:read_models] = read_models if read_models
       define_components(dsl, components)
 
-      proxy_for(dsl, :commands).cannot_use :queries
-      proxy_for(dsl, :queries).cannot_use :commands
-      proxy_for(dsl, :queries).cannot_call(*mutating_methods)
-      dsl.no_cycles(among: components.keys)
+      proxy_for(dsl, :commands).cannot_use :queries, because: REASONS[:cqrs_split]
+      proxy_for(dsl, :queries).cannot_use :commands, because: REASONS[:cqrs_split]
+      proxy_for(dsl, :queries).cannot_call(*mutating_methods, because: REASONS[:cqrs_reads])
+      dsl.no_cycles(among: components.keys, because: REASONS[:no_cycles])
     end
 
     def event_driven(dsl, events:, publishers:, subscribers:)
       roles = normalize_map(events: events, publishers: publishers, subscribers: subscribers)
       define_components(dsl, roles)
 
-      proxy_for(dsl, :events).cannot_use :publishers, :subscribers
-      proxy_for(dsl, :publishers).can_only_use :events
-      proxy_for(dsl, :subscribers).can_only_use :events
-      dsl.no_cycles(among: roles.keys)
+      proxy_for(dsl, :events).cannot_use :publishers, :subscribers, because: REASONS[:events]
+      proxy_for(dsl, :publishers).can_only_use :events, because: REASONS[:event_parties]
+      proxy_for(dsl, :subscribers).can_only_use :events, because: REASONS[:event_parties]
+      dsl.no_cycles(among: roles.keys, because: REASONS[:no_cycles])
     end
 
     # Applies the generic Ruby naming idioms project-wide: no +get_+/+set_+
@@ -333,7 +355,7 @@ module ArchSpec
     def independent_concerns(dsl, pattern)
       return unless pattern
 
-      dsl.component(:concerns, in: pattern).cannot_reference_includers
+      dsl.component(:concerns, in: pattern).cannot_reference_includers(because: REASONS[:concerns])
       # Controllers carry an allowlist, so let them include concerns too.
       proxy_for(dsl, :controllers).can_only_use(:concerns)
     end

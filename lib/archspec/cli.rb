@@ -177,7 +177,7 @@ module ArchSpec
       end
 
       formatter.print(output, graph: graph, diagnostics: diagnostics)
-      diagnostics.empty? ? 0 : 1
+      diagnostics.reject(&:predates_rule?).empty? ? 0 : 1
     end
 
     # A path-scoped run over a snapshot of the same tree re-reads only the

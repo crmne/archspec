@@ -27,25 +27,43 @@ module ArchSpec
       module_function
 
       def print(output = $stdout, graph:, diagnostics:)
-        if diagnostics.empty?
-          output.puts "ArchSpec passed: #{graph.files.size} files, #{graph.constants.size} constants, " \
-                      "#{graph.edges.size} facts checked."
-          output.puts facts_summary(graph)
-          output.puts census_summary(graph)
-          return
-        end
-
+        predating, failing = diagnostics.partition(&:predates_rule?)
         style = Style.new(output)
         sources = Hash.new { |hash, path| hash[path] = read_lines(path) }
 
-        diagnostics.each do |diagnostic|
+        failing.each do |diagnostic|
           print_diagnostic(output, style, graph, diagnostic, sources)
         end
+        print_predating(output, style, graph, predating)
 
-        label = diagnostics.size == 1 ? 'architecture violation' : 'architecture violations'
-        output.puts style.bold("#{diagnostics.size} #{label} found.")
+        if failing.empty?
+          output.puts "ArchSpec passed: #{graph.files.size} files, #{graph.constants.size} constants, " \
+                      "#{graph.edges.size} facts checked."
+        else
+          label = failing.size == 1 ? 'architecture violation' : 'architecture violations'
+          output.puts style.bold("#{failing.size} #{label} found.")
+        end
         output.puts facts_summary(graph)
         output.puts census_summary(graph)
+        output.puts dating_summary(graph) if graph.dating_note
+      end
+
+      # Findings on lines older than their rule's date: listed under their own
+      # heading, one line each, and left out of the count that fails the run.
+      def print_predating(output, style, graph, predating)
+        return if predating.empty?
+
+        label = predating.size == 1 ? 'finding predates' : 'findings predate'
+        output.puts style.bold("#{predating.size} #{label} the rule's since: date, reported, not failed:")
+        predating.each do |diagnostic|
+          output.puts "  #{diagnostic.location.relative_path(graph.root)}:#{diagnostic.location.line}: " \
+                      "#{diagnostic.message} [#{diagnostic.rule}] (since #{diagnostic.dated})"
+        end
+        output.puts
+      end
+
+      def dating_summary(graph)
+        "since: some findings could not be dated, #{graph.dating_note}; they count as undated"
       end
 
       # What the run could not see, by cause, so a run the parser barely read
@@ -148,7 +166,14 @@ module ArchSpec
           output.puts
           output.puts "  #{style.note('note:')} #{note}"
         end
+        output.puts "  #{style.note('reason:')} #{diagnostic.reason}" if diagnostic.reason
+        output.puts "  #{style.note('action:')} #{diagnostic.suggested_action}" if diagnostic.suggested_action
+        output.puts "  #{style.note('since:')} #{since_for(diagnostic)}" if diagnostic.since == :unknown
         output.puts
+      end
+
+      def since_for(diagnostic)
+        "#{diagnostic.dated}, this line could not be dated, so the finding counts as undated"
       end
 
       def print_frame(output, style, location, lines)

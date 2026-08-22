@@ -50,6 +50,7 @@ module ArchSpec
             }
           end,
           census: graph.census.report,
+          dating_note: graph.dating_note,
           violations: diagnostics.map { |diagnostic| diagnostic.to_h(root: graph.root) }
         }
       end

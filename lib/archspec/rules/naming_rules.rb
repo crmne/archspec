@@ -10,11 +10,13 @@ module ArchSpec
     # method in the project when +source+ is nil. Every finding is name-based and
     # exact, so confidence is always +:high+.
     class NamingRule
+      include Annotated
+
       VALID_SCOPES = %i[instance class].freeze
 
       attr_reader :source, :selector, :scope, :except
 
-      def initialize(source:, selector:, constraint:, scope: :instance, except: [])
+      def initialize(source:, selector:, constraint:, scope: :instance, except: [], since: nil)
         unless VALID_SCOPES.include?(scope)
           raise Error, "method_names scope: must be :instance or :class, got #{scope.inspect}"
         end
@@ -24,6 +26,7 @@ module ArchSpec
         @constraint = constraint
         @scope = scope
         @except = Array(except).flatten.map(&:to_sym).to_set
+        annotate(because: constraint.reason, since: since)
       end
 
       def id
@@ -74,8 +77,11 @@ module ArchSpec
 
       # Forbids any selected method from existing. Rule id +naming.forbidden+.
       class Forbidden
+        attr_reader :reason
+
         def initialize(because: nil)
           @because = because
+          @reason = because
         end
 
         def id
@@ -88,7 +94,9 @@ module ArchSpec
               rule: id,
               message: message_for(definition),
               location: definition.location,
-              evidence: "#{definition.owner} defines #{definition.scope} method #{definition.name} (#{rule.selector.describe})"
+              evidence: "#{definition.owner} defines #{definition.scope} method #{definition.name} (#{rule.selector.describe})",
+              reason: rule.reason,
+              dated: rule.since
             )
           end
         end
@@ -106,6 +114,8 @@ module ArchSpec
       # interpolates the selector's named captures, as in
       # <tt>requires("without_%{base}")</tt>. Rule id +naming.requires+.
       class Requires
+        attr_reader :reason
+
         def initialize(template, on: nil, scope: :instance, because: nil)
           unless NamingRule::VALID_SCOPES.include?(scope)
             raise Error, "requires scope: must be :instance or :class, got #{scope.inspect}"
@@ -116,6 +126,7 @@ module ArchSpec
           @on = on
           @target_scope = scope
           @because = because
+          @reason = because
         end
 
         def id
@@ -134,7 +145,9 @@ module ArchSpec
               rule: id,
               message: message_for(definition, sibling, target, rule),
               location: definition.location,
-              evidence: "#{definition.owner} defines ##{definition.name}, expected ##{sibling}"
+              evidence: "#{definition.owner} defines ##{definition.name}, expected ##{sibling}",
+              reason: rule.reason,
+              dated: rule.since
             )
           end
         end
@@ -189,24 +202,25 @@ module ArchSpec
           @scope = scope
         end
 
-        def forbidden(except: [], because: nil)
-          add(Forbidden.new(because: because), except)
+        def forbidden(except: [], because: nil, since: nil)
+          add(Forbidden.new(because: because), except, since)
         end
 
-        def requires(template, on: nil, scope: :instance, except: [], because: nil)
+        def requires(template, on: nil, scope: :instance, except: [], because: nil, since: nil)
           validate_template!(template)
-          add(Requires.new(template, on: component_name(on), scope: scope, because: because), except)
+          add(Requires.new(template, on: component_name(on), scope: scope, because: because), except, since)
         end
 
         private
 
-        def add(constraint, except)
+        def add(constraint, except, since)
           rule = NamingRule.new(
             source: @component.name,
             selector: @selector,
             constraint: constraint,
             scope: @scope,
-            except: except
+            except: except,
+            since: since
           )
           @component.definition.add_rule(rule)
           @component

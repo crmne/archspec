@@ -168,10 +168,13 @@ module ArchSpec
       #   no_cycles
       #   no_cycles among: %i[billing catalog shared]
       #
-      # Rule id: +dependencies.no_cycles+.
-      def no_cycles(among: nil)
+      # Every rule-creating call takes +because:+, the reason printed with each
+      # finding, and +since:+, a date from which the rule holds: a breach on a
+      # line older than the date is reported under its own heading and does
+      # not fail the check. Rule id: +dependencies.no_cycles+.
+      def no_cycles(among: nil, because: nil, since: nil)
         DSL.assert_known_components!(self, among, for_rule: 'no_cycles') if among
-        add_rule(Rules::NoCyclesRule.new(among: among))
+        add_rule(Rules::NoCyclesRule.new(among: among, because: because, since: since))
       end
 
       # Adds a custom rule object. A rule responds to +id+ and
@@ -197,6 +200,11 @@ module ArchSpec
     # they chain.
     #
     #   services.cannot_use(:controllers).cannot_call(:render, receiver: :none)
+    #
+    # Every rule method takes +because:+, the reason printed beside each
+    # finding and carried in JSON, and +since:+, the date the rule holds from.
+    # Neither enters a finding's fingerprint, so adding them to a rule the
+    # team already runs moves no todo entry.
     class ComponentProxy
       attr_reader :definition, :name
 
@@ -212,9 +220,9 @@ module ArchSpec
       #   controllers.can_only_use :models, :services
       #
       # Rule id: +dependencies.allow+.
-      def can_only_use(*targets)
+      def can_only_use(*targets, because: nil, since: nil)
         DSL.assert_known_components!(definition, targets, for_rule: "#{name}.can_only_use")
-        add_rule(Rules::AllowDependenciesRule.new(name, targets))
+        add_rule(Rules::AllowDependenciesRule.new(name, targets, because: because, since: since))
         self
       end
 
@@ -224,9 +232,9 @@ module ArchSpec
       #   models.cannot_use :controllers, :helpers
       #
       # Rule id: +dependencies.forbid+.
-      def cannot_use(*targets)
+      def cannot_use(*targets, because: nil, since: nil)
         DSL.assert_known_components!(definition, targets, for_rule: "#{name}.cannot_use")
-        add_rule(Rules::ForbidDependenciesRule.new(name, targets))
+        add_rule(Rules::ForbidDependenciesRule.new(name, targets, because: because, since: since))
         self
       end
 
@@ -237,9 +245,9 @@ module ArchSpec
       #   shared_kernel.can_only_be_used_by :billing, :catalog
       #
       # Rule id: +dependencies.consumers+.
-      def can_only_be_used_by(*consumers)
+      def can_only_be_used_by(*consumers, because: nil, since: nil)
         DSL.assert_known_components!(definition, consumers, for_rule: "#{name}.can_only_be_used_by")
-        add_rule(Rules::AllowedConsumersRule.new(name, consumers))
+        add_rule(Rules::AllowedConsumersRule.new(name, consumers, because: because, since: since))
         self
       end
 
@@ -255,8 +263,8 @@ module ArchSpec
       # with +attr_*+, Rails +attribute+, or +delegate+ is treated as its own API
       # and not flagged.
       # Rule id: +methods.forbid+.
-      def cannot_call(*methods, receiver: :any)
-        add_rule(Rules::CannotCallRule.new(name, methods, receiver: receiver))
+      def cannot_call(*methods, receiver: :any, because: nil, since: nil)
+        add_rule(Rules::CannotCallRule.new(name, methods, receiver: receiver, because: because, since: since))
         self
       end
 
@@ -267,8 +275,8 @@ module ArchSpec
       #   models.cannot_define :call
       #
       # Rule id: +methods.define_forbid+.
-      def cannot_define(*methods)
-        add_rule(Rules::CannotDefineMethodRule.new(name, methods))
+      def cannot_define(*methods, because: nil, since: nil)
+        add_rule(Rules::CannotDefineMethodRule.new(name, methods, because: because, since: since))
         self
       end
 
@@ -277,8 +285,8 @@ module ArchSpec
       # toward plain methods over anonymous command objects.
       #
       # Rule id: +objects.instantiate_and_invoke_forbid+.
-      def cannot_instantiate_and_invoke
-        add_rule(Rules::CannotInstantiateAndInvokeRule.new(name))
+      def cannot_instantiate_and_invoke(because: nil, since: nil)
+        add_rule(Rules::CannotInstantiateAndInvokeRule.new(name, because: because, since: since))
         self
       end
 
@@ -288,8 +296,8 @@ module ArchSpec
       #   models.cannot_reference_constants "ActionController", "ActionView"
       #
       # Rule id: +constants.forbid+.
-      def cannot_reference_constants(*constants)
-        add_rule(Rules::CannotReferenceConstantsRule.new(name, constants))
+      def cannot_reference_constants(*constants, because: nil, since: nil)
+        add_rule(Rules::CannotReferenceConstantsRule.new(name, constants, because: because, since: since))
         self
       end
 
@@ -303,8 +311,9 @@ module ArchSpec
       # +constants+ matches exact names, +namespace+ matches a name and its
       # children. Code inside the component may still reach its own internals.
       # Rule id: +dependencies.privacy+.
-      def public_api(*patterns, constants: nil, namespace: nil)
-        add_rule(Rules::PublicApiRule.new(name, files: patterns, constants: constants, namespaces: namespace))
+      def public_api(*patterns, constants: nil, namespace: nil, because: nil, since: nil)
+        add_rule(Rules::PublicApiRule.new(name, files: patterns, constants: constants, namespaces: namespace,
+                                                because: because, since: since))
         self
       end
 
@@ -316,8 +325,8 @@ module ArchSpec
       #   model_concerns.cannot_reference_includers
       #
       # Rule id: +concerns.independence+.
-      def cannot_reference_includers
-        add_rule(Rules::ConcernIndependenceRule.new(name))
+      def cannot_reference_includers(because: nil, since: nil)
+        add_rule(Rules::ConcernIndependenceRule.new(name, because: because, since: since))
         self
       end
 
@@ -329,8 +338,8 @@ module ArchSpec
       #     .must_be_empty(because: "behavior belongs on models")
       #
       # Rule id: +components.empty+.
-      def must_be_empty(because: nil)
-        add_rule(Rules::MustBeEmptyRule.new(name, because: because))
+      def must_be_empty(because: nil, since: nil)
+        add_rule(Rules::MustBeEmptyRule.new(name, because: because, since: since))
         self
       end
 
@@ -344,11 +353,11 @@ module ArchSpec
       #   jobs.must_implement :perform_later, scope: :class
       #
       # Rule id: +protocol.must_implement+.
-      def must_implement(*methods, scope: :instance)
+      def must_implement(*methods, scope: :instance, because: nil, since: nil)
         raise Error, 'must_implement requires at least one method' if methods.flatten.compact.empty?
 
         methods.each do |method_name|
-          add_rule(Rules::MustImplementRule.new(name, method_name, scope: scope))
+          add_rule(Rules::MustImplementRule.new(name, method_name, scope: scope, because: because, since: since))
         end
         self
       end
@@ -360,8 +369,8 @@ module ArchSpec
       #   commands.must_implement_one_of :perform, :call
       #
       # Rule id: +protocol.must_implement_one_of+.
-      def must_implement_one_of(*methods, scope: :instance)
-        add_rule(Rules::MustImplementOneOfRule.new(name, methods, scope: scope))
+      def must_implement_one_of(*methods, scope: :instance, because: nil, since: nil)
+        add_rule(Rules::MustImplementOneOfRule.new(name, methods, scope: scope, because: because, since: since))
         self
       end
 
@@ -388,8 +397,11 @@ module ArchSpec
             candidate.respond_to?(:merge_key) && candidate.merge_key == rule.merge_key
           end
 
-          return existing.merge!(rule) if existing.respond_to?(:merge!)
-          return existing if existing
+          if existing
+            existing.merge!(rule) if existing.respond_to?(:merge!)
+            existing.merge_annotations!(rule) if existing.respond_to?(:merge_annotations!)
+            return existing
+          end
         end
 
         definition.add_rule(rule)

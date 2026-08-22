@@ -10,11 +10,14 @@ module ArchSpec
     # Base for the allow and forbid dependency rules. Merges repeated
     # declarations for the same source component.
     class DependencyRule
+      include Annotated
+
       attr_reader :source, :targets
 
-      def initialize(source, targets)
+      def initialize(source, targets, because: nil, since: nil)
         @source = source.to_sym
         @targets = Array(targets).flatten.map(&:to_sym).to_set
+        annotate(because: because, since: since)
       end
 
       def merge_key
@@ -31,6 +34,17 @@ module ArchSpec
       def relevant_edges(graph)
         graph.dependency_edges.select { |edge| graph.source_components_for(edge).include?(source) }
       end
+
+      def breach(graph, edge, target, message)
+        diagnostic(
+          rule: id,
+          message: message,
+          location: edge.location,
+          evidence: graph.edge_evidence(edge),
+          confidence: edge.confidence,
+          suggested_action: Cut.for_dependency(graph, edge, target)
+        )
+      end
     end
 
     # Backs ArchSpec::DSL::ComponentProxy#can_only_use. Flags references from the
@@ -45,13 +59,7 @@ module ArchSpec
           graph.target_components_for(edge).filter_map do |target|
             next if target == source || targets.include?(target)
 
-            Diagnostic.new(
-              rule: id,
-              message: "#{source} may not depend on #{target}",
-              location: edge.location,
-              evidence: graph.edge_evidence(edge),
-              confidence: edge.confidence
-            )
+            breach(graph, edge, target, "#{source} may not depend on #{target}")
           end
         end
       end
@@ -69,13 +77,7 @@ module ArchSpec
           forbidden = graph.target_components_for(edge) & targets
 
           forbidden.map do |target|
-            Diagnostic.new(
-              rule: id,
-              message: "#{source} must not depend on #{target}",
-              location: edge.location,
-              evidence: graph.edge_evidence(edge),
-              confidence: edge.confidence
-            )
+            breach(graph, edge, target, "#{source} must not depend on #{target}")
           end
         end
       end
@@ -85,11 +87,14 @@ module ArchSpec
     # allowlist: flags references to the component from any component that is not
     # an approved consumer. Use it to protect a shared kernel.
     class AllowedConsumersRule
+      include Annotated
+
       attr_reader :source, :consumers
 
-      def initialize(source, consumers)
+      def initialize(source, consumers, because: nil, since: nil)
         @source = source.to_sym
         @consumers = Array(consumers).flatten.map(&:to_sym).to_set
+        annotate(because: because, since: since)
       end
 
       def merge_key
@@ -114,12 +119,13 @@ module ArchSpec
           end
 
           offenders.map do |offender|
-            Diagnostic.new(
+            diagnostic(
               rule: id,
               message: message_for(offender),
               location: edge.location,
               evidence: graph.edge_evidence(edge),
-              confidence: edge.confidence
+              confidence: edge.confidence,
+              suggested_action: Cut.for_dependency(graph, edge, source)
             )
           end
         end
@@ -137,11 +143,14 @@ module ArchSpec
     # Backs ArchSpec::DSL::ComponentProxy#cannot_reference_constants. Flags
     # references to the named constants or anything nested under them.
     class CannotReferenceConstantsRule
+      include Annotated
+
       attr_reader :source, :constants
 
-      def initialize(source, constants)
+      def initialize(source, constants, because: nil, since: nil)
         @source = source.to_sym
         @constants = Array(constants).flatten.map { |constant| constant.to_s.sub(/\A::/, '') }
+        annotate(because: because, since: since)
       end
 
       def merge_key
@@ -164,7 +173,7 @@ module ArchSpec
           referenced = graph.resolve_edge_constant(edge)
           next unless constants.any? { |constant| referenced == constant || referenced.start_with?("#{constant}::") }
 
-          Diagnostic.new(
+          diagnostic(
             rule: id,
             message: "#{source} must not reference #{referenced}",
             location: edge.location,

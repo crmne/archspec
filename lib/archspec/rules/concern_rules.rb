@@ -6,12 +6,15 @@ module ArchSpec
     # is a module mixed into other classes; this flags a concern that names the
     # very constant that includes it, which is a circular knowledge dependency.
     class ConcernIndependenceRule
+      include Annotated
+
       MIXIN_TYPES = %i[includes prepends extends].freeze
 
       attr_reader :source
 
-      def initialize(source)
+      def initialize(source, because: nil, since: nil)
         @source = source.to_sym
+        annotate(because: because, since: since)
       end
 
       def merge_key
@@ -38,11 +41,12 @@ module ArchSpec
           includer = consumers.find { |name| target == name || target.start_with?("#{name}::") }
           next unless includer
 
-          Diagnostic.new(
+          diagnostic(
             rule: id,
             message: "#{edge.from_constant} must not reference its includer #{includer}",
             location: edge.location,
-            evidence: "#{edge.from_constant} #{edge.verb} #{target}"
+            evidence: "#{edge.from_constant} #{edge.verb} #{target}",
+            suggested_action: Cut.for_concern(edge.from_constant, includer, target)
           )
         end
       end

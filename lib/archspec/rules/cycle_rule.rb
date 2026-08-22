@@ -5,10 +5,13 @@ module ArchSpec
     # Backs ArchSpec::DSL::Context#no_cycles. Flags each group of components
     # that depend on each other, reporting the group once with an example cycle.
     class NoCyclesRule
+      include Annotated
+
       attr_reader :components
 
-      def initialize(among: nil)
+      def initialize(among: nil, because: nil, since: nil)
         @components = Array(among).compact.map(&:to_sym)
+        annotate(because: because, since: since)
       end
 
       def id
@@ -20,7 +23,7 @@ module ArchSpec
       # enumerating its elementary cycles instead reports the same tangle
       # exponentially many times.
       def evaluate(graph)
-        locations = dependency_locations(graph)
+        locations, counts = dependency_locations(graph)
         adjacency = adjacency_for(locations)
 
         StronglyConnectedComponents.of(adjacency).filter_map do |group|
@@ -29,11 +32,12 @@ module ArchSpec
           cycle = shortest_cycle(adjacency, group)
           next unless cycle
 
-          Diagnostic.new(
+          diagnostic(
             rule: id,
             message: message_for(group, cycle),
             location: locations[[cycle[0], cycle[1]]] || SourceLocation.point(graph.root, 1, 1),
-            evidence: cycle.join(' -> ')
+            evidence: cycle.join(' -> '),
+            suggested_action: Cut.for_cycle(cycle, counts)
           )
         end
       end
@@ -41,10 +45,12 @@ module ArchSpec
       private
 
       # Every component pair with a dependency between them, mapped to the first
-      # edge that creates it so a reported cycle can point at real source.
+      # edge that creates it so a reported cycle can point at real source, and
+      # to how many edges sit behind it so the cut can name the lightest one.
       def dependency_locations(graph)
         allowed = components.to_set
         locations = {}
+        counts = Hash.new(0)
 
         graph.dependency_edges.each do |edge|
           sources = graph.source_components_for(edge)
@@ -54,12 +60,15 @@ module ArchSpec
           targets = graph.target_components_for(edge)
           sources.each do |source|
             targets.each do |target|
-              locations[[source, target]] ||= edge.location unless source == target
+              next if source == target
+
+              locations[[source, target]] ||= edge.location
+              counts[[source, target]] += 1
             end
           end
         end
 
-        locations
+        [locations, counts]
       end
 
       def adjacency_for(locations)

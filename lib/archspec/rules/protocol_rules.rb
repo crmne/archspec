@@ -5,9 +5,11 @@ module ArchSpec
     # Backs ArchSpec::DSL::ComponentProxy#cannot_call. Flags calls to the named
     # methods, optionally only bare implicit-+self+ calls.
     class CannotCallRule
+      include Annotated
+
       attr_reader :source, :method_names, :receiver
 
-      def initialize(source, methods, receiver: :any)
+      def initialize(source, methods, receiver: :any, because: nil, since: nil)
         unless %i[any none].include?(receiver)
           raise Error, "cannot_call receiver: must be :any or :none, got #{receiver.inspect}"
         end
@@ -15,6 +17,7 @@ module ArchSpec
         @source = source.to_sym
         @method_names = Array(methods).flatten.map(&:to_sym)
         @receiver = receiver
+        annotate(because: because, since: since)
       end
 
       def merge_key
@@ -38,7 +41,7 @@ module ArchSpec
           next unless graph.source_components_for(edge).include?(source)
           next if own_method_call?(graph, edge)
 
-          Diagnostic.new(
+          diagnostic(
             rule: id,
             message: "#{source} must not call ##{edge.to}",
             location: edge.location,
@@ -63,12 +66,15 @@ module ArchSpec
     # component that do not implement the method, counting inherited and
     # mixed-in methods.
     class MustImplementRule
+      include Annotated
+
       attr_reader :source, :method_name, :scope
 
-      def initialize(source, method_name, scope: :instance)
+      def initialize(source, method_name, scope: :instance, because: nil, since: nil)
         @source = source.to_sym
         @method_name = method_name.to_sym
         @scope = ProtocolEvidence.validate_scope(scope)
+        annotate(because: because, since: since)
       end
 
       def merge_key
@@ -84,7 +90,7 @@ module ArchSpec
           methods, unresolved = graph.effective_methods_in_scope(constant.name, scope)
           next if methods.include?(method_name)
 
-          Diagnostic.new(
+          diagnostic(
             rule: id,
             message: "#{constant.name} must implement #{ProtocolEvidence.describe(method_name, scope)}",
             location: constant.location,
@@ -104,15 +110,18 @@ module ArchSpec
     # Backs ArchSpec::DSL::ComponentProxy#must_implement_one_of. Flags classes
     # that implement none of the named methods.
     class MustImplementOneOfRule
+      include Annotated
+
       attr_reader :source, :method_names, :scope
 
-      def initialize(source, method_names, scope: :instance)
+      def initialize(source, method_names, scope: :instance, because: nil, since: nil)
         @source = source.to_sym
         names = Array(method_names).flatten.compact
         raise Error, 'must_implement_one_of requires at least one method' if names.empty?
 
         @method_names = names.map(&:to_sym)
         @scope = ProtocolEvidence.validate_scope(scope)
+        annotate(because: because, since: since)
       end
 
       def merge_key
@@ -134,7 +143,7 @@ module ArchSpec
           next if method_names.any? { |method_name| methods.include?(method_name) }
 
           described = method_names.map { |name| ProtocolEvidence.describe(name, scope) }.join(', ')
-          Diagnostic.new(
+          diagnostic(
             rule: id,
             message: "#{constant.name} must implement one of #{described}",
             location: constant.location,
@@ -188,11 +197,14 @@ module ArchSpec
     # Backs ArchSpec::DSL::ComponentProxy#cannot_define. Flags method
     # definitions in the component matching the named methods.
     class CannotDefineMethodRule
+      include Annotated
+
       attr_reader :source, :method_names
 
-      def initialize(source, methods)
+      def initialize(source, methods, because: nil, since: nil)
         @source = source.to_sym
         @method_names = Array(methods).flatten.map(&:to_sym)
+        annotate(because: because, since: since)
       end
 
       def merge_key
@@ -212,7 +224,7 @@ module ArchSpec
         graph.method_definitions_for_component(source).filter_map do |method_definition|
           next unless method_names.include?(method_definition.name)
 
-          Diagnostic.new(
+          diagnostic(
             rule: id,
             message: "#{source} must not define ##{method_definition.name}",
             location: method_definition.location,
@@ -225,10 +237,13 @@ module ArchSpec
     # Backs ArchSpec::DSL::ComponentProxy#cannot_instantiate_and_invoke. Flags
     # the one-shot <tt>Thing.new(...).call</tt> pattern.
     class CannotInstantiateAndInvokeRule
+      include Annotated
+
       attr_reader :source
 
-      def initialize(source)
+      def initialize(source, because: nil, since: nil)
         @source = source.to_sym
+        annotate(because: because, since: since)
       end
 
       def merge_key
@@ -244,7 +259,7 @@ module ArchSpec
           next unless edge.type == :instantiates_and_invokes
           next unless graph.source_components_for(edge).include?(source)
 
-          Diagnostic.new(
+          diagnostic(
             rule: id,
             message: "#{source} must not instantiate and immediately invoke #{edge.to}",
             location: edge.location,
