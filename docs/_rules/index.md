@@ -34,6 +34,10 @@ ArchSpec reports each violation with its message and rule id, the offending code
 - [Components]({% link _rules/components.md %})
 - [Concerns]({% link _rules/concerns.md %})
 
+## Reasons, Dates and Actions
+
+Every rule takes `because:`, printed with each finding, and `since:`, a date the rule holds from; findings older than the date are reported but do not fail. Each finding carries the smallest cut the graph can see, or says that it sees none. See [Configuration]({% link _reference/configuration.md %}#reasons-dates-and-actions).
+
 ## Suppressing a Rule
 
 Prefer a narrow suppression with a reason:

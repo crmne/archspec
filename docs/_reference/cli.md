@@ -50,9 +50,13 @@ app/models/user.rb:9:5
     10 │   end
 
   note: User references UsersController
+  reason: models and services run outside a request too, so nothing in them may know the controller
+  action: move User to services, where its other dependencies already land
 
 1 architecture violation found.
 ```
+
+The note is the evidence, the reason is the rule's `because:`, and the action is the smallest cut the graph can see. Findings on lines older than a rule's `since:` date are listed under their own heading after the failing ones and do not affect the exit status; when a line could not be dated, the run says so once and the finding counts as undated.
 
 A clean run prints the summary, names the facts files it merged or says the directory was absent, and then says what the analysis could not see:
 
