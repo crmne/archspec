@@ -13,7 +13,7 @@ module ArchSpec
   #   archspec check [PATHS...] [--config PATH] [--format text|json|github|sarif] [--update-todo] [--housekeeping]
   #   archspec check --baseline [DIR] [--mode ratchet|advisory|strict]
   #   archspec snapshot [--config PATH] [--output DIR]
-  #   archspec explain PATH_OR_CONSTANT
+  #   archspec explain PATH_OR_CONSTANT [--config PATH] [--format text|json]
   #   archspec reflect [--config PATH] [--output PATH] [--static | --rubydex]
   #
   # #run returns the process exit status: 0 when clean, 1 when violations are
@@ -283,10 +283,11 @@ module ArchSpec
     end
 
     def explain(argv, output)
-      options = { config: CONFIG_FILE, help: false }
+      options = { config: CONFIG_FILE, format: 'text', help: false }
       parser = OptionParser.new do |opts|
         opts.banner = usage('explain').strip
         opts.on('--config PATH', 'Use a different architecture file') { |value| options[:config] = value }
+        opts.on('--format FORMAT', 'Output text or json') { |value| options[:format] = value }
         opts.on('-h', '--help', 'Show this help') { options[:help] = true }
       end
       parser.parse!(argv)
@@ -300,10 +301,80 @@ module ArchSpec
       raise UsageError, 'missing PATH_OR_CONSTANT' unless subject
       raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
 
+      formatter = explain_formatter_for(options[:format])
       definition, root = load_definition(options[:config])
-      graph = Analyzer.analyze(definition, root: root)
-      Formatters::Explanation.print(output, graph: graph, subject: subject)
+      graph, origin = graph_for_explain(definition, root)
+      todo = Todo.load(todo_path_for(definition, root), root: root)
+      diagnostics = Evaluator.evaluate(definition, graph, todo: todo)
+      explanation = Explanation.build(graph: graph, rules: definition.rules, diagnostics: diagnostics, todo: todo,
+                                      subject: subject, origin: origin) do |rule, unassigned|
+        rule.evaluate(unassigned)
+      end
+      formatter.print(output, explanation: explanation)
       0
+    end
+
+    # The snapshot's graph when one was taken the same way of the same tree,
+    # else a fresh analysis; the origin says which, and why, so the two never
+    # read alike. A snapshot of an older commit or of a tree that has since
+    # changed is not this tree, however comparable its receipt.
+    def graph_for_explain(definition, root)
+      directory = File.expand_path(Snapshot::DEFAULT_DIRECTORY, root)
+      commit = GitTree.commit(root)
+      dirty = GitTree.dirty?(root)
+      cause = snapshot_cause(definition, root, directory, commit, dirty)
+      if cause
+        [Analyzer.analyze(definition, root: root), Explanation::Origin.new(source: :analysis, commit: commit,
+                                                                                 dirty: dirty, cause: cause)]
+      else
+        snapshot = Snapshot.load(directory, root: root)
+        [snapshot.graph, Explanation::Origin.new(source: :snapshot, commit: snapshot.receipt.commit,
+                                                 dirty: snapshot.receipt.dirty, cause: nil)]
+      end
+    end
+
+    def snapshot_cause(definition, root, directory, commit, dirty)
+      return 'no snapshot has been taken' unless File.exist?(File.join(directory, Snapshot::RECEIPT_FILE))
+
+      snapshot = Snapshot.load(directory, root: root)
+      receipt = snapshot.receipt
+      current = Receipt.new(
+        format: Snapshot::FORMAT, archspec_version: ArchSpec::VERSION, root: root, definition_digest: nil,
+        patterns: (definition.analysis_patterns + definition.ignore_patterns).sort, parsed_set_digest: '',
+        rule_ids: [], commit: commit, dirty: dirty, payload_digest: nil
+      )
+      current.incomparable_with(receipt) || tree_moved_since(receipt, commit, dirty) || files_changed_since(snapshot)
+    rescue Error => e
+      e.message
+    end
+
+    def tree_moved_since(receipt, commit, dirty)
+      if receipt.commit && commit && receipt.commit != commit
+        "the snapshot was taken at #{receipt.commit[0, 12]} and the tree is at #{commit[0, 12]}"
+      elsif dirty
+        'the working tree has changes since the snapshot'
+      elsif receipt.dirty
+        'the snapshot was taken from a tree with uncommitted changes'
+      end
+    end
+
+    # Git cannot see every tree, so the files the snapshot read are digested
+    # again: one of them changed on disk means the snapshot is not this tree.
+    def files_changed_since(snapshot)
+      return if Snapshot.parsed_set_digest(snapshot.graph) == snapshot.receipt.parsed_set_digest
+
+      'files the snapshot read have changed on disk'
+    end
+
+    def explain_formatter_for(name)
+      case name
+      when 'text'
+        Formatters::Explanation
+      when 'json'
+        Formatters::ExplanationJSON
+      else
+        raise UsageError, "unknown format: #{name.inspect} (expected text or json)"
+      end
     end
 
     # Runs the Active Record reflector inside the application through
@@ -457,7 +528,7 @@ module ArchSpec
       when 'snapshot'
         'Usage: archspec snapshot [--config PATH] [--output DIR]'
       when 'explain'
-        'Usage: archspec explain PATH_OR_CONSTANT [--config PATH]'
+        'Usage: archspec explain PATH_OR_CONSTANT [--config PATH] [--format text|json]'
       when 'reflect'
         'Usage: archspec reflect [--config PATH] [--output PATH] [--static | --rubydex]'
       when 'version'
@@ -469,7 +540,7 @@ module ArchSpec
             archspec check [PATHS...] [--config PATH] [--format text|json|github|sarif] [--update-todo] [--housekeeping]
             archspec check [PATHS...] --baseline [DIR] [--mode ratchet|advisory|strict]
             archspec snapshot [--config PATH] [--output DIR]
-            archspec explain PATH_OR_CONSTANT [--config PATH]
+            archspec explain PATH_OR_CONSTANT [--config PATH] [--format text|json]
             archspec reflect [--config PATH] [--output PATH] [--static | --rubydex]
             archspec version
             archspec help [COMMAND]
