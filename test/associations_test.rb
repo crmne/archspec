@@ -57,6 +57,19 @@ class AssociationsTest < ArchSpecTest
     assert_equal [['Billing::Invoice', 'Billing::Account', 'index', 'belongs_to', 'account']], rows(facts)
   end
 
+  def test_the_owners_own_namespace_is_tried_before_the_top_level
+    facts = facts_for(
+      'app/models/account.rb' => "class Account < ApplicationRecord\n  has_one :join_code\n  has_many :tags\nend\n",
+      'app/models/account/join_code.rb' => "class Account::JoinCode < ApplicationRecord\n  belongs_to :account\nend\n",
+      'app/models/join_code.rb' => "class JoinCode < ApplicationRecord; end\n",
+      'app/models/tag.rb' => "class Tag < ApplicationRecord; end\n"
+    )
+
+    assert_equal [%w[Account Account::JoinCode index has_one join_code], %w[Account Tag index has_many tags],
+                  %w[Account::JoinCode Account index belongs_to account]], rows(facts)
+    assert_empty facts[:misses]
+  end
+
   def test_sti_subclasses_enter_the_index
     facts = facts_for(
       'app/models/user.rb' => "class User < ApplicationRecord; end\n",
@@ -116,6 +129,44 @@ class AssociationsTest < ArchSpecTest
 
     assert_equal [%w[Post Voter index has_many voters]], rows(facts)
     assert_equal({ 'unresolved_through' => 3 }, facts[:misses])
+  end
+
+  def test_through_walks_two_hops_when_the_intermediate_is_itself_a_through
+    facts = facts_for(
+      'app/models/author.rb' => "class Author < ApplicationRecord\n  has_many :posts\n  has_many :taggings, through: :posts\n  has_many :tags, through: :taggings\nend\n",
+      'app/models/post.rb' => "class Post < ApplicationRecord\n  has_many :taggings\n  has_many :tags, through: :taggings\nend\n",
+      'app/models/tagging.rb' => "class Tagging < ApplicationRecord\n  belongs_to :tag\nend\n",
+      'app/models/tag.rb' => "class Tag < ApplicationRecord; end\n"
+    )
+
+    assert_equal [%w[Author Post index has_many posts], %w[Author Tag through has_many tags],
+                  %w[Author Tagging through has_many taggings], %w[Post Tag through has_many tags],
+                  %w[Post Tagging index has_many taggings], %w[Tagging Tag index belongs_to tag]], rows(facts)
+    assert_empty facts[:misses]
+  end
+
+  def test_through_walks_three_hops_across_models
+    facts = facts_for(
+      'app/models/company.rb' => "class Company < ApplicationRecord\n  has_many :teams\n  has_many :members, through: :teams\n  has_many :badges, through: :members\nend\n",
+      'app/models/team.rb' => "class Team < ApplicationRecord\n  has_many :memberships\n  has_many :members, through: :memberships\nend\n",
+      'app/models/membership.rb' => "class Membership < ApplicationRecord\n  belongs_to :member\nend\n",
+      'app/models/member.rb' => "class Member < ApplicationRecord\n  has_many :awards\n  has_many :badges, through: :awards\nend\n",
+      'app/models/award.rb' => "class Award < ApplicationRecord\n  belongs_to :badge\nend\n",
+      'app/models/badge.rb' => "class Badge < ApplicationRecord; end\n"
+    )
+
+    assert_includes rows(facts), %w[Company Badge through has_many badges]
+    assert_includes rows(facts), %w[Company Member through has_many members]
+    assert_empty facts[:misses]
+  end
+
+  def test_a_through_cycle_is_a_miss_not_a_loop
+    facts = facts_for(
+      'app/models/post.rb' => "class Post < ApplicationRecord\n  has_many :tags, through: :labels\n  has_many :labels, through: :tags\nend\n"
+    )
+
+    assert_empty rows(facts)
+    assert_equal({ 'unresolved_through' => 2 }, facts[:misses])
   end
 
   def test_concerns_and_abstract_classes_own_nothing

@@ -10,8 +10,8 @@ require_relative 'version'
 module ArchSpec
   # Writes the Active Record facts file from the parsed tree alone, without
   # booting. An association becomes a reference in three determinations and
-  # no fourth: its class_name: is a literal, its through: walks one hop into
-  # the intermediate's own declaration, or its bare name matches exactly one
+  # no fourth: its class_name: is a literal, its through: walks the
+  # intermediates' own declarations hop by hop to a target, or its bare name matches exactly one
   # model the application declares. Everything else is counted by cause. No
   # inflector is consulted; the only names that resolve are names the app
   # declares.
@@ -87,13 +87,13 @@ module ArchSpec
         graph.constants.reject { |node| models.include?(node) }.map { |node| node.associations.size }.reject(&:zero?)
       end
 
-      def resolve(declaration, owner)
+      def resolve(declaration, owner, walked = [])
         return [nil, 'restated'] if restated?(declaration, owner)
         return [nil, 'polymorphic'] if declaration.polymorphic
         return [nil, 'source_type'] if declaration.source_type
         return [nil, 'dynamic'] if declaration.class_name == :dynamic
         return resolve_declared(declaration, owner) if declaration.class_name
-        return resolve_through(declaration, owner) if declaration.through
+        return resolve_through(declaration, owner, walked) if declaration.through
 
         resolve_by_name(declaration, owner)
       end
@@ -144,18 +144,26 @@ module ArchSpec
         [target, 'declared']
       end
 
-      def resolve_through(declaration, owner)
-        intermediate = own_association(owner, declaration.through)
-        return [nil, 'unresolved_through'] unless intermediate && !intermediate.through
+      # Each hop is an association resolved by the same rules as any other,
+      # so a through: whose intermediate is itself a through: keeps walking.
+      # The walk carries the declarations it has passed; meeting one again is
+      # a cycle and a miss, not a loop.
+      def resolve_through(declaration, owner, walked)
+        hop = [owner.name, declaration.name]
+        return [nil, 'unresolved_through'] if walked.include?(hop)
 
-        intermediate_target, = resolve(intermediate, owner)
+        walked += [hop]
+        intermediate = own_association(owner, declaration.through)
+        return [nil, 'unresolved_through'] unless intermediate
+
+        intermediate_target, = resolve(intermediate, owner, walked)
         intermediate_model = intermediate_target && models.find { |model| model.name == intermediate_target }
         return [nil, 'unresolved_through'] unless intermediate_model
 
         source = source_association(intermediate_model, declaration)
-        return [nil, 'unresolved_through'] unless source && !source.through
+        return [nil, 'unresolved_through'] unless source
 
-        target, = resolve(source, intermediate_model)
+        target, = resolve(source, intermediate_model, walked)
         target ? [target, 'through'] : [nil, 'unresolved_through']
       end
 
@@ -181,8 +189,11 @@ module ArchSpec
         singulars.size == 1 ? singulars.first : nil
       end
 
+      # Active Record looks an association's class up inside the owner's own
+      # namespace first, then each enclosing one: Account's join_code is
+      # Account::JoinCode before it is JoinCode.
       def resolve_by_name(declaration, owner)
-        scopes = owner.name.split('::')[0...-1]
+        scopes = owner.name.split('::')
         candidates = SINGULAR_MACROS.include?(declaration.macro) ? singular_candidates(declaration) : plural_candidates(declaration)
 
         scopes.size.downto(0) do |depth|
