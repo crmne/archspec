@@ -69,10 +69,19 @@ module ArchSpec
       # Points at the directory of facts files merged before rules run, written
       # by <tt>archspec reflect</tt> or by another producer. Defaults to
       # +archspec_facts+; an absent directory is reported, never an error.
+      # With <tt>associations: :static</tt> the Active Record associations
+      # the parser can resolve without booting are merged on every check as
+      # well, the same facts <tt>archspec reflect --static</tt> writes.
       #
       #   facts "archspec_facts"
-      def facts(path = Facts::DEFAULT_DIRECTORY)
+      #   facts "archspec_facts", associations: :static
+      def facts(path = Facts::DEFAULT_DIRECTORY, associations: nil)
+        unless associations.nil? || associations == :static
+          raise Error, "facts associations: must be :static, got #{associations.inspect}"
+        end
+
         self.facts_path = path.to_s
+        self.static_associations = associations == :static
       end
 
       # Yields each subdirectory matching a glob, so you can declare one

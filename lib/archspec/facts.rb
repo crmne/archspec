@@ -6,7 +6,7 @@ require 'yaml'
 require_relative 'value_object'
 
 module ArchSpec
-  FactsReference = ValueObject.define(:owner, :file, :line, :target, :macro, :name)
+  FactsReference = ValueObject.define(:owner, :file, :line, :target, :macro, :name, :determination)
   FactsGeneratedMethods = ValueObject.define(:owner, :names)
 
   FactsFile = ValueObject.define(
@@ -36,7 +36,7 @@ module ArchSpec
     DEFAULT_DIRECTORY = 'archspec_facts'
     FILE_KEYS = %w[format producer producer_version commit dirty references generated_methods misses].freeze
     REQUIRED_FILE_KEYS = %w[format producer producer_version references generated_methods].freeze
-    REFERENCE_KEYS = %w[owner file line target macro name].freeze
+    REFERENCE_KEYS = %w[owner file line target macro name determination].freeze
     REQUIRED_REFERENCE_KEYS = %w[owner file line target].freeze
     GENERATED_METHODS_KEYS = %w[owner names].freeze
 
@@ -99,7 +99,8 @@ module ArchSpec
             'line' => entry.line,
             'target' => entry.target,
             'macro' => entry.macro,
-            'name' => entry.name
+            'name' => entry.name,
+            'determination' => entry.determination
           }.compact
         end,
         'generated_methods' => generated_methods.sort_by(&:owner).map do |entry|
@@ -113,10 +114,46 @@ module ArchSpec
       raise Error, "could not write facts file #{path}: #{e.message}"
     end
 
+    # A file built in memory by a producer that ran inside check, merged
+    # beside the files read from disk and reported under the name it gives.
+    def self.built(producer:, producer_version:, references:, generated_methods:, misses:, label:)
+      FactsFile.new(
+        path: nil,
+        relative_path: label,
+        producer: producer,
+        producer_version: producer_version,
+        commit: nil,
+        dirty: false,
+        references: references,
+        generated_methods: generated_methods,
+        misses: misses
+      )
+    end
+
+    def self.commit_for(root)
+      git(root, 'rev-parse', 'HEAD')
+    end
+
+    def self.dirty?(root)
+      status = git(root, 'status', '--porcelain')
+      !status.nil? && !status.empty?
+    end
+
+    def self.git(root, *args)
+      result = IO.popen(['git', '-C', root, *args], err: File::NULL, &:read)
+      $?.success? ? result.strip : nil
+    rescue SystemCallError
+      nil
+    end
+
     def initialize(files, directory:, present:)
       @files = files
       @directory = directory
       @present = present
+    end
+
+    def with_file(file)
+      self.class.new(files + [file], directory: directory, present: @present)
     end
 
     def present?
@@ -149,7 +186,8 @@ module ArchSpec
             line: entry['line'],
             target: string!(path, 'target', entry['target']),
             macro: entry['macro']&.to_s,
-            name: entry['name']&.to_s
+            name: entry['name']&.to_s,
+            determination: entry['determination']&.to_s
           )
         end
       end

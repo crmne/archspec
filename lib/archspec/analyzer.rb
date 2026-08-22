@@ -21,7 +21,9 @@ module ArchSpec
         SourceVisitor.visit(graph, path, result.value) if result.value
       end
 
-      graph.merge_facts(Facts.load(definition.facts_path, root: root))
+      facts = Facts.load(definition.facts_path, root: root)
+      facts = facts.with_file(Associations.facts_file(graph)) if definition.static_associations
+      graph.merge_facts(facts)
       graph.assign_components(definition.component_specs.values)
       graph
     end
@@ -163,6 +165,7 @@ module ArchSpec
       # Active Record builds these around a singular association, so a bare
       # build_session is the model's own method too.
       SINGULAR_ASSOCIATION_MACROS = %i[belongs_to has_one].freeze
+      ASSOCIATION_MACROS = %i[belongs_to has_one has_many has_and_belongs_to_many].freeze
       SINGULAR_ASSOCIATION_HELPERS = ['build_%s', 'create_%s', 'create_%s!', 'reload_%s'].freeze
 
       def visit(graph, path, node, current_constant: nil, namespace: [], nesting: [], visibility: :public,
@@ -459,6 +462,8 @@ module ArchSpec
         end
 
         record_generated_methods(graph, path, node, message, current_constant, location, visibility, default_scope)
+        record_association(graph, path, node, message, current_constant, location, nesting)
+        record_abstract_class(graph, path, node, message, current_constant)
 
         if (edge_type = MIXIN_MESSAGES[message])
           constant_arguments(node).each do |constant_name|
@@ -615,6 +620,69 @@ module ArchSpec
         end
       end
 
+      # Keeps the association as declared, options and all, so a producer can
+      # decide later what the macro states and what it leaves to the runtime.
+      # A class_name that is not a literal is kept as :dynamic rather than
+      # dropped, so it can be counted as a refusal instead of read as absent.
+      def record_association(graph, path, node, message, current_constant, location, nesting)
+        return unless current_constant && node.receiver.nil? && ASSOCIATION_MACROS.include?(message)
+
+        constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path }
+        name = symbol_arguments(node).first
+        return unless constant && name
+
+        options = keyword_arguments(node)
+        constant.add_association(AssociationDeclaration.new(
+          constant.name,
+          name,
+          message,
+          literal_or_dynamic(options[:class_name]),
+          symbol_value(options[:through]),
+          symbol_value(options[:source]),
+          options.key?(:source_type),
+          truthy_node?(options[:polymorphic]),
+          location,
+          nesting
+        ))
+      end
+
+      def record_abstract_class(graph, path, node, message, current_constant)
+        return unless current_constant && node.name == :abstract_class= && node.receiver.is_a?(Prism::SelfNode)
+        return unless node.arguments&.arguments&.first.is_a?(Prism::TrueNode)
+
+        constant = graph.constants_named(current_constant).find { |candidate| candidate.path == path }
+        constant.abstract = true if constant
+      end
+
+      def keyword_arguments(node)
+        pairs = {}
+        node.arguments&.arguments&.each do |argument|
+          next unless argument.is_a?(Prism::KeywordHashNode)
+
+          argument.elements.each do |element|
+            next unless element.is_a?(Prism::AssocNode) && element.key.is_a?(Prism::SymbolNode)
+
+            pairs[element.key.unescaped.to_sym] = element.value
+          end
+        end
+        pairs
+      end
+
+      def literal_or_dynamic(value)
+        return if value.nil?
+        return value.unescaped if value.is_a?(Prism::StringNode) || value.is_a?(Prism::SymbolNode)
+
+        :dynamic
+      end
+
+      def symbol_value(value)
+        value.unescaped.to_sym if value.is_a?(Prism::SymbolNode) || value.is_a?(Prism::StringNode)
+      end
+
+      def truthy_node?(value)
+        !value.nil? && !value.is_a?(Prism::FalseNode) && !value.is_a?(Prism::NilNode)
+      end
+
       def accessors_for(message, name, kinds)
         accessors = []
         accessors << name if kinds.include?(:reader)
@@ -646,14 +714,7 @@ module ArchSpec
       end
 
       def truthy_keyword_argument?(node, name)
-        node.arguments&.arguments&.any? do |argument|
-          argument.is_a?(Prism::KeywordHashNode) && argument.elements.any? do |element|
-            element.is_a?(Prism::AssocNode) && element.key.is_a?(Prism::SymbolNode) &&
-              element.key.unescaped.to_sym == name &&
-              !element.value.is_a?(Prism::FalseNode) &&
-              !element.value.is_a?(Prism::NilNode)
-          end
-        end
+        truthy_node?(keyword_arguments(node)[name])
       end
 
       def receiver_kind(node)

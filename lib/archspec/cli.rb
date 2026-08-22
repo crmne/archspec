@@ -10,7 +10,7 @@ module ArchSpec
   #   archspec init
   #   archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
   #   archspec explain PATH_OR_CONSTANT
-  #   archspec reflect [--config PATH] [--output PATH]
+  #   archspec reflect [--config PATH] [--output PATH] [--static]
   #
   # #run returns the process exit status: 0 when clean, 1 when violations are
   # found.
@@ -179,12 +179,15 @@ module ArchSpec
     # <tt>bin/rails runner</tt>, the only ArchSpec command that boots the app.
     # The facts file it writes is what +check+ merges on later static runs.
     def reflect(argv, output)
-      options = { config: CONFIG_FILE, output: nil, help: false }
+      options = { config: CONFIG_FILE, output: nil, static: false, help: false }
       parser = OptionParser.new do |opts|
         opts.banner = usage('reflect').strip
         opts.on('--config PATH', 'Use a different architecture file') { |value| options[:config] = value }
         opts.on('--output PATH', 'Write the facts file here instead of the facts directory') do |value|
           options[:output] = value
+        end
+        opts.on('--static', 'Resolve associations from the source alone, without booting') do
+          options[:static] = true
         end
         opts.on('-h', '--help', 'Show this help') { options[:help] = true }
       end
@@ -198,6 +201,8 @@ module ArchSpec
       raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
 
       definition, root = load_definition(options[:config])
+      return reflect_static(definition, root, options[:output], output) if options[:static]
+
       runner = File.join(root, 'bin', 'rails')
       raise Error, "no bin/rails at #{root}; reflect runs inside a Rails application" unless File.executable?(runner)
 
@@ -207,6 +212,22 @@ module ArchSpec
 
       output.puts "Wrote #{Pathname(destination).relative_path_from(Pathname(root))}"
       0
+    end
+
+    def reflect_static(definition, root, destination, output)
+      destination = File.expand_path(destination || File.join(definition.facts_path, 'associations.yml'), root)
+      graph = Analyzer.analyze(definition, root: root)
+      facts = Associations.write(graph, output: destination, root: root)
+      output.puts "Wrote #{Pathname(destination).relative_path_from(Pathname(root))}"
+      output.puts summary_line(facts)
+      0
+    end
+
+    def summary_line(facts)
+      misses = facts[:misses].map { |cause, count| "#{cause} #{count}" }.join(', ')
+      references = facts[:references].size
+      label = references == 1 ? 'reference' : 'references'
+      misses.empty? ? "#{references} #{label}, no misses" : "#{references} #{label}; misses: #{misses}"
     end
 
     def load_definition(config_path)
@@ -268,7 +289,7 @@ module ArchSpec
       when 'explain'
         'Usage: archspec explain PATH_OR_CONSTANT [--config PATH]'
       when 'reflect'
-        'Usage: archspec reflect [--config PATH] [--output PATH]'
+        'Usage: archspec reflect [--config PATH] [--output PATH] [--static]'
       when 'version'
         'Usage: archspec version'
       when ''
@@ -277,7 +298,7 @@ module ArchSpec
             archspec init [PATH] [--force]
             archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
             archspec explain PATH_OR_CONSTANT [--config PATH]
-            archspec reflect [--config PATH] [--output PATH]
+            archspec reflect [--config PATH] [--output PATH] [--static]
             archspec version
             archspec help [COMMAND]
         TEXT

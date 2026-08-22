@@ -8,6 +8,9 @@ require_relative 'value_object'
 module ArchSpec
   ParseError = ValueObject.define(:message, :location)
   MethodDefinition = ValueObject.define(:owner, :name, :scope, :location, :visibility)
+  AssociationDeclaration = ValueObject.define(
+    :owner, :name, :macro, :class_name, :through, :source, :source_type, :polymorphic, :location, :nesting
+  )
 
   Suppression = ValueObject.define(:rule, :start_line, :end_line, :reason) do
     def matches?(diagnostic)
@@ -30,8 +33,8 @@ module ArchSpec
 
   class ConstantNode
     attr_reader :name, :kind, :path, :location, :instance_methods, :class_methods, :method_definitions, :mixins,
-                :nesting
-    attr_accessor :superclass
+                :nesting, :associations
+    attr_accessor :superclass, :abstract
 
     def initialize(name:, kind:, path:, location:, nesting: [])
       @name = name
@@ -42,6 +45,8 @@ module ArchSpec
       @instance_methods = Set.new
       @class_methods = Set.new
       @method_definitions = []
+      @associations = []
+      @abstract = false
       @mixins = {
         include: Set.new,
         prepend: Set.new,
@@ -69,6 +74,14 @@ module ArchSpec
 
     def add_mixin(kind, name)
       mixins.fetch(kind).add(name)
+    end
+
+    def add_association(declaration)
+      associations << declaration
+    end
+
+    def abstract?
+      abstract
     end
 
     # Rewrites the visibility of already-recorded definitions, for the

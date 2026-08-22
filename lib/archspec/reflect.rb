@@ -27,7 +27,7 @@ module ArchSpec
       models = ::ActiveRecord::Base.descendants.reject(&:abstract_class?)
       facts = facts_for(models, root: root)
       FileUtils.mkdir_p(File.dirname(output))
-      Facts.write(output, commit: commit_for(root), dirty: dirty?(root), **facts)
+      Facts.write(output, commit: Facts.commit_for(root), dirty: Facts.dirty?(root), **facts)
       facts
     end
 
@@ -58,7 +58,8 @@ module ArchSpec
             line: location.last,
             target: target,
             macro: reflection.macro.to_s,
-            name: reflection.name.to_s
+            name: reflection.name.to_s,
+            determination: 'reflected'
           )
         end
 
@@ -102,22 +103,6 @@ module ArchSpec
       ['(unknown)', 1]
     rescue ArgumentError
       [file, line]
-    end
-
-    def commit_for(root)
-      git(root, 'rev-parse', 'HEAD')
-    end
-
-    def dirty?(root)
-      status = git(root, 'status', '--porcelain')
-      !status.nil? && !status.empty?
-    end
-
-    def git(root, *args)
-      result = IO.popen(['git', '-C', root, *args], err: File::NULL, &:read)
-      $?.success? ? result.strip : nil
-    rescue SystemCallError
-      nil
     end
   end
 end

@@ -20,7 +20,7 @@ facts "archspec_facts"
 
 Todo ids are computed from the rule, path, message, and evidence, not the line number, so entries survive edits that shift code.
 
-`facts` names the directory of producer-written facts files merged before rules run; it defaults to `archspec_facts/`. See [Facts](facts/).
+`facts` names the directory of producer-written facts files merged before rules run; it defaults to `archspec_facts/`. With `associations: :static` the Active Record associations the source states outright are merged on every check without booting. See [Facts](facts/).
 
 ## Components
 

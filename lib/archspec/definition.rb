@@ -21,7 +21,7 @@ module ArchSpec
       'vendor/**/*'
     ].freeze
 
-    attr_accessor :name, :root_path, :todo_path, :facts_path, :base_dir
+    attr_accessor :name, :root_path, :todo_path, :facts_path, :base_dir, :static_associations
     attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules
 
     def initialize(name = nil)
@@ -29,6 +29,7 @@ module ArchSpec
       @root_path = '.'
       @todo_path = nil
       @facts_path = Facts::DEFAULT_DIRECTORY
+      @static_associations = false
       @base_dir = nil
       @source_patterns = []
       @ignore_patterns = DEFAULT_IGNORE_PATTERNS.dup

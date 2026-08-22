@@ -32,6 +32,7 @@ references:
     target: Session
     macro: belongs_to
     name: session
+    determination: reflected
 generated_methods:
   - owner: User
     names: [session, session=, build_session, create_session, create_session!, reload_session]
@@ -40,7 +41,7 @@ misses:
 ```
 {: data-title="archspec_facts/rails.yml"}
 
-Two entry types: a constant at a file and line references another constant, and a constant has generated methods. Any gem with its own macros can write its own file into the directory without ArchSpec knowing the DSL; the producer name and version say where each file came from, and the commit says which tree it describes. Keep the directory fresh the way you keep the todo file fresh.
+Two entry types: a constant at a file and line references another constant, and a constant has generated methods. A reference may say how its target was determined (`reflected`, `declared`, `through`, `index`), which the producers that ship with ArchSpec always do. Any gem with its own macros can write its own file into the directory without ArchSpec knowing the DSL; the producer name and version say where each file came from, and the commit says which tree it describes. Keep the directory fresh the way you keep the todo file fresh.
 
 A file that states something ArchSpec does not understand is an error naming the file and the entry, never a silent skip: an unknown key, an unknown field on an entry, or a format other than `1`. A target the parser never defined stays an unresolved name, exactly like a constant from a gem, and lands in no component. Misses are counted by cause so the file states what it could not say.
 
@@ -64,6 +65,23 @@ A violation whose evidence came from a file says so in its note:
 ```
 
 The JSON format carries the same under `facts_files`, with the producer, commit, entry count and misses per file.
+
+## Associations without booting
+
+```ruby
+facts "archspec_facts", associations: :static
+```
+{: data-title="Archspec.rb"}
+
+Most association targets can be stated from the source alone, and `check` can merge them on every run without a boot. An association becomes a reference in three determinations and no fourth. `declared`: `class_name:` is a string or symbol literal, resolved the way the parser resolves any constant from the declaring class. `through`: `through:` is walked exactly one hop into the intermediate model's own declaration, taking that declaration's target by the same rules. `index`: the bare name is matched against the models the application declares, built from the classes whose ancestry reaches `ApplicationRecord` or `ActiveRecord::Base`, subclasses included, with the declaring class's enclosing namespace tried first and exactly one match required. A collection name matches a model only through the three spellings `s`, `es` and `ies`; `people` matches no model and is a miss.
+
+Nothing else becomes an edge. Polymorphic associations, `source_type:`, a `class_name:` that is not a literal, an association declared in a concern or an abstract class, a subclass restating an inherited association, a name that matches no declared model or more than one, and a `through:` whose intermediate or source does not resolve are counted by cause and reported in the summary. No inflector is consulted; the only names that resolve are names the application declares.
+
+```sh
+bundle exec archspec reflect --static
+```
+
+The same facts can be written to `archspec_facts/associations.yml` instead of merged on the fly, with the producer name `archspec-associations`, a `determination` on every reference, and the misses by cause, so the file can be reviewed and committed like any other. Where a booted `reflect` file exists it says more; the static file costs nothing and needs nothing.
 
 ## reflect
 
