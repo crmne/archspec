@@ -259,6 +259,9 @@ module ArchSpec
     ].freeze
 
     RESOLVED_ROOTS = %w[Object BasicObject].freeze
+    EMPTY_NAMES = Set[].freeze
+    EMPTY_CONSTANTS = [].freeze
+    EMPTY_EDGES = [].freeze
 
     attr_reader :root, :files, :constants, :edges, :components, :facts_files
     attr_accessor :facts_directory, :ignored_files
@@ -276,6 +279,8 @@ module ArchSpec
       @facts_origins = {}.compare_by_identity
       @ignored_files = []
       @census = nil
+      @indexes = nil
+      @effective_methods_memo = {}
     end
 
     def add_file(path:, parse_errors:, suppressions: [])
@@ -295,6 +300,7 @@ module ArchSpec
       constant = ConstantNode.new(name: normalized, kind: kind, path: path, location: location, nesting: nesting)
       constants << constant
       @constants_by_name[normalized] << constant
+      forget_indexes
       constant
     end
 
@@ -302,6 +308,7 @@ module ArchSpec
                  lexical_nesting: nil)
       nesting = lexical_nesting&.map { |name| normalize_constant(name) }&.freeze
       edges << Edge.new(type, from_path, from_constant, to.to_s, location, confidence, receiver, nesting)
+      forget_indexes
     end
 
     # Adds what a facts file states: each reference becomes an ordinary
@@ -309,7 +316,7 @@ module ArchSpec
     # method lands on the owning constant so a bare call to it counts as the
     # component's own API. A target the parser never defined stays an
     # unresolved name, exactly like a constant from a gem.
-    def merge_facts(facts)
+    def merge_facts(facts, only: nil)
       @facts_directory = facts.directory
       @facts_present = facts.present?
 
@@ -318,6 +325,8 @@ module ArchSpec
 
         file.references.each do |reference|
           path = File.expand_path(reference.file, root)
+          next if only && !only.include?(path)
+
           add_edge(
             type: :references_constant,
             from_path: path,
@@ -331,6 +340,8 @@ module ArchSpec
 
         file.generated_methods.each do |entry|
           constants_named(entry.owner).each do |constant|
+            next if only && !only.include?(constant.path)
+
             entry.names.each { |name| constant.add_instance_method(name, location: constant.location) }
           end
         end
@@ -349,6 +360,7 @@ module ArchSpec
     # patterns against a tree that may no longer exist.
     def restore_components(restored)
       @components = restored.to_h { |component| [component.name, component] }
+      forget_indexes
     end
 
     def facts_file_for(edge)
@@ -368,13 +380,10 @@ module ArchSpec
     end
 
     def constants_for_path(path)
-      constants.select { |constant| constant.path == path }
+      indexes.fetch(:constants_by_path).fetch(path, EMPTY_CONSTANTS)
     end
 
     def method_definitions_for_component(name)
-      component = components[name.to_sym]
-      return [] unless component
-
       constants_for_component(name).flat_map(&:method_definitions)
     end
 
@@ -420,6 +429,7 @@ module ArchSpec
       end
 
       @census = nil
+      forget_indexes
     end
 
     def census
@@ -442,24 +452,19 @@ module ArchSpec
     end
 
     def dynamic_features_for(constant_name, path)
-      edges.select do |edge|
-        edge.type == :dynamic_feature && edge.from_path == path &&
-          (constant_name.nil? || edge.from_constant == constant_name)
+      indexes.fetch(:dynamic_features_by_path).fetch(path, EMPTY_EDGES).select do |edge|
+        constant_name.nil? || edge.from_constant == constant_name
       end
     end
 
     def component_names_for_path(path)
-      components.values.each_with_object(Set.new) do |component, names|
-        names.add(component.name) if component.files.include?(path)
-      end
+      indexes.fetch(:components_by_path).fetch(path, EMPTY_NAMES).dup
     end
 
     def component_names_for_constant(name, path: nil)
       normalized = normalize_constant(name)
-
-      components.values.each_with_object(Set.new) do |component, names|
-        names.add(component.name) if component.includes_constant?(normalized, path: path)
-      end
+      key = path ? [normalized, path] : normalized
+      indexes.fetch(:components_by_constant).fetch(key, EMPTY_NAMES).dup
     end
 
     # The edge's source as prose: its constant when known, otherwise the
@@ -480,7 +485,7 @@ module ArchSpec
     end
 
     def dependency_edges
-      edges.select { |edge| DEPENDENCY_EDGE_TYPES.include?(edge.type) }
+      indexes.fetch(:dependency_edges)
     end
 
     def target_components_for(edge)
@@ -514,9 +519,11 @@ module ArchSpec
     # and include/prepend mixins. Returns [methods, unresolved ancestor names];
     # a non-empty second element means the answer is incomplete.
     def effective_instance_methods(name, visited = Set.new)
-      effective_methods(name, visited) do |node|
-        mixins = node.mixins[:include].to_a + node.mixins[:prepend].to_a
-        [node.instance_methods, mixins.map { |ancestor| [ancestor, :instance] }, :instance]
+      remembered(:instance, name, visited) do
+        effective_methods(name, visited) do |node|
+          mixins = node.mixins[:include].to_a + node.mixins[:prepend].to_a
+          [node.instance_methods, mixins.map { |ancestor| [ancestor, :instance] }, :instance]
+        end
       end
     end
 
@@ -524,8 +531,10 @@ module ArchSpec
     # +extend+s (their instance methods land on the singleton), and the class
     # methods of its superclass chain.
     def effective_class_methods(name, visited = Set.new)
-      effective_methods(name, visited) do |node|
-        [node.class_methods, node.mixins[:extend].to_a.map { |ancestor| [ancestor, :instance] }, :class]
+      remembered(:class, name, visited) do
+        effective_methods(name, visited) do |node|
+          [node.class_methods, node.mixins[:extend].to_a.map { |ancestor| [ancestor, :instance] }, :class]
+        end
       end
     end
 
@@ -561,10 +570,7 @@ module ArchSpec
     end
 
     def constants_for_component(name)
-      component = components[name.to_sym]
-      return [] unless component
-
-      constants.select { |constant| component.includes_constant?(constant.name, path: constant.path) }
+      indexes.fetch(:constants_by_component).fetch(name.to_sym, EMPTY_CONSTANTS)
     end
 
     def suppressed?(diagnostic)
@@ -580,6 +586,59 @@ module ArchSpec
     end
 
     private
+
+    # Built on the first query after the graph is complete and dropped by any
+    # mutation, so a rule never reads a stale grouping; every shipped and
+    # custom rule reads them through the query methods it already calls.
+    def indexes
+      @indexes ||= build_indexes
+    end
+
+    def forget_indexes
+      @indexes = nil
+      @effective_methods_memo.clear
+    end
+
+    def build_indexes
+      by_path = Hash.new { |hash, key| hash[key] = Set.new }
+      by_constant = Hash.new { |hash, key| hash[key] = Set.new }
+      components.each_value do |component|
+        component.files.each { |path| by_path[path].add(component.name) }
+        component.constants.each { |name| by_constant[name].add(component.name) }
+        component.constant_occurrences.each { |name, path| by_constant[[name, path]].add(component.name) }
+      end
+
+      by_component = Hash.new { |hash, key| hash[key] = [] }
+      constants_by_path = Hash.new { |hash, key| hash[key] = [] }
+      constants.each do |constant|
+        constants_by_path[constant.path] << constant
+        by_constant.fetch([constant.name, constant.path], EMPTY_NAMES).each do |name|
+          by_component[name] << constant
+        end
+      end
+
+      dynamic_by_path = Hash.new { |hash, key| hash[key] = [] }
+      edges.each { |edge| dynamic_by_path[edge.from_path] << edge if edge.type == :dynamic_feature }
+
+      {
+        components_by_path: by_path,
+        components_by_constant: by_constant,
+        constants_by_component: by_component,
+        constants_by_path: constants_by_path,
+        dynamic_features_by_path: dynamic_by_path,
+        dependency_edges: edges.select { |edge| DEPENDENCY_EDGE_TYPES.include?(edge.type) }
+      }
+    end
+
+    # Only a top-level walk is remembered: a walk started from inside another
+    # keeps the visited set it was handed, so its answer depends on the caller.
+    def remembered(scope, name, visited)
+      return yield unless visited.empty?
+
+      key = [scope, normalize_constant(name)]
+      methods, unresolved = @effective_methods_memo[key] ||= yield
+      [methods.dup, unresolved.dup]
+    end
 
     def take_census
       resolved = 0
