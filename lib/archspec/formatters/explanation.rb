@@ -29,7 +29,7 @@ module ArchSpec
         print_component_reasons(output, style, graph.component_assignment_reasons_for_path(path))
         print_component_exclusions(output, style, graph.component_exclusion_reasons_for_path(path))
         print_suppressions(output, style, file)
-        print_facts(output, style, graph.edges.select { |edge| edge.from_path == path })
+        print_facts(output, style, graph, graph.edges.select { |edge| edge.from_path == path })
       end
 
       def explain_constant(output, style, graph, subject)
@@ -95,7 +95,7 @@ module ArchSpec
         end
       end
 
-      def print_facts(output, style, facts)
+      def print_facts(output, style, graph, facts)
         if facts.empty?
           output.puts "  #{style.note('outgoing facts:')} (none)"
           return
@@ -105,8 +105,17 @@ module ArchSpec
         locations = facts.map { |edge| "#{edge.location.line}:#{edge.location.column}" }
         in_gutters(locations) do |gutter, index|
           edge = facts[index]
-          output.puts "    #{style.faint(gutter)} #{edge.verb} #{edge.to}"
+          output.puts "    #{style.faint(gutter)} #{edge.verb} #{edge.to}#{ancestry_note(style, graph, edge)}"
         end
+      end
+
+      def ancestry_note(style, graph, edge)
+        return '' unless Graph::DEPENDENCY_EDGE_TYPES.include?(edge.type)
+
+        resolution = graph.resolve_edge(edge)
+        return '' unless resolution.determination == :ancestry
+
+        style.faint(" (#{resolution.name} via #{resolution.ancestor})")
       end
 
       # Yields each label right-justified to the widest one, with the frame

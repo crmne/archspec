@@ -288,7 +288,8 @@ class CensusTest < ArchSpecTest
 
       assert_equal 0, status
       census = JSON.parse(output.string).fetch('census')
-      assert_equal({ 'resolved' => 0, 'unresolved' => 1, 'unresolved_names' => ['SomeGem::Base'] }, census['references'])
+      assert_equal({ 'resolved' => 0, 'through_ancestry' => 0, 'unresolved' => 1, 'unresolved_names' => ['SomeGem::Base'],
+                     'refused' => { 'ancestor_unresolved' => 0, 'ambiguous' => 0, 'names' => [] } }, census['references'])
       assert_equal({ 'count' => 1, 'carriers' => ['User (app/models/user.rb:2)'] }, census['dynamic_features']['send'])
       assert_equal 0, census['other_receiver_calls']
       assert_nil census['producers']

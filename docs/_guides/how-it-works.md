@@ -54,6 +54,19 @@ Everything a rule can check is one of these edge types:
 Alongside edges, the graph keeps each constant's methods and mixins (for
 protocol rules).
 
+A reference resolves the way Ruby resolves it, minus the guessing. The
+lexical scopes around the reference are tried first, innermost out, then the
+bare name. When none of those is defined, the walk follows the ancestors of
+the class the reference sits in, in method resolution order: prepended
+modules, included modules, then the superclass, and so on up. `Settings`
+written inside `class User < Base` resolves to `Base::Settings` when `Base`
+defines it, and `User::Settings` written elsewhere resolves the same way
+through `User`. The walk refuses rather than guesses: it stops at the first
+ancestor the graph does not hold (a gem's base class, a dynamic superclass),
+and two ancestors at the same depth defining the name as different constants
+is a miss, not a pick. Both refusals are counted in the "could not see" line,
+and `explain` names the ancestor a reference resolved through.
+
 A definition is a `class` or `module` keyword, or a constant assignment.
 `MAX_RETRIES = 3` defines a plain constant; assigning `Class.new`,
 `Struct.new`, or `Data.define` defines a class whose block is its body, and

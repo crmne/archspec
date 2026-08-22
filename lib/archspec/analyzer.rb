@@ -498,7 +498,7 @@ module ArchSpec
         return unless constant_node?(node.receiver)
 
         name = constant_reference_name(node.receiver)
-        graph.resolve_constant_reference(name, current_constant, lexical_nesting: nesting) if name
+        graph.resolve_constant_reference(name, current_constant, lexical_nesting: nesting, ancestry: false) if name
       end
 
       def visit_call(graph, path, node, current_constant:, namespace:, nesting:, visibility: :public,
