@@ -236,7 +236,8 @@ module ArchSpec
 
     def path_gems_digest(root, lockfile)
       require 'bundler'
-      sources = ::Bundler::LockfileParser.new(File.read(lockfile)).sources.grep(::Bundler::Source::Path)
+      parser = ::Bundler::LockfileParser.new(File.read(lockfile))
+      sources = parser.sources.grep(::Bundler::Source::Path)
       entries = sources.flat_map do |source|
         Dir.glob(File.join(File.expand_path(source.path.to_s, root), '**', '*.rb')).sort.map do |file|
           "#{file}\0#{Digest::SHA256.file(file).hexdigest}"
