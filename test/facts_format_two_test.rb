@@ -104,6 +104,23 @@ class FactsFormatTwoTest < ArchSpecTest
     end
   end
 
+  def test_a_call_entry_naming_a_receiver_the_parser_typed_differently_is_a_conflict
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User\n  def build\n    UsersController.new\n  end\nend\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+      write "#{root}/archspec_facts/x.yml", facts_yaml(calls: [{ 'owner' => 'User', 'file' => 'app/models/user.rb',
+                                                                 'line' => 3, 'method' => 'new', 'receiver' => 'Baz' }])
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :controllers, in: 'app/controllers/**/*.rb'
+      end
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal({ 'conflict' => 1 }, graph.census.facts_entries.fetch('archspec_facts/x.yml').fetch(:skipped))
+    end
+  end
+
   def test_an_ancestry_entry_contradicting_the_parser_is_a_conflict
     with_project do |root|
       write "#{root}/app/models/user.rb", "class User < Base; end\n"

@@ -185,25 +185,47 @@ module ArchSpec
       raise Error, "no Gemfile at #{root}; reflect --rubydex indexes an application and its bundle" unless File.exist?(gemfile)
 
       bundle!(root)
-      graph = Dir.chdir(root) do
-        built = ::Rubydex::Graph.new
-        built.index_workspace
-        built.resolve
-        built
-      end
+      graph = Dir.chdir(root) { build_index }
       collect(graph, File.expand_path(root))
-    rescue StandardError => e
-      raise e if e.is_a?(Error)
-
-      raise Error, "reflect --rubydex could not index #{root}: #{e.message.lines.first&.strip}"
     end
 
     def bundle!(root)
-      require 'bundler'
-      locked = Dir.chdir(root) { ::Bundler.locked_gems }
-      return if locked
+      return if File.readable?(File.join(root, 'Gemfile.lock'))
 
       raise Error, "no Gemfile.lock at #{root}; reflect --rubydex indexes the locked bundle, never the workspace alone"
+    end
+
+    # The engine lists the workspace and each locked gem's require paths. A
+    # Rails engine keeps its constants under app/ beside lib/, which that
+    # listing never reaches, so those directories are added and the ones
+    # that were absent are counted.
+    def build_index
+      built = ::Rubydex::Graph.new
+      paths = built.workspace_paths
+      engine_paths, @engines_without_app = engine_app_paths
+      built.index_all(paths + engine_paths)
+      built.resolve
+      built
+    rescue ::Rubydex::Error, IOError, SystemCallError => e
+      raise Error, "reflect --rubydex could not index the workspace: #{e.message.lines.first&.strip}"
+    end
+
+    def engine_app_paths
+      require 'bundler'
+      specs = ::Bundler.locked_gems&.specs || []
+      present = []
+      absent = 0
+      specs.each do |lazy_spec|
+        spec = Gem::Specification.find_by_name(lazy_spec.name)
+        app = File.join(spec.full_gem_path, 'app')
+        next unless File.exist?(File.join(spec.full_gem_path, 'lib', lazy_spec.name.tr('-', '/'), 'engine.rb')) ||
+                    Dir.exist?(app)
+
+        Dir.exist?(app) ? present << app : absent += 1
+      rescue Gem::MissingSpecError
+        nil
+      end
+      [present, absent]
     end
 
     def load_gem
@@ -230,8 +252,8 @@ module ArchSpec
           next
         end
 
-        declaration = reference.declaration
-        next if declaration.nil? || declaration.name.end_with?('>')
+        declaration = attached(reference.declaration)
+        next if declaration.nil?
 
         resolutions << Resolution.new(
           file: uri.delete_prefix(workspace),
@@ -252,17 +274,28 @@ module ArchSpec
         uri = reference.location.uri.to_s
         next unless uri.start_with?(workspace)
 
-        receiver = reference.receiver
+        receiver = attached(reference.receiver)
         next unless receiver.is_a?(::Rubydex::Namespace)
-        next if receiver.name.end_with?('>')
 
         calls << Call.new(file: uri.delete_prefix(workspace), line: reference.location.start_line + 1,
                           method: reference.name.to_s, receiver: receiver.name.sub(SINGLETON_SUFFIX, ''),
                           in_workspace: in_workspace?(receiver, workspace))
       end
 
-      misses['diagnostic'] = graph.diagnostics.count { |diagnostic| diagnostic.location.uri.to_s.start_with?(workspace) }
+      graph.diagnostics.each do |diagnostic|
+        next unless diagnostic.location.uri.to_s.start_with?(workspace)
+
+        misses["diagnostic_#{diagnostic.rule}"] += 1
+      end
+      misses['engine_without_app'] = @engines_without_app if @engines_without_app.to_i.positive?
       { resolutions: resolutions, ancestry: ancestry, definitions: definitions, calls: calls, misses: misses }
+    end
+
+    # A singleton class is the class side of its attached class: a call on
+    # Board.find is a call with the constant Board as receiver, and a
+    # reference the engine resolved to <Board> names Board.
+    def attached(declaration)
+      declaration.is_a?(::Rubydex::SingletonClass) ? declaration.attached_class : declaration
     end
 
     def collect_ancestry(declaration, workspace, ancestry, misses)

@@ -67,7 +67,7 @@ class FactsTest < ArchSpecTest
       write "#{root}/archspec_facts/rails.yml", facts_yaml.sub('format: 1', 'format: 3')
 
       error = assert_raises(ArchSpec::Error) { diagnostics_for(definition, root) }
-      assert_match 'format 3 is not 2', error.message
+      assert_match 'format 3 is not one of 1, 2', error.message
     end
   end
 

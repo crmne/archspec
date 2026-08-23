@@ -739,11 +739,15 @@ module ArchSpec
         path = File.expand_path(entry.file, root)
         next if only && !only.include?(path)
 
-        typed = edges.any? do |edge|
+        typed = edges.select do |edge|
           edge.type == :calls_named_method && edge.from_path == path && edge.location.line == entry.line &&
             edge.to == entry.method && edge.receiver == :constant
         end
-        next @facts_merges[file.relative_path]['already_resolved'] += 1 if typed
+        unless typed.empty?
+          wanted = normalize_constant(entry.receiver)
+          agreed = typed.any? { |edge| edge.receiver_constant.nil? || resolve_constant_reference(edge.receiver_constant, edge.from_constant, lexical_nesting: edge.lexical_nesting) == wanted }
+          next @facts_merges[file.relative_path][agreed ? 'already_resolved' : 'conflict'] += 1
+        end
 
         add_edge(
           type: :calls_named_method,

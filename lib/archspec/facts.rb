@@ -96,7 +96,7 @@ module ArchSpec
       raise Error, "invalid facts file #{path}: missing key #{missing.first.inspect}" if missing.any?
 
       unless FORMATS.include?(document['format'])
-        raise Error, "invalid facts file #{path}: format #{document['format'].inspect} is not #{FORMAT}"
+        raise Error, "invalid facts file #{path}: format #{document['format'].inspect} is not one of #{FORMATS.join(', ')}"
       end
 
       FactsFile.new(
@@ -298,6 +298,7 @@ module ArchSpec
         return value if value == true || value == false
 
         raise Error, "invalid facts file #{path}: #{field} must be true or false"
+      end
 
       def ancestry!(path, entries)
         raise Error, "invalid facts file #{path}: ancestry must be a list" unless entries.is_a?(Array)

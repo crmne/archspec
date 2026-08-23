@@ -561,7 +561,8 @@ module ArchSpec
           from_constant: current_constant,
           to: message,
           location: location,
-          receiver: receiver_kind(node)
+          receiver: receiver_kind(node),
+          receiver_constant: constant_node?(node.receiver) ? constant_reference_name(node.receiver) : nil
         )
 
         if DYNAMIC_MESSAGES.include?(message)

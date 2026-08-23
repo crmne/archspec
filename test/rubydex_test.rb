@@ -162,6 +162,18 @@ class RubydexTest < ArchSpecTest
     end
   end
 
+  def test_the_bundle_is_read_from_the_roots_own_lockfile
+    with_project do |root|
+      write "#{root}/Gemfile", "source 'https://rubygems.org'\n"
+
+      error = assert_raises(ArchSpec::Error) { ArchSpec::Rubydex.send(:bundle!, root) }
+      assert_match 'no Gemfile.lock', error.message
+
+      write "#{root}/Gemfile.lock", "GEM\n  specs:\n"
+      assert_nil ArchSpec::Rubydex.send(:bundle!, root)
+    end
+  end
+
   def test_the_cli_refuses_when_the_gem_is_not_loadable
     with_project do |root|
       write "#{root}/Archspec.rb", "component :models, in: 'app/models/**/*.rb'\n"
