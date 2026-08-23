@@ -46,7 +46,7 @@ class ResolversTest < ArchSpecTest
       from_resolver = edges.find { |edge| graph.facts_file_for(edge) }
 
       assert_equal 'archspec-rubydex (resolver)', graph.facts_file_for(from_resolver)
-      assert_equal :from_facts_file, from_resolver.confidence
+      assert_equal :high, from_resolver.confidence
       assert_equal 1, graph.census.resolvers.fetch('rubydex').fetch(:resolver_only)
     end
   end
@@ -172,9 +172,10 @@ class ResolversTest < ArchSpecTest
       assert_equal 1, indexed
       assert_equal %w[miss hit], graphs.map { |graph| graph.census.resolvers.fetch('rubydex').fetch(:cache) }
       assert_equal :converged, graphs.last.resolve_edge(reference_edge(graphs.last, 'Post', 'User')).determination
-      cached = Dir.glob("#{root}/.archspec/resolvers/rubydex-*.yml")
+      cached = Dir.glob("#{root}/.archspec/resolvers/rubydex-*.marshal")
       assert_equal 1, cached.size
-      assert_equal 'archspec-rubydex-index', YAML.safe_load_file(cached.first)['producer']
+      assert_equal 1, Marshal.load(File.binread(cached.first)).fetch(:index_format)
+      assert_empty Dir.glob("#{root}/.archspec/resolvers/rubydex-*.yml")
       assert_equal "*\n", File.read("#{root}/.archspec/.gitignore")
     end
   end
@@ -198,6 +199,44 @@ class ResolversTest < ArchSpecTest
       end
 
       assert_equal 2, indexed
+    end
+  end
+
+  def test_an_index_from_another_bundle_is_removed_when_a_new_one_is_written
+    with_project do |root|
+      POST_AND_USER.each { |path, source| write "#{root}/#{path}", source }
+      write "#{root}/Gemfile", "source 'https://rubygems.org'\n"
+      write "#{root}/Gemfile.lock", lockfile
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        resolver :rubydex
+      end
+      found = index_of(resolution('app/models/post.rb', 2, 'User'))
+
+      with_gem_stubbed(lockfile: "#{root}/Gemfile.lock", index: -> { found }) do
+        ArchSpec::Analyzer.analyze(definition, root: root)
+        write "#{root}/Gemfile.lock", lockfile('rake (13.3.0)')
+        ArchSpec::Analyzer.analyze(definition, root: root)
+      end
+
+      assert_equal 1, Dir.glob("#{root}/.archspec/resolvers/rubydex-*.marshal").size
+    end
+  end
+
+  def test_answers_are_matched_to_the_reference_at_their_column
+    files = {
+      'app/models/post.rb' => "class Post\n  def pair = [User, Admin]\nend\n",
+      'app/models/user.rb' => "class User; end\n",
+      'app/models/admin.rb' => "class Admin; end\n",
+      'app/models/staff.rb' => "module Staff; class Admin; end; end\n"
+    }
+    answers = [resolution('app/models/post.rb', 2, 'User', column: 15),
+               resolution('app/models/post.rb', 2, 'Staff::Admin', column: 21)]
+    with_answers(files, *answers) do |graph|
+      assert_equal :converged, graph.resolve_edge(reference_edge(graph, 'Post', 'User')).determination
+      admin = graph.resolve_edge(reference_edge(graph, 'Post', 'Admin'))
+      assert_equal :disagreed, admin.cause
+      assert_equal 'Staff::Admin', admin.other
     end
   end
 
@@ -277,8 +316,8 @@ class ResolversTest < ArchSpecTest
 
   private
 
-  def resolution(file, line, target, in_workspace: true)
-    ArchSpec::Rubydex::Resolution.new(file: file, line: line, target: target, in_workspace: in_workspace)
+  def resolution(file, line, target, in_workspace: true, column: nil)
+    ArchSpec::Rubydex::Resolution.new(file: file, line: line, column: column, target: target, in_workspace: in_workspace)
   end
 
   def reference_edge(graph, owner, target)

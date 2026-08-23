@@ -170,7 +170,7 @@ class RubydexTest < ArchSpecTest
       assert_match 'no Gemfile.lock', error.message
 
       write "#{root}/Gemfile.lock", "GEM\n  specs:\n"
-      assert_nil ArchSpec::Rubydex.send(:bundle!, root)
+      assert_equal "#{root}/Gemfile.lock", ArchSpec::Rubydex.send(:bundle!, root)
     end
   end
 
@@ -225,8 +225,8 @@ class RubydexTest < ArchSpecTest
 
   FIXTURE_APP = File.expand_path('fixtures/rails_app', __dir__)
 
-  def resolution(file, line, target, in_workspace:)
-    ArchSpec::Rubydex::Resolution.new(file: file, line: line, target: target, in_workspace: in_workspace)
+  def resolution(file, line, target, in_workspace:, column: nil)
+    ArchSpec::Rubydex::Resolution.new(file: file, line: line, column: column, target: target, in_workspace: in_workspace)
   end
 
   def facts_for(files, *resolutions, misses: {}, engine_version: nil)

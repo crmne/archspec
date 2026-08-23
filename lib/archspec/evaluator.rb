@@ -104,17 +104,6 @@ module ArchSpec
     def doubt_near_disagreements(graph, diagnostic, constant)
       return diagnostic if graph.resolvers.empty?
 
-      disagreement = graph.disagreements_for(constant&.name, diagnostic.location.path).first
-      return diagnostic unless disagreement
-
-      diagnostic.doubted("the resolvers disagree: parser #{disagreement.name}, #{graph.resolvers.join(', ')} #{disagreement.other}")
-    end
-
-    # A finding inside a constant where two resolvers read a reference
-    # differently rests on a graph one of them would have drawn otherwise.
-    def doubt_near_disagreements(graph, diagnostic, constant)
-      return diagnostic if graph.resolvers.empty?
-
       disagreement = graph.disagreements_for(constant.name, diagnostic.location.path).first
       return diagnostic unless disagreement
 
