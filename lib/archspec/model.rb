@@ -194,9 +194,6 @@ module ArchSpec
     def clauses
       [
         clause(unresolved_references, 'unresolved constant reference'),
-        clause(ancestor_unresolved, 'reference refused at an unresolved ancestor',
-               'references refused at an unresolved ancestor'),
-        clause(ambiguous_references, 'ambiguous ancestry reference'),
         clause(dynamic_feature_count, 'dynamic feature'),
         clause(other_receiver_calls, 'call with an untyped receiver', 'calls with untyped receivers'),
         clause(ignored_files, 'ignored file'),
@@ -522,7 +519,7 @@ module ArchSpec
     end
 
     def resolve_constant_reference(name, from_constant = nil, lexical_nesting: nil, ancestry: true)
-      resolve(name, from_constant, lexical_nesting, ancestry).name
+      resolve(name, from_constant, lexical_nesting, ancestry: ancestry).name
     end
 
     # Resolves an edge with the lexical nesting captured where the reference
@@ -533,7 +530,7 @@ module ArchSpec
     end
 
     def resolve_edge(edge)
-      resolve(edge.to, edge.from_constant, edge.lexical_nesting, true)
+      resolve(edge.to, edge.from_constant, edge.lexical_nesting)
     end
 
     # Instance methods a constant responds to, walking resolvable superclasses
@@ -777,7 +774,7 @@ module ArchSpec
       end
     end
 
-    def resolve(name, from_constant, lexical_nesting, ancestry)
+    def resolve(name, from_constant, lexical_nesting, ancestry: true)
       absolute = name.to_s.start_with?('::')
       normalized = normalize_constant(name)
       return Resolution.new(normalized, :lexical, nil, nil) if absolute
@@ -787,8 +784,8 @@ module ArchSpec
       return Resolution.new(found, :lexical, nil, nil) if found
       return Resolution.new(normalized, :unresolved, nil, :undefined) unless ancestry
 
-      key = [:resolve, normalize_constant(from_constant), normalized, scopes]
-      @effective_methods_memo[key] ||= resolve_through_ancestry(normalized, from_constant, scopes)
+      owner = normalize_constant(from_constant)
+      @effective_methods_memo[[:resolve, owner, normalized, scopes]] ||= resolve_through_ancestry(normalized, owner, scopes)
     end
 
     def resolve_lexically(normalized, scopes)
@@ -798,10 +795,10 @@ module ArchSpec
     end
 
     # Ruby finds a constant through the ancestors of the class it is written in
-    # when no lexical scope defines it; the walk here follows the same order and
-    # refuses wherever it could not show the reader the answer. The qualified
-    # form walks from the prefix instead of the referencing constant.
-    def resolve_through_ancestry(normalized, from_constant, scopes)
+    # when no lexical scope defines it; the walk here follows method resolution
+    # order and refuses wherever it could not show the reader the answer. The
+    # qualified form walks from the prefix instead of the referencing constant.
+    def resolve_through_ancestry(normalized, owner, scopes)
       undefined = Resolution.new(normalized, :unresolved, nil, :undefined)
       if normalized.include?('::')
         prefix, last = normalized.split(/::(?=[^:]+\z)/, 2)
@@ -809,21 +806,23 @@ module ArchSpec
         return undefined unless root && constants_named(root).any? { |node| node.kind != :constant }
 
         walk_ancestry_for(root, last, normalized)
-      elsif from_constant && constants_named(normalize_constant(from_constant)).any?
-        walk_ancestry_for(normalize_constant(from_constant), normalized, normalized)
+      elsif !owner.empty? && constants_named(owner).any?
+        walk_ancestry_for(owner, normalized, normalized)
       else
         undefined
       end
     end
 
+    # Each position of the linearised ancestry holds one name, or several when
+    # a reopened class names more than one superclass. A hit at a position
+    # answers; two different hits at one position is a tie Ruby would settle by
+    # file order, which is no answer, so it refuses as ambiguous. An ancestor
+    # the graph does not hold is skipped, and refuses only when nothing later
+    # answers, so a core mixin like Comparable never hides the superclass.
     def walk_ancestry_for(root, last, normalized)
-      visited = Set[root]
-      level = [root]
-      until level.empty?
-        refused = level.find { |ancestor| constants_named(ancestor).empty? && !RESOLVED_ROOTS.include?(ancestor) }
-        return Resolution.new(normalized, :unresolved, refused, :ancestor_unresolved) if refused
-
-        hits = level.each_with_object({}) do |ancestor, found|
+      unresolved = nil
+      linearised_ancestry(root, Set.new).each do |position|
+        hits = position.each_with_object({}) do |ancestor, found|
           candidate = "#{ancestor}::#{last}"
           found[ancestor] = candidate if constants_named(candidate).any?
         end
@@ -831,24 +830,45 @@ module ArchSpec
         return Resolution.new(targets.first, :ancestry, hits.keys.first, nil) if targets.size == 1
         return Resolution.new(normalized, :unresolved, nil, :ambiguous) if targets.size > 1
 
-        level = level.flat_map { |ancestor| ancestors_of(ancestor) }.uniq.reject { |name| visited.include?(name) }
-        visited.merge(level)
+        unresolved ||= position.find { |ancestor| constants_named(ancestor).empty? && !RESOLVED_ROOTS.include?(ancestor) }
       end
+      return Resolution.new(normalized, :unresolved, unresolved, :ancestor_unresolved) if unresolved
+
       Resolution.new(normalized, :unresolved, nil, :undefined)
     end
 
-    # The next ring of ancestors in method resolution order: prepended modules,
-    # included modules, then the superclass, each name resolved lexically from
-    # where it was written. A root is the end of the chain, never expanded.
-    def ancestors_of(name)
-      return [] if RESOLVED_ROOTS.include?(name)
+    # Method resolution order from +name+ as positions: the modules it
+    # prepends (latest first), itself, the modules it includes (latest first),
+    # then its superclass's order, each mixin bringing its own includes. A root
+    # ends the chain and a name seen twice is not walked again.
+    def linearised_ancestry(name, visited)
+      return [] if visited.include?(name) || RESOLVED_ROOTS.include?(name)
 
-      constants_named(name).flat_map do |node|
-        mixins = node.mixins[:prepend].to_a + node.mixins[:include].to_a
-        names = mixins.map { |mixin| resolve_lexically(normalize_constant(mixin), [node.name] + node.nesting) || normalize_constant(mixin) }
-        names << (resolve_lexically(normalize_constant(node.superclass), node.nesting) || normalize_constant(node.superclass)) if node.superclass
-        names
-      end
+      visited.add(name)
+      nodes = constants_named(name)
+      return [[name]] if nodes.empty?
+
+      prepends = mixin_names(nodes, :prepend)
+      includes = mixin_names(nodes, :include)
+      supers = nodes.filter_map do |node|
+        next unless node.superclass
+
+        resolve_lexically(normalize_constant(node.superclass), node.nesting) || normalize_constant(node.superclass)
+      end.uniq
+
+      positions = prepends.flat_map { |mixin| linearised_ancestry(mixin, visited) }
+      positions << [name]
+      positions.concat(includes.flat_map { |mixin| linearised_ancestry(mixin, visited) })
+      positions << supers if supers.size > 1
+      positions.concat(supers.flat_map { |superclass| linearised_ancestry(superclass, visited) })
+    end
+
+    def mixin_names(nodes, kind)
+      nodes.flat_map do |node|
+        node.mixins[kind].to_a.reverse.map do |mixin|
+          resolve_lexically(normalize_constant(mixin), [node.name] + node.nesting) || normalize_constant(mixin)
+        end
+      end.uniq
     end
 
     def normalize_constant(value)

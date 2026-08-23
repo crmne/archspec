@@ -61,11 +61,14 @@ the class the reference sits in, in method resolution order: prepended
 modules, included modules, then the superclass, and so on up. `Settings`
 written inside `class User < Base` resolves to `Base::Settings` when `Base`
 defines it, and `User::Settings` written elsewhere resolves the same way
-through `User`. The walk refuses rather than guesses: it stops at the first
-ancestor the graph does not hold (a gem's base class, a dynamic superclass),
-and two ancestors at the same depth defining the name as different constants
-is a miss, not a pick. Both refusals are counted in the "could not see" line,
-and `explain` names the ancestor a reference resolved through.
+through `User`. The walk refuses rather than guesses: an ancestor the graph
+does not hold (a gem's base class, a dynamic superclass) is skipped, and the
+reference is a miss when nothing after it answers, so a core mixin such as
+`Comparable` never hides the superclass; two superclasses a reopened class
+names that both define the name is a tie Ruby would settle by file order, and
+a miss here. Both refusals count among the unresolved references on the
+"could not see" line and are told apart in the JSON census, and `explain`
+names the ancestor a reference resolved through.
 
 A definition is a `class` or `module` keyword, or a constant assignment.
 `MAX_RETRIES = 3` defines a plain constant; assigning `Class.new`,

@@ -32,20 +32,6 @@ class AncestryResolutionTest < ArchSpecTest
     end
   end
 
-  def test_a_prepended_module_is_walked_before_the_superclass
-    with_project do |root|
-      write "#{root}/app/base/base.rb", "class Base; class Plan; end; end\n"
-      write "#{root}/app/base/early.rb", "module Early; class Plan; end; end\n"
-      write "#{root}/app/models/user.rb", "class User < Base\n  prepend Early\n  Plan\nend\n"
-
-      graph = graph_for(layered_definition, root)
-      resolution = graph.resolve_edge(reference_from(graph, 'User', 'Plan'))
-
-      assert_equal :unresolved, resolution.determination
-      assert_equal :ambiguous, resolution.cause
-    end
-  end
-
   def test_ancestors_at_different_depths_take_the_nearest
     with_project do |root|
       write "#{root}/app/base/root.rb", "class Root; class Plan; end; end\n"
@@ -91,14 +77,55 @@ class AncestryResolutionTest < ArchSpecTest
     end
   end
 
-  def test_an_unresolved_ancestor_refuses_even_when_a_nearer_sibling_would_answer
+  def test_a_hit_before_an_unresolved_ancestor_answers
     with_project do |root|
       write "#{root}/app/base/billable.rb", "module Billable; class Settings; end; end\n"
       write "#{root}/app/models/user.rb", "class User < SomeGem::Record\n  include Billable\n  Settings\nend\n"
 
       graph = graph_for(layered_definition, root)
+      resolution = graph.resolve_edge(reference_from(graph, 'User', 'Settings'))
 
-      assert_equal :ancestor_unresolved, graph.resolve_edge(reference_from(graph, 'User', 'Settings')).cause
+      assert_equal :ancestry, resolution.determination
+      assert_equal 'Billable', resolution.ancestor
+      assert_equal 'Billable::Settings', resolution.name
+    end
+  end
+
+  def test_an_unresolved_core_mixin_never_hides_the_superclass
+    with_project do |root|
+      write "#{root}/app/base/base.rb", "class Base; class Settings; end; end\n"
+      write "#{root}/app/models/user.rb", "class User < Base\n  include Comparable\n  Settings\nend\n"
+
+      graph = graph_for(layered_definition, root)
+      resolution = graph.resolve_edge(reference_from(graph, 'User', 'Settings'))
+
+      assert_equal 'Base::Settings', resolution.name
+      assert_equal :ancestry, resolution.determination
+    end
+  end
+
+  def test_a_prepended_module_wins_over_the_superclass_in_resolution_order
+    with_project do |root|
+      write "#{root}/app/base/base.rb", "class Base; class Plan; end; end\n"
+      write "#{root}/app/base/early.rb", "module Early; class Plan; end; end\n"
+      write "#{root}/app/models/user.rb", "class User < Base\n  prepend Early\n  Plan\nend\n"
+
+      graph = graph_for(layered_definition, root)
+
+      assert_equal 'Early::Plan', graph.resolve_edge(reference_from(graph, 'User', 'Plan')).name
+    end
+  end
+
+  def test_two_superclasses_from_a_reopening_that_both_answer_refuse_as_ambiguous
+    with_project do |root|
+      write "#{root}/app/base/base.rb", "class Base; class Plan; end; end\n"
+      write "#{root}/app/base/other.rb", "class Other; class Plan; end; end\n"
+      write "#{root}/app/models/user.rb", "class User < Base\n  Plan\nend\n"
+      write "#{root}/app/models/user_again.rb", "class User < Other\nend\n"
+
+      graph = graph_for(layered_definition, root)
+
+      assert_equal :ambiguous, graph.resolve_edge(reference_from(graph, 'User', 'Plan')).cause
     end
   end
 
@@ -150,8 +177,9 @@ class AncestryResolutionTest < ArchSpecTest
   def test_the_census_counts_ancestry_resolutions_and_refusals
     with_project do |root|
       write "#{root}/app/base/base.rb", "class Base; class Settings; end; class Plan; end; end\n"
-      write "#{root}/app/base/early.rb", "module Early; class Plan; end; end\n"
-      write "#{root}/app/models/user.rb", "class User < Base\n  prepend Early\n  Settings\n  Plan\nend\n"
+      write "#{root}/app/base/other.rb", "class Other; class Plan; end; end\n"
+      write "#{root}/app/models/user.rb", "class User < Base\n  Settings\n  Plan\nend\n"
+      write "#{root}/app/models/user_again.rb", "class User < Other\nend\n"
       write "#{root}/app/models/guest.rb", "class Guest < SomeGem::Record\n  Settings\nend\n"
 
       output = StringIO.new
@@ -165,7 +193,8 @@ class AncestryResolutionTest < ArchSpecTest
 
       text = StringIO.new
       ArchSpec::CLI.run(['check', '--config', write_config(root)], output: text, error: StringIO.new)
-      assert_match(/could not see: .*1 reference refused at an unresolved ancestor, 1 ambiguous ancestry reference/, text.string)
+      assert_match(/could not see: 3 unresolved constant references/, text.string)
+      refute_match(/refused at an unresolved ancestor/, text.string)
     end
   end
 
