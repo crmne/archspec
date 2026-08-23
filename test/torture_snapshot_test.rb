@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'test_helper'
+require 'tmpdir'
 require_relative 'torture/snapshot'
 
 class TortureSnapshotTest < Minitest::Test
@@ -16,9 +17,10 @@ class TortureSnapshotTest < Minitest::Test
   def test_update_records_new_diagnostics_as_unjudged_and_keeps_verdicts
     recorded = record('a' => 'true_positive', 'b' => 'false_positive')
     recorded.fetch('diagnostics').fetch('a')['note'] = 'real'
-    snapshot, retained = TortureSnapshot.update(recorded, [violation('a'), violation('b'), violation('c')], sha: SHA)
+    update = TortureSnapshot.update(recorded, [violation('a'), violation('b'), violation('c')], sha: SHA)
+    snapshot = update.snapshot
 
-    assert_empty retained
+    refute update.refused?
     assert_equal 'true_positive', snapshot.dig('diagnostics', 'a', 'verdict')
     assert_equal 'real', snapshot.dig('diagnostics', 'a', 'note')
     assert_equal 'false_positive', snapshot.dig('diagnostics', 'b', 'verdict')
@@ -28,21 +30,22 @@ class TortureSnapshotTest < Minitest::Test
 
   def test_update_drops_unjudged_and_false_positives_but_refuses_true_positives
     recorded = record('a' => 'unjudged', 'b' => 'false_positive')
-    snapshot, retained = TortureSnapshot.update(recorded, [], sha: SHA)
+    update = TortureSnapshot.update(recorded, [], sha: SHA)
 
-    assert_empty retained
-    assert_empty snapshot.fetch('diagnostics')
+    refute update.refused?
+    assert_empty update.snapshot.fetch('diagnostics')
 
     recorded = record('a' => 'true_positive')
-    snapshot, retained = TortureSnapshot.update(recorded, [], sha: SHA)
+    update = TortureSnapshot.update(recorded, [], sha: SHA)
 
-    assert_nil snapshot
-    assert_equal ['true_positive'], retained.map { |entry| entry.fetch('verdict') }
+    assert update.refused?
+    assert_nil update.snapshot
+    assert_equal ['true_positive'], update.retained.map { |entry| entry.fetch('verdict') }
   end
 
   def test_update_migrates_a_counts_only_record
     legacy = { 'sha' => SHA, 'rules' => { 'dependencies.forbid' => 1 } }
-    snapshot, = TortureSnapshot.update(legacy, [violation('a')], sha: SHA)
+    snapshot = TortureSnapshot.update(legacy, [violation('a')], sha: SHA).snapshot
 
     assert_equal 'unjudged', snapshot.dig('diagnostics', 'a', 'verdict')
     assert_equal legacy.fetch('rules'), snapshot.fetch('rules')
@@ -65,7 +68,7 @@ class TortureSnapshotTest < Minitest::Test
 
   def test_counts_stay_per_violation_when_two_share_a_fingerprint
     violations = [violation('a').merge('line' => 3), violation('a').merge('line' => 9)]
-    snapshot, = TortureSnapshot.update({}, violations, sha: SHA)
+    snapshot = TortureSnapshot.update({}, violations, sha: SHA).snapshot
 
     assert_equal({ 'dependencies.forbid' => 2 }, snapshot.fetch('rules'))
     assert_equal %w[a], snapshot.fetch('diagnostics').keys
@@ -108,5 +111,18 @@ class TortureSnapshotTest < Minitest::Test
       [id, TortureSnapshot.entries_for([violation(id)]).fetch(id).merge('verdict' => verdict)]
     end
     { 'sha' => SHA, 'rules' => TortureSnapshot.counts_for(verdicts.keys.map { |id| violation(id) }), 'diagnostics' => entries }
+  end
+
+  def test_load_names_the_file_and_entry_when_the_shape_is_wrong
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'expected.yml')
+      File.write(path, { 'sha' => SHA, 'rules' => {}, 'diagnostics' => { 'a' => { 'rule' => 'x' } } }.to_yaml)
+      error = assert_raises(ArgumentError) { TortureSnapshot.load(path) }
+      assert_match(/expected\.yml: a is missing path, message, evidence, verdict/, error.message)
+
+      File.write(path, { 'sha' => SHA, 'rules' => {}, 'diagnostics' => [] }.to_yaml)
+      error = assert_raises(ArgumentError) { TortureSnapshot.load(path) }
+      assert_match(/diagnostics must be a mapping/, error.message)
+    end
   end
 end

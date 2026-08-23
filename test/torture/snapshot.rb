@@ -13,6 +13,12 @@ module TortureSnapshot
   VERDICTS = %w[true_positive false_positive unjudged].freeze
   FIELDS = %w[rule path message evidence].freeze
 
+  Update = Struct.new(:snapshot, :retained, keyword_init: true) do
+    def refused?
+      !retained.empty?
+    end
+  end
+
   Result = Struct.new(:counts_changed, :added, :removed, :improved, keyword_init: true) do
     def failures
       failures = []
@@ -32,9 +38,18 @@ module TortureSnapshot
 
   def load(path)
     data = YAML.safe_load_file(path)
+    raise ArgumentError, "#{path}: expected a mapping with sha and rules" unless data.is_a?(Hash) && data.key?('sha') && data['rules'].is_a?(Hash)
+
     entries = data.fetch('diagnostics', {})
+    raise ArgumentError, "#{path}: diagnostics must be a mapping keyed by fingerprint" unless entries.is_a?(Hash)
+
     entries.each do |id, entry|
-      verdict = entry.fetch('verdict', nil)
+      raise ArgumentError, "#{path}: #{id} is not a mapping" unless entry.is_a?(Hash)
+
+      missing = (FIELDS + ['verdict']).reject { |field| entry.key?(field) }
+      raise ArgumentError, "#{path}: #{id} is missing #{missing.join(', ')}" unless missing.empty?
+
+      verdict = entry.fetch('verdict')
       next if VERDICTS.include?(verdict)
 
       raise ArgumentError, "#{path}: #{id} has verdict #{verdict.inspect}, expected one of #{VERDICTS.join(', ')}"
@@ -73,7 +88,7 @@ module TortureSnapshot
     previous = recorded.fetch('diagnostics', {})
     kept = previous.select { |id, entry| live.key?(id) || entry.fetch('verdict') == 'true_positive' }
     retained_true_positives = kept.reject { |id, _| live.key?(id) }
-    return [nil, retained_true_positives.values] unless retained_true_positives.empty?
+    return Update.new(snapshot: nil, retained: retained_true_positives.values) unless retained_true_positives.empty?
 
     entries = live.to_h do |id, entry|
       judged = previous.fetch(id, {})
@@ -81,7 +96,7 @@ module TortureSnapshot
       merged['note'] = judged['note'] if judged.key?('note')
       [id, merged]
     end
-    [{ 'sha' => sha, 'rules' => counts_for(violations), 'diagnostics' => entries }, []]
+    Update.new(snapshot: { 'sha' => sha, 'rules' => counts_for(violations), 'diagnostics' => entries }, retained: [])
   end
 
   def legacy?(recorded)

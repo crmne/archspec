@@ -85,13 +85,13 @@ end
 recorded = File.exist?(expected_path) ? TortureSnapshot.load(expected_path) : nil
 
 if update
-  snapshot, retained = TortureSnapshot.update(recorded || {}, violations, sha: app.fetch(:sha))
-  unless retained.empty?
+  update = TortureSnapshot.update(recorded || {}, violations, sha: app.fetch(:sha))
+  if update.refused?
     puts 'refusing to drop true positives no longer reported; edit the record by hand:'
-    recorded.fetch('diagnostics').each { |id, entry| puts describe(entry, id) if retained.include?(entry) }
+    recorded.fetch('diagnostics').each { |id, entry| puts describe(entry, id) if update.retained.include?(entry) }
     exit 1
   end
-  File.write(expected_path, snapshot.to_yaml)
+  File.write(expected_path, update.snapshot.to_yaml)
   puts "wrote #{expected_path}"
   exit 0
 end
