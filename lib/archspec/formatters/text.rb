@@ -72,8 +72,9 @@ module ArchSpec
         output.puts style.bold(delta_summary(delta, mode))
         output.puts "baseline: #{baseline_summary(delta)}"
         output.puts "edges: #{edge_summary(delta)}"
-        output.puts "changed files: #{delta.changed_files_read ? 'read from git' : 'not read; every new finding counts as introduced'}"
+        output.puts "changed files: #{delta.changed_files_read ? 'read from the snapshot' : 'not read; every new finding counts as introduced'}"
         output.puts "current: #{diagnostics.size} #{diagnostics.size == 1 ? 'violation' : 'violations'} in all"
+        output.puts census_summary(graph)
         output.puts facts_summary(graph)
       end
 

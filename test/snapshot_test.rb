@@ -149,11 +149,11 @@ class SnapshotTest < ArchSpecTest
       assert_match(/user\.rb[\s\S]*declared by this change, pre-existing in the file/, output.string)
       assert_match(/introduced \(1\)/, output.string)
       assert_match(/post\.rb/, output.string)
-      assert_match(/changed files: read from git/, output.string)
+      assert_match(/changed files: read from the snapshot/, output.string)
     end
   end
 
-  def test_without_git_a_newly_declared_rule_counts_as_introduced_and_says_so
+  def test_a_file_dirty_when_the_snapshot_was_taken_and_untouched_since_reads_as_declared_without_git
     with_project do |root|
       write_app(root, rules: '')
       write "#{root}/app/models/user.rb", "class User\n  UsersController\nend\n"
@@ -163,9 +163,83 @@ class SnapshotTest < ArchSpecTest
       output = StringIO.new
       status = check(root, ['--baseline'], output)
 
-      assert_equal 1, status
-      assert_match(/introduced \(1\)/, output.string)
-      assert_match(/changed files: not read/, output.string)
+      assert_equal 0, status
+      assert_match(/declared \(1\)/, output.string)
+      refute_match(/introduced \(1\)/, output.string)
+      assert_match(/changed files: read from the snapshot/, output.string)
+    end
+  end
+
+  def test_a_second_declaration_in_a_family_the_baseline_knew_reads_as_declared
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        component :controllers, in: "app/controllers/**/*.rb"
+        component :jobs, in: "app/jobs/**/*.rb"
+        models.cannot_use :controllers
+      RUBY
+      write "#{root}/app/models/user.rb", "class User\n  ReportJob\nend\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+      write "#{root}/app/jobs/report_job.rb", "class ReportJob; end\n"
+      assert_equal 0, snapshot(root)
+
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        component :controllers, in: "app/controllers/**/*.rb"
+        component :jobs, in: "app/jobs/**/*.rb"
+        models.cannot_use :controllers
+        jobs.cannot_use :models
+        models.cannot_use :jobs
+      RUBY
+
+      output = StringIO.new
+      status = check(root, ['--baseline'], output)
+
+      assert_equal 0, status
+      assert_match(/declared \(1\)/, output.string)
+      assert_match(/models must not depend on jobs/, output.string)
+    end
+  end
+
+  def test_a_line_that_moved_is_the_same_edge
+    with_project do |root|
+      write_app(root, rules: '')
+      write "#{root}/app/models/user.rb", "class User\n  UsersController\nend\n"
+      assert_equal 0, snapshot(root)
+      write "#{root}/app/models/user.rb", "class User\n\n  UsersController\nend\n"
+
+      output = StringIO.new
+      check(root, ['--baseline', '--format', 'json'], output)
+
+      assert_equal({ 'added' => {}, 'removed' => {} }, JSON.parse(output.string).fetch('edges'))
+    end
+  end
+
+  def test_housekeeping_is_evaluated_on_both_sides_of_a_baseline
+    with_project do |root|
+      write_app(root)
+      write "#{root}/app/models/user.rb", "# archspec:disable-next-line dependencies.forbid\nclass User\nend\n"
+      assert_equal 0, snapshot(root)
+
+      output = StringIO.new
+      status = check(root, ['--baseline', '--housekeeping'], output)
+
+      assert_equal 0, status
+      refute_match(/declared \(1\)/, output.string)
+      assert_match(/0 introduced, 0 resolved, 0 declared, 1 carried/, output.string)
+    end
+  end
+
+  def test_a_payload_the_loader_cannot_use_is_said_so_before_the_yaml_is_read
+    with_project do |root|
+      write_app(root)
+      assert_equal 0, snapshot(root)
+      File.binwrite("#{root}/.archspec/#{ArchSpec::Snapshot::PAYLOAD_FILE}", 'not the payload')
+
+      output = StringIO.new
+      check(root, ['--baseline'], output)
+
+      assert_match(/snapshot: the payload does not match its receipt; reading the YAML graph instead/, output.string)
     end
   end
 

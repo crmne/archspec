@@ -77,6 +77,8 @@ class ParseCacheTest < ArchSpecTest
       graph = ArchSpec::Analyzer.analyze(definition, root: root)
 
       assert_equal %w[User UsersController], graph.constants.map(&:name).sort
+      assert_equal 2, graph.census.corrupt_cache_entries
+      assert_includes graph.census.clauses, '2 unreadable cache entries'
     end
   end
 

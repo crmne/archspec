@@ -16,7 +16,7 @@ bundle exec archspec snapshot
 bundle exec archspec check --baseline
 ```
 
-The snapshot holds what the rules read: every parsed file with its parse errors and suppressions, every constant with its methods and mixins, every fact, and the component assignment. The receipt beside it records the ArchSpec version, the root, the source and ignore patterns, a digest of the parsed files, the rule ids that existed when it was taken, and the git commit with a dirty flag when the root is a repository. Both files are sorted YAML with no timestamp, so two snapshots of the same tree are identical. The graph is also written as `graph.bin`, the same document serialised with Marshal, which loads in a fraction of the time and is what a path-scoped check reads; the receipt carries its digest, and a payload that does not match, or was written by another ArchSpec or Prism version, is ignored for the YAML. `.archspec/` ignores itself; nothing in it is meant to be committed.
+The snapshot holds what the rules read: every parsed file with its parse errors and suppressions, every constant with its methods and mixins, every fact, and the component assignment. The receipt beside it records the ArchSpec version, the root, the source and ignore patterns, a digest of the parsed files, the rule ids that existed when it was taken and the fingerprints of the findings those rules raised, and the git commit with a dirty flag when the root is a repository. Both files are sorted YAML with no timestamp, so two snapshots of the same tree are identical. The graph is also written as `graph.bin`, the same document serialised with Marshal, which loads in a fraction of the time and is what a path-scoped check reads; the receipt carries its digest, and a payload that does not match, or was written by another ArchSpec or Prism version, is ignored for the YAML and the check says so. `.archspec/` ignores itself; nothing in it is meant to be committed.
 
 ## What a check reports
 
@@ -27,7 +27,7 @@ Diagnostics are matched by their todo id, so a finding that moved lines is the s
 - **Declared**: introduced by a rule the snapshot did not know, in a file the change did not touch. The change declared the rule; it did not cause the breach. Printed with a note saying so.
 - **Carried**: present in both. Counted, and printed only in strict mode.
 
-Which files the change touched comes from git: the diff between the receipt's commit and the working tree, plus untracked files. Without git, or without a recorded commit, every new finding counts as introduced and the summary says the changed set was not read.
+Which files the change touched is read from the snapshot itself: it records a digest of every file it parsed, so a file whose content differs, or one the snapshot never saw, counts as touched. Nothing here asks git, so a tree that was dirty when the snapshot was taken compares against what was read, not against a commit. A snapshot without digests makes every new finding count as introduced, and the summary says the changed set was not read.
 
 ```text
 introduced (1):
@@ -40,7 +40,7 @@ app/models/post.rb:2:3
 Architecture regressed (ratchet): 1 introduced, 1 resolved, 0 declared, 0 carried.
 baseline: 3f2a9c1d4e5b
 edges: +1 references_constant
-changed files: read from git
+changed files: read from the snapshot
 current: 1 violation in all
 facts: none (archspec_facts/ absent)
 ```

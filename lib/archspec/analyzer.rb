@@ -13,6 +13,7 @@ module ArchSpec
 
       graph.ignored_files = ignored_files(definition, root).to_a.sort
       ruby_files(definition, root).each { |path| read_file(graph, path, cache) }
+      graph.corrupt_cache_entries = cache.corrupt_entries if cache
 
       merge_facts(graph, definition, root)
       graph.assign_components(definition.component_specs.values)
@@ -42,6 +43,7 @@ module ArchSpec
         end
       end
 
+      graph.corrupt_cache_entries = cache.corrupt_entries if cache
       merge_facts(graph, definition, root, only: read)
       graph.assign_components(definition.component_specs.values)
       graph
@@ -70,22 +72,7 @@ module ArchSpec
     def copy_file(graph, reused, path, constants, edges)
       file = reused.files.fetch(path)
       graph.add_file(path: path, parse_errors: file.parse_errors, suppressions: file.suppressions)
-      constants.each do |held|
-        constant = graph.add_constant(name: held.name, kind: held.kind, path: path, location: held.location,
-                                      nesting: held.nesting)
-        constant.superclass = held.superclass
-        constant.abstract = held.abstract?
-        held.method_definitions.each do |definition|
-          if definition.scope == :class
-            constant.add_class_method(definition.name, location: definition.location, visibility: definition.visibility)
-          else
-            constant.add_instance_method(definition.name, location: definition.location,
-                                                          visibility: definition.visibility)
-          end
-        end
-        held.mixins.each { |kind, names| names.each { |name| constant.add_mixin(kind, name) } }
-        held.associations.each { |declaration| constant.add_association(declaration) }
-      end
+      constants.each { |held| graph.copy_constant(held, path: path) }
       edges.each do |edge|
         graph.add_edge(type: edge.type, from_path: path, from_constant: edge.from_constant, to: edge.to,
                        location: edge.location, confidence: edge.confidence, receiver: edge.receiver,
@@ -111,22 +98,27 @@ module ArchSpec
 
     def ruby_files(definition, root)
       ignored = ignored_files(definition, root)
+      source_files(definition, root).reject { |path| ignored.include?(path) }
+    end
 
+    def source_files(definition, root)
       definition.analysis_patterns.flat_map do |pattern|
         Dir.glob(File.absolute_path(pattern, root))
       end.select do |path|
         File.file?(path) && path.end_with?('.rb')
       end.map do |path|
         File.expand_path(path)
-      end.uniq.reject do |path|
-        ignored.include?(path)
-      end.sort
+      end.uniq.sort
     end
 
+    # Only files the source globs would have read: an ignore pattern over
+    # vendor/ keeps thousands of files out, and the census counts the ones
+    # the definition asked for and then set aside, not the whole directory.
     def ignored_files(definition, root)
-      definition.ignore_patterns.flat_map do |pattern|
+      matched = definition.ignore_patterns.flat_map do |pattern|
         Dir.glob(File.absolute_path(pattern, root))
       end.select { |path| File.file?(path) }.map { |path| File.expand_path(path) }.to_set
+      matched & source_files(definition, root).to_set
     end
 
     def suppressions_for(comments)

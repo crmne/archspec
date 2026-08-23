@@ -26,6 +26,7 @@ module ArchSpec
     :patterns,
     :parsed_set_digest,
     :rule_ids,
+    :finding_ids,
     :commit,
     :dirty,
     :payload_digest
@@ -94,8 +95,12 @@ module ArchSpec
       end
 
       receipt = receipt_from(read_yaml(receipt_path), receipt_path)
-      document = read_payload(File.join(directory, PAYLOAD_FILE), receipt) || read_yaml(graph_path)
-      new(graph_from(document, graph_path, root: receipt.root), receipt)
+      document, cause = read_payload(File.join(directory, PAYLOAD_FILE), receipt)
+      if document.nil?
+        yield cause if block_given?
+        document = read_yaml(graph_path)
+      end
+      new(graph_from(document, graph_path, root: receipt.root), receipt, digests_from(document))
     end
 
     # The snapshot from its payload alone, or nil when there is no payload the
@@ -109,16 +114,24 @@ module ArchSpec
       return unless File.exist?(receipt_path)
 
       receipt = receipt_from(read_yaml(receipt_path), receipt_path)
-      document = read_payload(File.join(directory, PAYLOAD_FILE), receipt)
+      document, = read_payload(File.join(directory, PAYLOAD_FILE), receipt)
       return unless document
 
-      new(graph_from(document, PAYLOAD_FILE, root: receipt.root), receipt)
+      new(graph_from(document, PAYLOAD_FILE, root: receipt.root), receipt, digests_from(document))
     end
 
     def self.payload?(directory, root:)
       !load_payload(directory, root: root).nil?
     rescue Error
       false
+    end
+
+    # What the rules said about this graph when it was taken, as fingerprints.
+    # A finding the current rules raise on the same graph that is not here was
+    # declared since, so a widened cannot_use or a new rule reads as declared
+    # rather than carried, without the receipt having to know rule identities.
+    def self.finding_ids(graph, definition)
+      definition.rules.flat_map { |rule| rule.evaluate(graph) }.map { |d| d.fingerprint(root: graph.root) }.uniq.sort
     end
 
     def self.receipt_for(graph, definition, definition_digest:, commit:, dirty:, payload_digest: nil)
@@ -130,6 +143,7 @@ module ArchSpec
         patterns: (definition.analysis_patterns + definition.ignore_patterns).sort,
         parsed_set_digest: parsed_set_digest(graph),
         rule_ids: definition.rules.map(&:id).uniq.sort,
+        finding_ids: finding_ids(graph, definition),
         commit: commit,
         dirty: dirty,
         payload_digest: payload_digest
@@ -149,9 +163,24 @@ module ArchSpec
       ''
     end
 
-    def initialize(graph, receipt)
+    def initialize(graph, receipt, digests = nil)
       @graph = graph
       @receipt = receipt
+      @digests = digests
+    end
+
+    # Root-relative paths whose content differs from what the snapshot read,
+    # including files the snapshot never saw. Nil when the snapshot carries
+    # no digests. Read from the files themselves, so a tree that was dirty
+    # when the snapshot was taken compares against what was actually read,
+    # not against a commit.
+    def changed_files(current_graph)
+      return if @digests.nil?
+
+      current_graph.files.values.each_with_object(Set.new) do |file, changed|
+        digest = self.class.content_digest(file.path)
+        changed.add(file.relative_path) unless @digests[file.relative_path] == digest
+      end
     end
 
     class << self
@@ -173,18 +202,29 @@ module ArchSpec
       # version wrote it. Every refusal falls back to the YAML silently: the
       # payload is an accelerator, never the record.
       def read_payload(path, receipt)
-        return unless receipt.payload_digest && File.exist?(path)
+        return [nil, 'the snapshot has no payload'] unless receipt.payload_digest && File.exist?(path)
 
         bytes = File.binread(path)
-        return unless Digest::SHA256.hexdigest(bytes) == receipt.payload_digest
+        return [nil, 'the payload does not match its receipt'] unless Digest::SHA256.hexdigest(bytes) == receipt.payload_digest
 
         payload = Marshal.load(bytes)
-        return unless payload.is_a?(Hash) && payload['format'] == FORMAT &&
-                      payload['archspec_version'] == ArchSpec::VERSION && payload['prism_version'] == Prism::VERSION
+        unless payload.is_a?(Hash) && payload['format'] == FORMAT
+          return [nil, 'the payload was written in another snapshot format']
+        end
+        unless payload['archspec_version'] == ArchSpec::VERSION && payload['prism_version'] == Prism::VERSION
+          return [nil, "the payload was written by archspec #{payload['archspec_version']} with prism #{payload['prism_version']}"]
+        end
 
-        payload['graph']
-      rescue ArgumentError, TypeError, SystemCallError
-        nil
+        [payload['graph'], nil]
+      rescue ArgumentError, TypeError, SystemCallError => e
+        [nil, "the payload could not be read: #{e.message}"]
+      end
+
+      def digests_from(document)
+        files = Array(document['files'])
+        return unless files.all? { |file| file.key?('digest') }
+
+        files.to_h { |file| [file.fetch('path'), file.fetch('digest')] }
       end
 
       def receipt_document(receipt)
@@ -196,6 +236,7 @@ module ArchSpec
           'patterns' => receipt.patterns,
           'parsed_set_digest' => receipt.parsed_set_digest,
           'rule_ids' => receipt.rule_ids,
+          'finding_ids' => receipt.finding_ids,
           'commit' => receipt.commit,
           'dirty' => receipt.dirty,
           'payload_digest' => receipt.payload_digest
@@ -213,6 +254,7 @@ module ArchSpec
           patterns: Array(document['patterns']).map(&:to_s),
           parsed_set_digest: document['parsed_set_digest'].to_s,
           rule_ids: Array(document['rule_ids']).map(&:to_s),
+          finding_ids: Array(document['finding_ids']).map(&:to_s),
           commit: document['commit'],
           dirty: document['dirty'] == true,
           payload_digest: document['payload_digest']
@@ -232,6 +274,7 @@ module ArchSpec
       def file_document(file)
         {
           'path' => file.relative_path,
+          'digest' => content_digest(file.path),
           'parse_errors' => file.parse_errors.map do |error|
             { 'message' => error.message, 'location' => location_document(error.location) }
           end,
@@ -333,26 +376,27 @@ module ArchSpec
 
       def restore_constant(graph, document, root)
         absolute = File.expand_path(document.fetch('path'), root)
-        constant = graph.add_constant(
+        held = ConstantNode.new(
           name: document.fetch('name'),
           kind: document.fetch('kind').to_sym,
           path: absolute,
           location: restored_location(absolute, document.fetch('location')),
           nesting: Array(document['nesting'])
         )
-        constant.superclass = document['superclass']
+        held.superclass = document['superclass']
         Array(document['methods']).each do |definition|
           location = restored_location(absolute, definition.fetch('location'))
           visibility = definition.fetch('visibility').to_sym
           if definition.fetch('scope') == 'class'
-            constant.add_class_method(definition.fetch('name'), location: location, visibility: visibility)
+            held.add_class_method(definition.fetch('name'), location: location, visibility: visibility)
           else
-            constant.add_instance_method(definition.fetch('name'), location: location, visibility: visibility)
+            held.add_instance_method(definition.fetch('name'), location: location, visibility: visibility)
           end
         end
         Hash(document['mixins']).each do |kind, names|
-          Array(names).each { |name| constant.add_mixin(kind.to_sym, name) }
+          Array(names).each { |name| held.add_mixin(kind.to_sym, name) }
         end
+        graph.copy_constant(held)
       end
 
       def restore_edge(graph, document, root)

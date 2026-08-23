@@ -170,41 +170,11 @@ module ArchSpec
   # by glob or unreadable by the parser: each is a blind spot with a cause,
   # so a run over code the parser barely read never prints the summary of a
   # run that read it in full.
-  class Census
-    attr_reader :resolved_references, :unresolved_references, :unresolved_names, :dynamic_features,
-                :other_receiver_calls, :ignored_files, :parse_error_files, :producers,
-                :unused_suppressions, :stale_todo_entries
-
-    def initialize(resolved_references:, unresolved_references:, unresolved_names:, dynamic_features:,
-                   other_receiver_calls:, ignored_files:, parse_error_files:, producers:,
-                   unused_suppressions: 0, stale_todo_entries: 0)
-      @resolved_references = resolved_references
-      @unresolved_references = unresolved_references
-      @unresolved_names = unresolved_names
-      @dynamic_features = dynamic_features
-      @other_receiver_calls = other_receiver_calls
-      @ignored_files = ignored_files
-      @parse_error_files = parse_error_files
-      @producers = producers
-      @unused_suppressions = unused_suppressions
-      @stale_todo_entries = stale_todo_entries
-    end
-
-    def with_housekeeping(unused_suppressions:, stale_todo_entries:)
-      Census.new(
-        resolved_references: resolved_references,
-        unresolved_references: unresolved_references,
-        unresolved_names: unresolved_names,
-        dynamic_features: dynamic_features,
-        other_receiver_calls: other_receiver_calls,
-        ignored_files: ignored_files,
-        parse_error_files: parse_error_files,
-        producers: producers,
-        unused_suppressions: unused_suppressions,
-        stale_todo_entries: stale_todo_entries
-      )
-    end
-
+  Census = ValueObject.define(
+    :resolved_references, :unresolved_references, :unresolved_names, :dynamic_features,
+    :other_receiver_calls, :ignored_files, :parse_error_files, :producers, :corrupt_cache_entries,
+    :unused_suppressions, :stale_todo_entries
+  ) do
     def dynamic_feature_count
       dynamic_features.values.sum { |carriers| carriers.size }
     end
@@ -218,12 +188,13 @@ module ArchSpec
         clause(other_receiver_calls, 'call with an untyped receiver', 'calls with untyped receivers'),
         clause(ignored_files, 'ignored file'),
         clause(parse_error_files, 'file with parse errors', 'files with parse errors'),
+        clause(corrupt_cache_entries, 'unreadable cache entry', 'unreadable cache entries'),
         clause(unused_suppressions, 'unused suppression'),
         clause(stale_todo_entries, 'stale todo entry', 'stale todo entries')
       ].compact
     end
 
-    def to_h
+    def report
       {
         references: {
           resolved: resolved_references,
@@ -235,6 +206,7 @@ module ArchSpec
         ignored_files: ignored_files,
         parse_error_files: parse_error_files,
         producers: producers,
+        corrupt_cache_entries: corrupt_cache_entries,
         unused_suppressions: unused_suppressions,
         stale_todo_entries: stale_todo_entries
       }
@@ -264,7 +236,7 @@ module ArchSpec
     EMPTY_EDGES = [].freeze
 
     attr_reader :root, :files, :constants, :edges, :components, :facts_files
-    attr_accessor :facts_directory, :ignored_files
+    attr_accessor :facts_directory, :ignored_files, :corrupt_cache_entries
 
     def initialize(root)
       @root = File.expand_path(root)
@@ -278,6 +250,7 @@ module ArchSpec
       @facts_present = false
       @facts_origins = {}.compare_by_identity
       @ignored_files = []
+      @corrupt_cache_entries = 0
       @census = nil
       @indexes = nil
       @effective_methods_memo = {}
@@ -290,6 +263,26 @@ module ArchSpec
         parse_errors: parse_errors,
         suppressions: suppressions
       )
+    end
+
+    # Copies a constant another graph holds, or one rebuilt from a record, into
+    # this graph: the node, its methods, mixins and associations, all at once,
+    # so every path that restores a file agrees on what a constant carries.
+    def copy_constant(held, path: held.path)
+      constant = add_constant(name: held.name, kind: held.kind, path: path, location: held.location,
+                              nesting: held.nesting)
+      constant.superclass = held.superclass
+      constant.abstract = held.abstract?
+      held.method_definitions.each do |definition|
+        if definition.scope == :class
+          constant.add_class_method(definition.name, location: definition.location, visibility: definition.visibility)
+        else
+          constant.add_instance_method(definition.name, location: definition.location, visibility: definition.visibility)
+        end
+      end
+      held.mixins.each { |kind, names| names.each { |name| constant.add_mixin(kind, name) } }
+      held.associations.each { |declaration| constant.add_association(declaration) }
+      constant
     end
 
     def add_constant(name:, kind:, path:, location:, nesting: [])
@@ -437,7 +430,7 @@ module ArchSpec
     end
 
     def record_housekeeping(unused_suppressions:, stale_todo_entries:)
-      @census = census.with_housekeeping(
+      @census = census.with(
         unused_suppressions: unused_suppressions,
         stale_todo_entries: stale_todo_entries
       )
@@ -453,7 +446,7 @@ module ArchSpec
 
     def dynamic_features_for(constant_name, path)
       indexes.fetch(:dynamic_features_by_path).fetch(path, EMPTY_EDGES).select do |edge|
-        constant_name.nil? || edge.from_constant == constant_name
+        edge.from_constant == constant_name
       end
     end
 
@@ -671,7 +664,10 @@ module ArchSpec
         other_receiver_calls: other_receivers,
         ignored_files: ignored_files.size,
         parse_error_files: files.values.count { |file| file.parse_errors.any? },
-        producers: facts_present? ? producers.sort.to_h : nil
+        producers: facts_present? ? producers.sort.to_h : nil,
+        corrupt_cache_entries: corrupt_cache_entries,
+        unused_suppressions: 0,
+        stale_todo_entries: 0
       )
     end
 

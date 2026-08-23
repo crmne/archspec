@@ -82,6 +82,37 @@ class CensusTest < ArchSpecTest
     end
   end
 
+  def test_only_files_the_source_globs_would_have_read_count_as_ignored
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/vendor/gem/lib/thing.rb", "class Thing; end\n"
+      write "#{root}/vendor/gem/README.md", "not ruby\n"
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+      end
+      census = ArchSpec::Analyzer.analyze(definition, root: root).census
+
+      assert_equal 0, census.ignored_files
+    end
+  end
+
+  def test_a_diagnostic_outside_any_constant_is_never_doubted
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "send(:define_method, :x) { }\nUsersController\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :controllers, in: 'app/controllers/**/*.rb'
+        models.cannot_use :controllers
+      end
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal [:high], diagnostics.map(&:confidence)
+    end
+  end
+
   def test_edges_are_counted_per_producer_when_facts_are_present
     with_project do |root|
       write "#{root}/app/models/user.rb", "class User\n  Account\nend\n"

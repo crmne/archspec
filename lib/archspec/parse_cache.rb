@@ -22,13 +22,21 @@ module ArchSpec
 
     attr_reader :directory
 
+    def corrupt_entries
+      @corrupt_entries ||= 0
+    end
+
     def fetch(path)
       entry_path = entry_path_for(path)
       return unless File.exist?(entry_path)
 
       entry = Marshal.load(File.binread(entry_path))
-      entry.is_a?(Hash) && entry[:format] == FORMAT ? entry : nil
+      return entry if entry.is_a?(Hash) && entry[:format] == FORMAT
+
+      @corrupt_entries = corrupt_entries + 1
+      nil
     rescue ArgumentError, TypeError, SystemCallError
+      @corrupt_entries = corrupt_entries + 1
       nil
     end
 
@@ -103,7 +111,7 @@ module ArchSpec
       end
 
       def replay_constant(graph, path, record)
-        constant = graph.add_constant(name: record.fetch(:name), kind: record.fetch(:kind), path: path,
+        constant = ConstantNode.new(name: record.fetch(:name), kind: record.fetch(:kind), path: path,
                                       location: location_at(path, record.fetch(:location)),
                                       nesting: record.fetch(:nesting))
         constant.superclass = record.fetch(:superclass)
@@ -126,6 +134,7 @@ module ArchSpec
                                      nesting: nesting
                                    ))
         end
+        graph.copy_constant(constant, path: path)
       end
 
       def location_of(location)

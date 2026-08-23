@@ -62,7 +62,9 @@ module ArchSpec
       return diagnostic unless diagnostic.confidence == :high
 
       constant = graph.constant_enclosing(diagnostic.location)
-      features = graph.dynamic_features_for(constant&.name, diagnostic.location.path)
+      return diagnostic if constant.nil?
+
+      features = graph.dynamic_features_for(constant.name, diagnostic.location.path)
       return diagnostic if features.empty?
 
       feature = features.min_by { |edge| edge.location.line }

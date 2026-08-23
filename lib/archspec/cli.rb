@@ -215,17 +215,20 @@ module ArchSpec
     # produced the same way decline with their own exit status, so a run that
     # could not compare never reads as a run that passed.
     def check_against_baseline(options, paths, output, formatter, definition, root, graph, todo, diagnostics, mode)
-      baseline = Snapshot.load(options[:baseline], root: root)
+      baseline = Snapshot.load(options[:baseline], root: root) do |cause|
+        output.puts "snapshot: #{cause}; reading the YAML graph instead, which is slower"
+      end
       current = Snapshot.receipt_for(graph, definition, definition_digest: definition_digest(options[:config]),
-                                                        commit: nil, dirty: false)
+                                                        commit: GitTree.commit(root), dirty: GitTree.dirty?(root))
       if (cause = current.incomparable_with(baseline.receipt))
         output.puts "archspec: declined: #{cause}; take a new snapshot and check again."
         return DECLINED_STATUS
       end
 
-      baseline_diagnostics = Evaluator.evaluate(definition, baseline.graph, todo: todo)
+      baseline_diagnostics = Evaluator.evaluate(definition, baseline.graph, todo: todo,
+                                                                            housekeeping: options[:housekeeping])
       delta = Delta.between(baseline, graph, diagnostics, baseline_diagnostics, root: root,
-                                                                                changed_files: GitTree.changed_files(root, baseline.receipt.commit))
+                                                                                changed_files: baseline.changed_files(graph))
       delta = delta.scoped { |bucket| scope_to_paths(bucket, paths, root) }
 
       formatter.print_delta(output, graph: graph, diagnostics: scope_to_paths(diagnostics, paths, root), delta: delta,
