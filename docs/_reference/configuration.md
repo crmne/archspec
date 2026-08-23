@@ -26,7 +26,7 @@ Todo ids are computed from the rule, path, message, and evidence, not the line n
 
 `cache` keeps what the parser extracted from each file between runs, keyed by the file's content and the gem and parser versions, so a check re-reads only what changed, and lets a path-scoped check reuse a snapshot that has only its YAML graph for every file it does not name. It is off until declared; the directory defaults to `.archspec/cache/` and ignores itself in git. The output with and without the cache is the same, byte for byte.
 
-`resolver` runs a second resolver inside every check and sets its answer beside the parser's on each constant reference. The set is closed; `:rubydex` indexes the workspace and its locked bundle without booting anything, and the two answers converge per reference: the same constant from both is a `converged` edge, a reference only the parser resolved keeps its edge, one only Rubydex resolved becomes an edge marked as its, and a disagreement is no edge at all, counted, and doubts every finding in that constant to medium confidence. The index is kept under `.archspec/resolvers/` as one Marshal payload, keyed by the locked bundle, the parsed files, the two versions and the content of path gems, so an unchanged tree costs a read and any edit indexes again. A declared resolver whose gem, `Gemfile` or `Gemfile.lock` is missing fails the check by name rather than running without it, so two machines never grade one tree differently and both read clean. Without the declaration nothing changes. See [Facts]({% link _reference/facts.md %}).
+`resolver` runs a second resolver inside every check and sets its answer beside the parser's on each constant reference. The set is closed; `:rubydex` indexes the workspace and its locked bundle without booting anything, and the two answers converge per reference: the same constant from both is a `converged` edge, a reference only the parser resolved keeps its edge, one only Rubydex resolved becomes an edge marked as its, and a disagreement is no edge at all, counted, and doubts every finding in that constant to medium confidence. The index is kept under `.archspec/resolvers/` as one Marshal payload, keyed by the locked bundle, the parsed files, the two versions and the content of path gems, so an unchanged tree costs a read and any edit indexes again. A declared resolver whose gem, `Gemfile` or `Gemfile.lock` is missing fails the check by name rather than running without it, so two machines never grade one tree differently and both read clean. Without the declaration nothing changes. With it, the rules gain what only the engine states: gem declarations the workspace reaches are held as external constants a component owns by `namespace:` or `constants:`, a call keeps the class it was sent to, the engine's linearised chain answers protocols through framework ancestors at high confidence, definitions carry what they take, aliases resolve to their targets, and the engine's own diagnostics are counted and doubt the findings they touch. A component that selects only gem code or descendants reads `not asked` on the summary line when no resolver is declared, never clean. See [Facts]({% link _reference/facts.md %}).
 
 ## Components
 
@@ -39,6 +39,13 @@ component :workflows,   in: "app/models/**/*_workflow.rb"
 ```
 
 `except:` removes files from what `in:` matched, and only those: a file the component also claims through `namespace:` or `constants:` stays a member. A component with `except:` and no `in:` is an error. A few files that need wider grants than their layer become their own component with their own allowlist, instead of a hole in the layer's. The same keyword works inside the hash form every architecture accepts, so a layer in `layers:` can read `{ in: "app/models/**/*.rb", except: "app/models/**/*_workflow.rb" }`.
+
+`namespace:` and `constants:` also own gem code when a resolver is declared: `component :http, namespace: "Net"` owns `Net::HTTP` once a file in the tree reaches it, so `models.cannot_use :http` sees the edge. Such a constant has no file and is never a member: `must_be_empty`, naming and protocol rules do not see it, and `explain` lists it under `externals` with the gem it came from. A component may be selected by ancestry with `descendants_of:`, which claims every class in the tree whose chain reaches the name, the engine's chain when a resolver is declared and the parser's `inherits_from` edges otherwise; the name itself counts as its own descendant.
+
+```ruby
+component :records, descendants_of: "ApplicationRecord"
+component :http,    namespace: "Net"
+```
 
 Declare one component per subdirectory with `each_directory`, which is handy for engines and packs:
 
@@ -76,9 +83,12 @@ shared_kernel.can_only_be_used_by :billing, :catalog
 services.must_implement :call
 services.must_implement_one_of :call, :resolve
 services.cannot_call :render, :redirect_to, :params, :session
+models.cannot_call :find_by_sql, receiver: "ActiveRecord::Base"
+services.must_implement :call, arity: 1, keyword: :actor
+public_api.cannot_take :block, :rest
 ```
 
-These are name-based checks. They are useful for Rails boundaries and method protocols. See [Method Rules]({% link _rules/methods.md %}) and [Protocol Rules]({% link _rules/protocols.md %}).
+These are name-based checks, and with a resolver declared they read the receiver a call was sent to and what a definition takes. They are useful for Rails boundaries and method protocols. See [Method Rules]({% link _rules/methods.md %}) and [Protocol Rules]({% link _rules/protocols.md %}).
 
 For projects that avoid anonymous command-object style APIs, forbid method definitions too:
 

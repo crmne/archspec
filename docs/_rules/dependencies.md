@@ -68,3 +68,5 @@ ArchSpec checks visible dependency edges:
 - `extend`
 
 It does not build a whole-program call graph.
+
+A target defined in a gem is a name the tree does not define, so it lands in no component, unless a resolver is declared and a component owns it by `namespace:` or `constants:`; then the edge into it counts like any other, and the gem constant is still never a member of the component that owns it.

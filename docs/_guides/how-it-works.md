@@ -81,7 +81,11 @@ A second resolver can check the parser's work. With `resolver :rubydex` in
 through Rubydex and sets that answer beside the parser's on each constant
 reference: the same constant from both is a converged edge, a disagreement
 is no edge at all and doubts the findings around it, and the summary says
-how often each happened. See [Facts]({% link _reference/facts.md %}).
+how often each happened. The engine also hands over what the parser cannot
+see: gem declarations the tree reaches, held as constants with no file so a
+component can own them by name; the linearised chain behind every class;
+what each method takes; aliases; and its own diagnostics. See
+[Facts]({% link _reference/facts.md %}).
 
 Run `archspec explain app/models/user.rb` to see the facts for one file.
 It prints the defined constants, component assignments with reasons, and
