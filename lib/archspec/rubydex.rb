@@ -230,15 +230,17 @@ module ArchSpec
     # edit indexes again; the warm path is an unchanged tree.
     def cache_path(directory, root, lockfile, graph)
       key = Digest::SHA256.hexdigest([File.read(lockfile), ::Rubydex::VERSION, VERSION,
-                                      Snapshot.parsed_set_digest(graph), path_gems_digest(root)].join("\0"))[0, 24]
+                                      Snapshot.parsed_set_digest(graph), path_gems_digest(root, lockfile)].join("\0"))[0, 24]
       File.join(File.expand_path(directory, root), "rubydex-#{key}.marshal")
     end
 
-    def path_gems_digest(root)
+    def path_gems_digest(root, lockfile)
       require 'bundler'
-      sources = Dir.chdir(root) { ::Bundler.definition.sources.path_sources }
+      sources = ::Bundler::LockfileParser.new(File.read(lockfile)).sources.grep(::Bundler::Source::Path)
       entries = sources.flat_map do |source|
-        Dir.glob(File.join(source.path.to_s, '**', '*.rb')).sort.map { |file| "#{file}\0#{Digest::SHA256.file(file).hexdigest}" }
+        Dir.glob(File.join(File.expand_path(source.path.to_s, root), '**', '*.rb')).sort.map do |file|
+          "#{file}\0#{Digest::SHA256.file(file).hexdigest}"
+        end
       end
       Digest::SHA256.hexdigest(entries.join("\n"))
     rescue ::Bundler::BundlerError, SystemCallError
