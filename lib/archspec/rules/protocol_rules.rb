@@ -7,16 +7,25 @@ module ArchSpec
     class CannotCallRule
       include Annotated
 
+      ID = 'methods.forbid'
+
       attr_reader :source, :method_names, :receiver
 
+      # A receiver given as a constant name matches a call whose recorded
+      # receiver resolves to that constant or to one of its descendants; a
+      # call on an untyped receiver never matches it.
+      def self.named?(receiver)
+        receiver.is_a?(String) || receiver.is_a?(Module)
+      end
+
       def initialize(source, methods, receiver: :any, because: nil, since: nil)
-        unless %i[any none].include?(receiver)
-          raise Error, "cannot_call receiver: must be :any or :none, got #{receiver.inspect}"
+        unless %i[any none].include?(receiver) || self.class.named?(receiver)
+          raise Error, "cannot_call receiver: must be :any, :none or a constant name, got #{receiver.inspect}"
         end
 
         @source = source.to_sym
         @method_names = Array(methods).flatten.map(&:to_sym)
-        @receiver = receiver
+        @receiver = self.class.named?(receiver) ? receiver.to_s.sub(/\A::/, '') : receiver
         annotate(because: because, since: since)
       end
 
@@ -30,14 +39,15 @@ module ArchSpec
       end
 
       def id
-        'methods.forbid'
+        ID
       end
 
       def evaluate(graph)
         graph.edges.filter_map do |edge|
           next unless edge.type == :calls_named_method
-          next unless method_names.include?(edge.to.to_sym)
+          next unless method_names.include?(edge.to.to_sym) || aliased?(graph, edge)
           next if receiver == :none && edge.receiver != :none
+          next if receiver.is_a?(String) && !on_receiver?(graph, edge)
           next unless graph.source_components_for(edge).include?(source)
           next if own_method_call?(graph, edge)
 
@@ -45,12 +55,32 @@ module ArchSpec
             rule: id,
             message: "#{source} must not call ##{edge.to}",
             location: edge.location,
-            evidence: "#{graph.edge_source_name(edge)} calls #{edge.to}"
+            evidence: evidence_for(graph, edge)
           )
         end
       end
 
       private
+
+      def on_receiver?(graph, edge)
+        return false unless edge.receiver == :constant && edge.receiver_constant
+
+        resolved = graph.resolve_constant_reference(edge.receiver_constant, edge.from_constant, lexical_nesting: edge.lexical_nesting)
+        graph.descends_from?(resolved, receiver)
+      end
+
+      def aliased?(graph, edge)
+        return false unless edge.receiver_constant
+
+        resolved = graph.resolve_constant_reference(edge.receiver_constant, edge.from_constant, lexical_nesting: edge.lexical_nesting)
+        graph.method_alias_targets(resolved, edge.to).any? { |target| method_names.include?(target) }
+      end
+
+      def evidence_for(graph, edge)
+        evidence = "#{graph.edge_source_name(edge)} calls #{edge.to}"
+        evidence += " on #{edge.receiver_constant}" if receiver.is_a?(String)
+        evidence
+      end
 
       # A receiverless call to a method the class itself defines (directly,
       # inherited, or via attr_*/attribute/delegate) is a call to its own API.
@@ -68,12 +98,16 @@ module ArchSpec
     class MustImplementRule
       include Annotated
 
-      attr_reader :source, :method_name, :scope
+      ID = 'protocol.must_implement'
 
-      def initialize(source, method_name, scope: :instance, because: nil, since: nil)
+      attr_reader :source, :method_name, :scope, :arity, :keywords
+
+      def initialize(source, method_name, scope: :instance, arity: nil, keyword: nil, because: nil, since: nil)
         @source = source.to_sym
         @method_name = method_name.to_sym
         @scope = ProtocolEvidence.validate_scope(scope)
+        @arity = ProtocolEvidence.validate_arity(arity)
+        @keywords = Array(keyword).flatten.compact.map(&:to_sym)
         annotate(because: because, since: since)
       end
 
@@ -81,14 +115,20 @@ module ArchSpec
         [self.class, source, method_name, scope]
       end
 
+      def merge!(other)
+        @arity ||= other.arity
+        @keywords |= other.keywords
+        self
+      end
+
       def id
-        'protocol.must_implement'
+        ID
       end
 
       def evaluate(graph)
         constants_for(graph).filter_map do |constant|
           methods, unresolved = graph.effective_methods_in_scope(constant.name, scope)
-          next if methods.include?(method_name)
+          next shape_diagnostic(graph, constant, unresolved) if methods.include?(method_name)
 
           diagnostic(
             rule: id,
@@ -102,8 +142,95 @@ module ArchSpec
 
       private
 
+      # What the implementation takes, checked against the arity and the
+      # keywords the protocol asks for. A definition nobody described has no
+      # signature, and that is the miss the evidence names; it is never read
+      # as conforming.
+      def shape_diagnostic(graph, constant, unresolved)
+        return nil if arity.nil? && keywords.empty?
+        return nil if graph.resolvers.empty?
+
+        definition = graph.definition_in_chain(constant.name, method_name, scope)
+        signature = definition&.signature
+        problems = ProtocolEvidence.signature_problems(signature, arity, keywords)
+        return nil if problems.empty?
+
+        diagnostic(
+          rule: id,
+          message: "#{constant.name} must implement #{ProtocolEvidence.describe(method_name, scope)} #{ProtocolEvidence.describe_shape(arity, keywords)}",
+          location: definition&.location || constant.location,
+          evidence: "#{constant.name} #{ProtocolEvidence.describe(method_name, scope)} #{problems.join(', ')}",
+          confidence: unresolved.empty? ? :high : :medium
+        )
+      end
+
       def constants_for(graph)
         ProtocolEvidence.constants_for(graph, source)
+      end
+    end
+
+    # Backs ArchSpec::DSL::ComponentProxy#cannot_take. Flags public method
+    # definitions in the component that take a block, a rest parameter, or a
+    # named keyword.
+    class CannotTakeRule
+      include Annotated
+
+      ID = 'methods.take_forbid'
+      SHAPES = %i[block rest].freeze
+
+      attr_reader :source, :shapes, :keywords
+
+      def initialize(source, shapes, keyword: nil, because: nil, since: nil)
+        @source = source.to_sym
+        @shapes = Array(shapes).flatten.compact.map(&:to_sym)
+        unknown = @shapes - SHAPES
+        raise Error, "cannot_take takes :block, :rest or keyword:, got #{unknown.first.inspect}" if unknown.any?
+
+        @keywords = Array(keyword).flatten.compact.map(&:to_sym)
+        raise Error, 'cannot_take needs a shape or a keyword' if @shapes.empty? && @keywords.empty?
+
+        annotate(because: because, since: since)
+      end
+
+      def merge_key
+        [self.class, source]
+      end
+
+      def merge!(other)
+        @shapes |= other.shapes
+        @keywords |= other.keywords
+        self
+      end
+
+      def id
+        ID
+      end
+
+      def evaluate(graph)
+        graph.method_definitions_for_component(source).filter_map do |definition|
+          next unless definition.visibility == :public
+          next if definition.signature.nil?
+
+          taken = taken_by(definition.signature)
+          next if taken.empty?
+
+          diagnostic(
+            rule: id,
+            message: "#{source} must not take #{taken.join(', ')}",
+            location: definition.location,
+            evidence: "#{definition.owner}#{ProtocolEvidence.describe(definition.name, definition.scope)} takes #{taken.join(', ')}"
+          )
+        end
+      end
+
+      private
+
+      def taken_by(signature)
+        found = []
+        found << 'a block' if shapes.include?(:block) && signature.block
+        found << 'a rest parameter' if shapes.include?(:rest) && signature.rest
+        keywords.each { |keyword| found << "keyword #{keyword}" if signature.keyword?(keyword) }
+        found
       end
     end
 
@@ -171,6 +298,43 @@ module ArchSpec
         return scope if VALID_SCOPES.include?(scope)
 
         raise Error, "protocol scope: must be :instance or :class, got #{scope.inspect}"
+      end
+
+      def validate_arity(arity)
+        return nil if arity.nil?
+        return arity if arity.is_a?(Integer) && arity >= 0
+        return arity if arity.is_a?(Range) && arity.begin.is_a?(Integer)
+
+        raise Error, "protocol arity: must be a count or a range, got #{arity.inspect}"
+      end
+
+      def describe_shape(arity, keywords)
+        parts = []
+        parts << "taking #{arity.is_a?(Range) ? "#{arity.begin} to #{arity.end || 'any'}" : arity} positional" if arity
+        parts << "with keyword #{keywords.map { |keyword| "#{keyword}:" }.join(' ')}" if keywords.any?
+        parts.join(' ')
+      end
+
+      def signature_problems(signature, arity, keywords)
+        return ['has no recorded signature'] if signature.nil?
+
+        problems = []
+        if arity && !arity_matches?(signature, arity)
+          problems << "takes #{signature.required}#{signature.optional.positive? ? " to #{signature.required + signature.optional}" : ''}#{signature.rest ? ' or more' : ''} positional"
+        end
+        missing = keywords.reject { |keyword| signature.keyword?(keyword) }
+        problems << "lacks keyword #{missing.map { |keyword| "#{keyword}:" }.join(' ')}" if missing.any?
+        problems
+      end
+
+      def arity_matches?(signature, arity)
+        wanted = arity.is_a?(Range) ? arity : (arity..arity)
+        taken = signature.arity_range
+        return taken.begin <= wanted.begin if wanted.end.nil? && taken.end.nil?
+        return false if taken.end.nil? && wanted.end
+        return taken.begin <= wanted.begin if wanted.end.nil?
+
+        taken.begin <= wanted.begin && taken.end >= wanted.end
       end
 
       def describe(method_name, scope)

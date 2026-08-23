@@ -171,13 +171,19 @@ module ArchSpec
           next unless graph.source_components_for(edge).include?(source)
 
           referenced = graph.resolve_edge_constant(edge)
-          next unless constants.any? { |constant| referenced == constant || referenced.start_with?("#{constant}::") }
+          chain = graph.alias_chain(referenced)
+          matched = chain.find do |name|
+            constants.any? { |constant| name == constant || name.start_with?("#{constant}::") }
+          end
+          next unless matched
 
+          evidence = graph.edge_evidence(edge)
+          evidence += " (#{referenced} is an alias of #{matched})" if matched != referenced
           diagnostic(
             rule: id,
             message: "#{source} must not reference #{referenced}",
             location: edge.location,
-            evidence: graph.edge_evidence(edge),
+            evidence: evidence,
             confidence: edge.confidence
           )
         end

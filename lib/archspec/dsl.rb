@@ -146,14 +146,15 @@ module ArchSpec
       #
       # Returns an ArchSpec::DSL::ComponentProxy for attaching rules. The
       # component is also available by name later in the file.
-      def component(name, in: nil, except: nil, namespace: nil, constants: nil)
+      def component(name, in: nil, except: nil, namespace: nil, constants: nil, descendants_of: nil)
         add_component(
           ComponentSpec.new(
             name,
             files: binding.local_variable_get(:in),
             except: except,
             namespace: namespace,
-            constants: constants
+            constants: constants,
+            descendants_of: descendants_of
           )
         )
         ComponentProxy.new(self, name)
@@ -381,12 +382,27 @@ module ArchSpec
       #   jobs.must_implement :perform_later, scope: :class
       #
       # Rule id: +protocol.must_implement+.
-      def must_implement(*methods, scope: :instance, because: nil, since: nil)
+      def must_implement(*methods, scope: :instance, arity: nil, keyword: nil, because: nil, since: nil)
         raise Error, 'must_implement requires at least one method' if methods.flatten.compact.empty?
 
         methods.each do |method_name|
-          add_rule(Rules::MustImplementRule.new(name, method_name, scope: scope, because: because, since: since))
+          add_rule(Rules::MustImplementRule.new(name, method_name, scope: scope, arity: arity, keyword: keyword,
+                                                      because: because, since: since))
         end
+        self
+      end
+
+      # Forbids a shape of parameter on the component's public methods: a
+      # block, a rest parameter, or a named keyword. Reads what each definition
+      # takes as the parser or a facts file stated it.
+      #
+      #   public_api.cannot_take :block
+      #   commands.cannot_take :rest
+      #   services.cannot_take keyword: :options
+      #
+      # Rule id: +methods.take_forbid+.
+      def cannot_take(*shapes, keyword: nil, because: nil, since: nil)
+        add_rule(Rules::CannotTakeRule.new(name, shapes, keyword: keyword, because: because, since: since))
         self
       end
 
