@@ -49,6 +49,10 @@ module ArchSpec
       else
         component_specs[spec.name] = spec
       end
+      merged = component_specs.fetch(spec.name)
+      return if merged.except_patterns.empty? || merged.file_patterns.any?
+
+      raise Error, "component :#{spec.name} has except: but no in: to exclude from"
     end
 
     def component?(name)

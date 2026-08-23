@@ -499,6 +499,32 @@ class AnalyzerTest < ArchSpecTest
     end
   end
 
+  def test_except_without_in_is_refused_at_declaration
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :domain, except: 'app/models/**/*_workflow.rb'
+      end
+    end
+
+    assert_match(/except: but no in:/, error.message)
+  end
+
+  def test_a_file_the_component_still_claims_is_not_listed_as_excluded
+    with_project do |root|
+      write "#{root}/app/models/billing/invoice_workflow.rb", "module Billing; class InvoiceWorkflow; end; end\n"
+
+      definition = ArchSpec.define do
+        component :billing, in: 'app/models/**/*.rb', except: 'app/models/**/*_workflow.rb', namespace: 'Billing'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      path = File.join(root, 'app/models/billing/invoice_workflow.rb')
+
+      assert_equal({}, graph.component_exclusion_reasons_for_path(path))
+      assert_includes graph.component_assignment_reasons_for_path(path)[:billing], 'defines Billing::InvoiceWorkflow'
+    end
+  end
+
   def test_except_patterns_merge_across_repeated_declarations
     with_project do |root|
       write "#{root}/app/models/order.rb", "class Order; end\n"

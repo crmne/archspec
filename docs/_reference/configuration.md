@@ -29,7 +29,7 @@ component :domain,      in: "app/models/**/*.rb", except: "app/models/**/*_workf
 component :workflows,   in: "app/models/**/*_workflow.rb"
 ```
 
-`except:` removes files from what `in:` matched. A few files that need wider grants than their layer become their own component with their own allowlist, instead of a hole in the layer's. The same keyword works inside the hash form every architecture accepts, so a layer in `layers:` can read `{ in: "app/models/**/*.rb", except: "app/models/**/*_workflow.rb" }`.
+`except:` removes files from what `in:` matched, and only those: a file the component also claims through `namespace:` or `constants:` stays a member. A component with `except:` and no `in:` is an error. A few files that need wider grants than their layer become their own component with their own allowlist, instead of a hole in the layer's. The same keyword works inside the hash form every architecture accepts, so a layer in `layers:` can read `{ in: "app/models/**/*.rb", except: "app/models/**/*_workflow.rb" }`.
 
 Declare one component per subdirectory with `each_directory`, which is handy for engines and packs:
 

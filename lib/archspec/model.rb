@@ -351,6 +351,7 @@ module ArchSpec
     def component_exclusion_reasons_for_path(path)
       components.values.each_with_object({}) do |component, reasons|
         next unless component.exclusion_reasons.key?(path)
+        next if component.files.include?(path)
 
         reasons[component.name] = component.exclusion_reasons[path].to_a.sort
       end
@@ -383,7 +384,7 @@ module ArchSpec
     # its own methods in the requested scope, the mixins to follow with the
     # scope to read them in, and the scope to read the superclass chain in.
     # Superclass resolution and the cycle guard are shared by both walks.
-    def effective_methods(name, visited, &scope_of)
+    def effective_methods(name, visited, &)
       normalized = normalize_constant(name)
       return [Set.new, Set.new] if visited.include?(normalized)
 
@@ -406,14 +407,14 @@ module ArchSpec
             node.name,
             lexical_nesting: [node.name] + node.nesting
           )
-          ancestor_methods, ancestor_unresolved = walk_ancestor(resolved_name, scope, visited, &scope_of)
+          ancestor_methods, ancestor_unresolved = walk_ancestor(resolved_name, scope, visited, &)
           methods.merge(ancestor_methods)
           unresolved.merge(ancestor_unresolved)
         end
 
         if node.superclass
           resolved_name = resolve_constant_reference(node.superclass, node.name, lexical_nesting: node.nesting)
-          ancestor_methods, ancestor_unresolved = walk_ancestor(resolved_name, superclass_scope, visited, &scope_of)
+          ancestor_methods, ancestor_unresolved = walk_ancestor(resolved_name, superclass_scope, visited, &)
           methods.merge(ancestor_methods)
           unresolved.merge(ancestor_unresolved)
         end
@@ -422,11 +423,11 @@ module ArchSpec
       [methods, unresolved]
     end
 
-    def walk_ancestor(name, scope, visited, &scope_of)
+    def walk_ancestor(name, scope, visited, &)
       if scope == :instance
         effective_instance_methods(name, visited)
       else
-        effective_methods(name, visited, &scope_of)
+        effective_methods(name, visited, &)
       end
     end
 

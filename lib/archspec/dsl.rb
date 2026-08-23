@@ -319,7 +319,7 @@ module ArchSpec
       def must_implement(*methods, scope: :instance)
         raise Error, 'must_implement requires at least one method' if methods.flatten.compact.empty?
 
-        methods.flatten.each do |method_name|
+        methods.each do |method_name|
           add_rule(Rules::MustImplementRule.new(name, method_name, scope: scope))
         end
         self
