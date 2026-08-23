@@ -57,7 +57,7 @@ module ArchSpec
         output.puts style.bold("#{predating.size} #{label} the rule's since: date, reported, not failed:")
         predating.each do |diagnostic|
           output.puts "  #{diagnostic.location.relative_path(graph.root)}:#{diagnostic.location.line}: " \
-                      "#{diagnostic.message} [#{diagnostic.rule}] (since #{diagnostic.dated})"
+                      "#{diagnostic.message} [#{diagnostic.rule}] (since #{diagnostic.since})"
         end
         output.puts
       end
@@ -168,12 +168,12 @@ module ArchSpec
         end
         output.puts "  #{style.note('reason:')} #{diagnostic.reason}" if diagnostic.reason
         output.puts "  #{style.note('action:')} #{diagnostic.suggested_action}" if diagnostic.suggested_action
-        output.puts "  #{style.note('since:')} #{since_for(diagnostic)}" if diagnostic.since == :unknown
+        output.puts "  #{style.note('since:')} #{since_for(diagnostic)}" if diagnostic.age == :unknown
         output.puts
       end
 
       def since_for(diagnostic)
-        "#{diagnostic.dated}, this line could not be dated, so the finding counts as undated"
+        "#{diagnostic.since}, this line could not be dated, so the finding counts as undated"
       end
 
       def print_frame(output, style, location, lines)

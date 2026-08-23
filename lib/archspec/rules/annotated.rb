@@ -43,7 +43,7 @@ module ArchSpec
       private
 
       def diagnostic(**attributes)
-        Diagnostic.new(reason: reason, dated: since, **attributes)
+        Diagnostic.new(**{ reason: reason, since: since }.merge(attributes))
       end
 
       def conflict!(what, mine, theirs)

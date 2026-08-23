@@ -95,8 +95,7 @@ module ArchSpec
               message: message_for(definition),
               location: definition.location,
               evidence: "#{definition.owner} defines #{definition.scope} method #{definition.name} (#{rule.selector.describe})",
-              reason: rule.reason,
-              dated: rule.since
+              since: rule.since
             )
           end
         end
@@ -146,8 +145,7 @@ module ArchSpec
               message: message_for(definition, sibling, target, rule),
               location: definition.location,
               evidence: "#{definition.owner} defines ##{definition.name}, expected ##{sibling}",
-              reason: rule.reason,
-              dated: rule.since
+              since: rule.since
             )
           end
         end

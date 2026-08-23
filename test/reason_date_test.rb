@@ -34,6 +34,7 @@ class ReasonDateTest < ArchSpecTest
       document = JSON.parse(json_output(reasoned, root))
       assert_equal 'a model that knows the request cannot be used off it', document['violations'].first['reason']
       assert_nil document['violations'].first['since']
+      assert_nil document['violations'].first['age']
     end
   end
 
@@ -166,7 +167,8 @@ class ReasonDateTest < ArchSpecTest
         ArchSpec::CLI.run(['check', '--format', 'json'], output: out, error: StringIO.new)
         out.string
       end)
-      assert_equal 'before', document['violations'].first['since']
+      assert_equal '2024-01-01', document['violations'].first['since']
+      assert_equal 'before', document['violations'].first['age']
     end
   end
 
@@ -272,5 +274,53 @@ class ReasonDateTest < ArchSpecTest
     }
     system(env, 'git', '-C', root, 'commit', '-q', '-m', message, out: File::NULL, err: File::NULL) ||
       raise('git commit failed')
+  end
+
+  def test_two_protocol_rules_on_one_component_may_carry_different_dates
+    definition = ArchSpec.define do
+      component :commands, in: 'app/commands/**/*.rb'
+      commands.must_implement :call, since: '2024-01-01'
+      commands.must_implement :undo, since: '2025-01-01'
+    end
+
+    assert_equal [Date.new(2024, 1, 1), Date.new(2025, 1, 1)], definition.rules.map(&:since)
+  end
+
+  def test_a_line_at_the_edge_of_a_shallow_clone_counts_as_undated
+    ages = ArchSpec::LineAge.new('/nowhere')
+    ages.instance_variable_set(:@shallow, true)
+    dates = ages.send(:parse, <<~PORCELAIN)
+      abcdefabcdefabcdefabcdefabcdefabcdefabcd 1 1 1
+      author a
+      author-time 1700000000
+      boundary
+      	class User
+    PORCELAIN
+
+    assert_equal ArchSpec::LineAge::BOUNDARY, dates[1]
+  end
+
+  def test_the_rails_preset_names_helpers_in_its_reason_only_when_they_are_forbidden
+    strict = ArchSpec.define { architecture :rails }
+    shared = ArchSpec.define { architecture :rails, share_helpers: true }
+    reason = ->(definition) { definition.rules.find { |rule| rule.id == 'dependencies.forbid' }.reason }
+
+    assert_match(/or its view helpers/, reason.call(strict))
+    refute_match(/helpers/, reason.call(shared))
+  end
+
+  def test_a_must_be_empty_breach_carries_its_reason_once
+    with_project do |root|
+      write "#{root}/app/services/thing.rb", "class Thing; end\n"
+      definition = ArchSpec.define do
+        component :services, in: 'app/services/**/*.rb'
+        services.must_be_empty because: 'services hide what models should say'
+      end
+
+      diagnostic = diagnostics_for(definition, root).first
+
+      assert_equal 'services must stay empty: services hide what models should say', diagnostic.message
+      assert_nil diagnostic.reason
+    end
   end
 end

@@ -26,13 +26,29 @@ module ArchSpec
       committed < date ? :before : :after
     end
 
+    BOUNDARY = :boundary
+
     private
 
     def committed_on(path, line)
       dates = @files.fetch(path) { @files[path] = blame(path) }
       return unless dates
 
-      dates[line] || unknown('the witness line is not committed')
+      committed = dates[line]
+      return unknown('the history is shallow at the witness line') if committed == BOUNDARY
+
+      committed || unknown('the witness line is not committed')
+    end
+
+    # Git marks a root commit as a boundary too; only a shallow clone's
+    # boundary hides history, so the date of a true root stands.
+    def shallow?
+      return @shallow if defined?(@shallow)
+
+      answer = IO.popen(['git', '-C', @root, 'rev-parse', '--is-shallow-repository'], err: File::NULL, &:read)
+      @shallow = $?.success? && answer.to_s.strip == 'true'
+    rescue SystemCallError
+      @shallow = false
     end
 
     # Porcelain output is read as bytes: author names are whatever encoding the
@@ -47,6 +63,8 @@ module ArchSpec
       unknown('git is not installed')
     end
 
+    # A commit git marks as a boundary is the edge of a shallow clone: the line
+    # is older than the history, and its date is the clone's, not the line's.
     def parse(output)
       dates = {}
       times = {}
@@ -58,8 +76,11 @@ module ArchSpec
           line = header[2].to_i
           dates[line] = commit.match?(UNCOMMITTED) ? nil : times[commit]
         elsif (stamp = text.match(/\Aauthor-time (\d+)$/))
-          times[commit] = Time.at(stamp[1].to_i).utc.to_date
+          times[commit] = Time.at(stamp[1].to_i).utc.to_date unless times[commit] == BOUNDARY
           dates[line] = times[commit] unless commit.match?(UNCOMMITTED)
+        elsif text.start_with?('boundary') && shallow?
+          times[commit] = BOUNDARY
+          dates[line] = BOUNDARY
         end
       end
       dates

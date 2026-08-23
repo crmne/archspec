@@ -33,7 +33,7 @@ class CutTest < ArchSpecTest
     end
   end
 
-  def test_a_forbidden_dependency_points_at_the_component_the_offender_mostly_reaches
+  def test_a_forbidden_dependency_with_no_public_face_to_point_at_admits_it
     with_project do |root|
       write "#{root}/app/models/report.rb", <<~RUBY
         class Report
@@ -55,7 +55,7 @@ class CutTest < ArchSpecTest
 
       diagnostic = diagnostics_for(definition, root).first
 
-      assert_equal 'move Report to services, where its other dependencies already land', diagnostic.suggested_action
+      assert_equal ArchSpec::Cut::NONE, diagnostic.suggested_action
     end
   end
 
@@ -127,7 +127,8 @@ class CutTest < ArchSpecTest
       violation = JSON.parse(json_output(definition, root))['violations'].first
 
       assert_equal 'why', violation['reason']
-      assert_equal 'unknown', violation['since']
+      assert_equal '2024-01-01', violation['since']
+      assert_equal 'unknown', violation['age']
       assert_equal 'no cut the graph can see', violation['suggested_action']
     end
   end

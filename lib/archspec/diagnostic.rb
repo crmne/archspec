@@ -12,11 +12,11 @@ module ArchSpec
   # along; none of them enters the fingerprint, so declaring one on a rule a
   # team already runs moves no todo entry.
   class Diagnostic
-    attr_reader :rule, :message, :location, :evidence, :confidence, :caveat, :reason, :dated, :since,
+    attr_reader :rule, :message, :location, :evidence, :confidence, :caveat, :reason, :since, :age,
                 :suggested_action
 
-    def initialize(rule:, message:, location:, evidence:, confidence: :high, caveat: nil, reason: nil, dated: nil,
-                   since: nil, suggested_action: nil)
+    def initialize(rule:, message:, location:, evidence:, confidence: :high, caveat: nil, reason: nil, since: nil,
+                   age: nil, suggested_action: nil)
       @rule = rule
       @message = message
       @location = location
@@ -24,8 +24,8 @@ module ArchSpec
       @confidence = confidence
       @caveat = caveat
       @reason = reason
-      @dated = dated
       @since = since
+      @age = age
       @suggested_action = suggested_action
     end
 
@@ -35,15 +35,15 @@ module ArchSpec
       with(confidence: :medium, caveat: caveat)
     end
 
-    # The same finding with its date verdict: +:before+ when the witness line
-    # is older than the rule's date, +:after+ when newer, +:unknown+ when git
-    # could not say.
-    def with_since(verdict)
-      with(since: verdict)
+    # The same finding with its age against the rule's since: date: +:before+
+    # when the witness line is older than the date, +:after+ when newer or
+    # from that day, +:unknown+ when git could not say.
+    def aged(verdict)
+      with(age: verdict)
     end
 
     def predates_rule?
-      since == :before
+      age == :before
     end
 
     # Line numbers stay out of the fingerprint so todo entries survive edits
@@ -70,7 +70,8 @@ module ArchSpec
         confidence: confidence.to_s,
         caveat: caveat,
         reason: reason,
-        since: since&.to_s,
+        since: since&.iso8601,
+        age: age&.to_s,
         suggested_action: suggested_action
       }
     end
@@ -86,8 +87,8 @@ module ArchSpec
         confidence: confidence,
         caveat: caveat,
         reason: reason,
-        dated: dated,
         since: since,
+        age: age,
         suggested_action: suggested_action,
         **changes
       )

@@ -56,13 +56,13 @@ module ArchSpec
     # Only dated rules pay for the question, and one cause for an unanswerable
     # line is kept on the graph so the run prints it once.
     def date_against_rules(graph, diagnostics)
-      return diagnostics if diagnostics.none?(&:dated)
+      return diagnostics if diagnostics.none?(&:since)
 
       ages = LineAge.new(graph.root)
       dated = diagnostics.map do |diagnostic|
-        next diagnostic unless diagnostic.dated
+        next diagnostic unless diagnostic.since
 
-        diagnostic.with_since(ages.verdict(diagnostic.location.path, diagnostic.location.line, diagnostic.dated))
+        diagnostic.aged(ages.verdict(diagnostic.location.path, diagnostic.location.line, diagnostic.since))
       end
       graph.dating_note = ages.note
       dated

@@ -34,7 +34,8 @@ module ArchSpec
             rule: id,
             message: because ? "#{source} must stay empty: #{because}" : "#{source} must stay empty",
             location: SourceLocation.point(path, 1, 1),
-            evidence: "#{relative} belongs to #{source}"
+            evidence: "#{relative} belongs to #{source}",
+            reason: nil
           )
         end
       end

@@ -11,16 +11,12 @@ module ArchSpec
     extend self
 
     # For a reference into a component: the public declaration of that
-    # component that already reaches what was reached, else the component the
-    # offender's other dependencies mostly land in.
-    def for_dependency(graph, edge, target, reached: nil)
+    # component that already reaches what was reached. Nothing else: where the
+    # offender's other references land says what it reads, not where it
+    # belongs, and a hint that can be wrong is worse than none.
+    def for_dependency(graph, _edge, target, reached: nil)
       exposed = exposing_public_name(graph, target, reached) if reached
-      if exposed
-        return "reference #{exposed} instead, the public face of #{target} that already reaches #{reached}"
-      end
-
-      home = likely_home(graph, edge, excluding: [target])
-      return "move #{graph.edge_source_name(edge)} to #{home}, where its other dependencies already land" if home
+      return "reference #{exposed} instead, the public face of #{target} that already reaches #{reached}" if exposed
 
       NONE
     end
@@ -52,36 +48,6 @@ module ArchSpec
         graph.dependency_edges.any? do |edge|
           edge.from_constant == name && graph.resolve_edge_constant(edge) == reached
         end
-      end
-    end
-
-    def likely_home(graph, edge, excluding:)
-      own = graph.source_components_for(edge)
-      tally = Hash.new(0)
-
-      graph.dependency_edges.each do |other|
-        next if other.equal?(edge)
-        next unless same_source?(edge, other)
-
-        graph.target_components_for(other).each do |component|
-          next if own.include?(component) || excluding.include?(component)
-
-          tally[component] += 1
-        end
-      end
-
-      return if tally.empty?
-
-      best = tally.values.max
-      homes = tally.select { |_, count| count == best }.keys
-      homes.first if homes.size == 1
-    end
-
-    def same_source?(edge, other)
-      if edge.from_constant
-        other.from_constant == edge.from_constant
-      else
-        other.from_constant.nil? && other.from_path == edge.from_path
       end
     end
   end

@@ -32,12 +32,14 @@ module ArchSpec
           cycle = shortest_cycle(adjacency, group)
           next unless cycle
 
+          location = locations[[cycle[0], cycle[1]]]
           diagnostic(
             rule: id,
             message: message_for(group, cycle),
-            location: locations[[cycle[0], cycle[1]]] || SourceLocation.point(graph.root, 1, 1),
+            location: location || SourceLocation.point(graph.root, 1, 1),
             evidence: cycle.join(' -> '),
-            suggested_action: Cut.for_cycle(cycle, counts)
+            suggested_action: Cut.for_cycle(cycle, counts),
+            since: location ? since : nil
           )
         end
       end

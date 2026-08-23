@@ -100,6 +100,7 @@ module ArchSpec
     REASONS = {
       controllers_reach: 'controllers orchestrate a request; models, services, helpers, mailers and jobs are all they reach',
       stay_out_of_controllers: 'models and services run outside a request too, so nothing in them may know the controller',
+      stay_out_of_controllers_and_helpers: 'models and services run outside a request too, so nothing in them may know the controller or its view helpers',
       controller_api: 'render, redirect_to, params, session, cookies and flash exist only inside a request',
       no_cycles: 'two components that depend on each other change as one unit in practice',
       concerns: 'a concern that names its includer knows who uses it, which couples the two',
@@ -183,7 +184,7 @@ module ArchSpec
 
       (%i[models services] & components.keys).each do |name|
         proxy = proxy_for(dsl, name)
-        proxy.cannot_use(*forbidden, because: REASONS[:stay_out_of_controllers])
+        proxy.cannot_use(*forbidden, because: REASONS[share_helpers ? :stay_out_of_controllers : :stay_out_of_controllers_and_helpers])
         proxy.cannot_call(*controller_api, receiver: :none, because: REASONS[:controller_api]) unless controller_api.empty?
       end
     end
