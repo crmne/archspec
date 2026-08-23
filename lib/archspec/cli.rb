@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'open3'
 require 'optparse'
 require 'pathname'
 
@@ -207,10 +208,17 @@ module ArchSpec
       raise Error, "no bin/rails at #{root}; reflect runs inside a Rails application" unless File.executable?(runner)
 
       destination = File.expand_path(options[:output] || File.join(definition.facts_path, 'rails.yml'), root)
-      script = "require 'archspec'; ArchSpec::Reflect.run(output: #{destination.inspect}, root: #{root.inspect})"
-      raise Error, 'bin/rails runner failed; the facts file was not written' unless system(runner, 'runner', script, chdir: root)
+      lib = File.expand_path('..', __dir__)
+      script = "$LOAD_PATH.unshift(#{lib.inspect}) unless $LOAD_PATH.include?(#{lib.inspect}); " \
+               "require 'archspec'; ArchSpec::Reflect.run(output: #{destination.inspect}, root: #{root.inspect})"
+      _stdout, stderr, status = Open3.capture3(runner, 'runner', script, chdir: root)
+      unless status.success?
+        detail = stderr.lines.last(5).join.strip
+        raise Error, "bin/rails runner failed; the facts file was not written#{detail.empty? ? '' : ": #{detail}"}"
+      end
 
       output.puts "Wrote #{Pathname(destination).relative_path_from(Pathname(root))}"
+      output.puts summary_line(Facts.load_file(destination, root: root)) if File.exist?(destination)
       0
     end
 
@@ -224,6 +232,7 @@ module ArchSpec
     end
 
     def summary_line(facts)
+      facts = { references: facts.references, misses: facts.misses } unless facts.is_a?(Hash)
       misses = facts[:misses].map { |cause, count| "#{cause} #{count}" }.join(', ')
       references = facts[:references].size
       label = references == 1 ? 'reference' : 'references'

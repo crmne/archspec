@@ -26,8 +26,7 @@ module ArchSpec
       eager_load
       models = ::ActiveRecord::Base.descendants.reject(&:abstract_class?)
       facts = facts_for(models, root: root)
-      FileUtils.mkdir_p(File.dirname(output))
-      Facts.write(output, commit: Facts.commit_for(root), dirty: Facts.dirty?(root), **facts)
+      Facts.write_to(output, root: root, **facts)
       facts
     end
 

@@ -236,7 +236,7 @@ module ArchSpec
             from_constant: normalize_constant(reference.owner),
             to: reference.target,
             location: SourceLocation.point(path, reference.line, 1),
-            confidence: :from_facts_file
+            lexical_nesting: []
           )
           @facts_origins[edges.last] = file.relative_path
         end

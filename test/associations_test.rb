@@ -207,7 +207,7 @@ class AssociationsTest < ArchSpecTest
 
       assert_equal 1, diagnostics.size
       assert_equal 'User references Session (from archspec-associations (built in))', diagnostics.first.evidence
-      assert_equal :from_facts_file, diagnostics.first.confidence
+      assert_equal :high, diagnostics.first.confidence
     end
   end
 

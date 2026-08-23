@@ -16,7 +16,7 @@ class FactsTest < ArchSpecTest
       assert_equal 'dependencies.forbid', diagnostic.rule
       assert_equal 'models must not depend on sessions', diagnostic.message
       assert_equal 'User references Session (from archspec_facts/rails.yml)', diagnostic.evidence
-      assert_equal :from_facts_file, diagnostic.confidence
+      assert_equal :high, diagnostic.confidence
       assert_equal 3, diagnostic.location.line
     end
   end
@@ -92,7 +92,7 @@ class FactsTest < ArchSpecTest
       end
 
       graph = ArchSpec::Analyzer.analyze(definition, root: root)
-      edge = graph.edges.find { |candidate| candidate.confidence == :from_facts_file }
+      edge = graph.edges.find { |candidate| graph.facts_file_for(candidate) }
 
       refute_nil edge
       assert_empty graph.target_components_for(edge)
@@ -113,8 +113,8 @@ class FactsTest < ArchSpecTest
       output = StringIO.new
       Dir.chdir(root) { ArchSpec::CLI.run(['check'], output: output, error: StringIO.new) }
       assert_match 'facts: archspec_facts/rails.yml (archspec-reflect 1.0.1, 1 entry)', output.string
-      assert_match 'note: User references Session (from archspec_facts/rails.yml) (confidence: from_facts_file)',
-                   output.string
+      assert_match 'note: User references Session (from archspec_facts/rails.yml)', output.string
+      refute_match(/confidence: from_facts_file/, output.string)
     end
   end
 
@@ -131,7 +131,7 @@ class FactsTest < ArchSpecTest
       assert_equal [{ 'path' => 'archspec_facts/rails.yml', 'producer' => 'archspec-reflect',
                       'producer_version' => '1.0.1', 'commit' => nil, 'dirty' => false,
                       'entries' => 1, 'misses' => { 'polymorphic' => 2 } }], payload['facts_files']
-      assert_equal 'from_facts_file', payload['violations'].first['confidence']
+      assert_equal 'high', payload['violations'].first['confidence']
     end
   end
 
@@ -173,6 +173,38 @@ class FactsTest < ArchSpecTest
       Dir.chdir(root) { ArchSpec::CLI.run(['explain', 'app/models/user.rb'], output: output, error: StringIO.new) }
 
       assert_match(/3:1 │ references Session/, output.string)
+    end
+  end
+
+  def test_facts_targets_resolve_as_written_never_through_the_owners_nesting
+    with_project do |root|
+      write "#{root}/app/models/shop/order.rb", "module Shop; class Order < ApplicationRecord; end; end\n"
+      write "#{root}/app/models/shop/invoice.rb", "module Shop; class Invoice < ApplicationRecord; end; end\n"
+      write "#{root}/app/models/invoice.rb", "class Invoice < ApplicationRecord; end\n"
+      write "#{root}/archspec_facts/rails.yml", facts_yaml(references: [reference('Shop::Order', 'Invoice').merge('file' => 'app/models/shop/order.rb', 'line' => 1)])
+
+      definition = ArchSpec.define do
+        component :shop, in: 'app/models/shop/**/*.rb'
+        component :top, in: 'app/models/invoice.rb'
+        shop.cannot_use :top
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal ['Shop::Order references Invoice (from archspec_facts/rails.yml)'], diagnostics.map(&:evidence)
+    end
+  end
+
+  def test_a_yaml_extension_is_read_and_a_non_boolean_dirty_is_refused
+    with_project do |root|
+      write_models(root)
+      write "#{root}/archspec_facts/rails.yaml", facts_yaml(references: [reference('User', 'Session')])
+
+      assert_equal 1, diagnostics_for(definition, root).size
+
+      write "#{root}/archspec_facts/rails.yaml", facts_yaml.sub('dirty: false', "dirty: 'yes'")
+      error = assert_raises(ArchSpec::Error) { diagnostics_for(definition, root) }
+      assert_match(/dirty must be true or false/, error.message)
     end
   end
 

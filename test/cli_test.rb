@@ -400,11 +400,15 @@ class CLITest < ArchSpecTest
     with_project do |root|
       write "#{root}/Archspec.rb", "component :models, in: 'app/models/**/*.rb'\n"
       write "#{root}/app/models/user.rb", "class User; end\n"
+      facts = { 'format' => 1, 'producer' => 'archspec-reflect', 'producer_version' => '1.0.1', 'commit' => nil,
+                'dirty' => false, 'references' => [], 'generated_methods' => [], 'misses' => {} }
       write "#{root}/bin/rails", <<~SH
         #!/bin/sh
         printf '%s\\n' "$@" > "#{root}/runner-args"
         mkdir -p "#{root}/archspec_facts"
-        printf 'format: 1\\n' > "#{root}/archspec_facts/rails.yml"
+        cat > "#{root}/archspec_facts/rails.yml" <<'YAML'
+        #{facts.to_yaml}
+        YAML
       SH
       File.chmod(0o755, "#{root}/bin/rails")
 
@@ -412,10 +416,34 @@ class CLITest < ArchSpecTest
       status = Dir.chdir(root) { ArchSpec::CLI.run(['reflect'], output: output, error: StringIO.new) }
 
       assert_equal 0, status
-      assert_equal 'Wrote archspec_facts/rails.yml', output.string.strip
+      assert_equal 'Wrote archspec_facts/rails.yml', output.string.lines.first.strip
       args = File.readlines("#{root}/runner-args", chomp: true)
       assert_equal 'runner', args.first
       assert_match "ArchSpec::Reflect.run(output: \"#{root}/archspec_facts/rails.yml\", root: \"#{root}\")", args.last
+      assert_match "$LOAD_PATH.unshift(#{File.expand_path('../lib', __dir__).inspect})", args.last
+    end
+  end
+
+  def test_reflect_prints_the_summary_of_the_file_the_runner_wrote
+    with_project do |root|
+      write "#{root}/Archspec.rb", "component :models, in: 'app/models/**/*.rb'\n"
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      facts = { 'format' => 1, 'producer' => 'archspec-reflect', 'producer_version' => '1.0.1', 'commit' => nil,
+                'dirty' => false, 'references' => [], 'generated_methods' => [], 'misses' => { 'polymorphic' => 2 } }
+      write "#{root}/bin/rails", <<~SH
+        #!/bin/sh
+        mkdir -p "#{root}/archspec_facts"
+        cat > "#{root}/archspec_facts/rails.yml" <<'YAML'
+        #{facts.to_yaml}
+        YAML
+      SH
+      File.chmod(0o755, "#{root}/bin/rails")
+
+      output = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['reflect'], output: output, error: StringIO.new) }
+
+      assert_equal 0, status
+      assert_equal ['Wrote archspec_facts/rails.yml', '0 references; misses: polymorphic 2'], output.string.lines.map(&:strip)
     end
   end
 
@@ -434,7 +462,7 @@ class CLITest < ArchSpecTest
   def test_reflect_reports_a_failed_runner
     with_project do |root|
       write "#{root}/Archspec.rb", "component :models, in: 'app/models/**/*.rb'\n"
-      write "#{root}/bin/rails", "#!/bin/sh\nexit 3\n"
+      write "#{root}/bin/rails", "#!/bin/sh\necho 'boom: no database' >&2\nexit 3\n"
       File.chmod(0o755, "#{root}/bin/rails")
 
       error = StringIO.new
@@ -442,6 +470,7 @@ class CLITest < ArchSpecTest
 
       assert_equal 1, status
       assert_match 'bin/rails runner failed', error.string
+      assert_match 'boom: no database', error.string
     end
   end
 

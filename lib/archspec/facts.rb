@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'pathname'
+require 'fileutils'
 require 'yaml'
 
 require_relative 'value_object'
@@ -50,7 +51,7 @@ module ArchSpec
       directory = File.expand_path(directory, root)
       return empty(directory: directory) unless File.directory?(directory)
 
-      files = Dir.glob(File.join(directory, '*.yml')).sort.map { |path| load_file(path, root: root) }
+      files = Dir.glob(File.join(directory, '*.{yml,yaml}')).sort.map { |path| load_file(path, root: root) }
       new(files, directory: directory, present: true)
     end
 
@@ -74,7 +75,7 @@ module ArchSpec
         producer: string!(path, 'producer', document['producer']),
         producer_version: string!(path, 'producer_version', document['producer_version']),
         commit: document['commit'].nil? ? nil : string!(path, 'commit', document['commit']),
-        dirty: document['dirty'] == true,
+        dirty: boolean!(path, 'dirty', document['dirty']),
         references: references!(path, document['references']),
         generated_methods: generated_methods!(path, document['generated_methods']),
         misses: misses!(path, document['misses'])
@@ -83,6 +84,11 @@ module ArchSpec
       raise
     rescue Psych::Exception, SystemCallError => e
       raise Error, "could not load facts file #{path}: #{e.message}"
+    end
+
+    def self.write_to(path, root:, **facts)
+      FileUtils.mkdir_p(File.dirname(path))
+      write(path, commit: commit_for(root), dirty: dirty?(root), **facts)
     end
 
     def self.write(path, producer:, producer_version:, commit:, dirty:, references:, generated_methods:, misses:)
@@ -204,6 +210,13 @@ module ArchSpec
 
           FactsGeneratedMethods.new(owner: string!(path, 'owner', entry['owner']), names: names.map(&:to_sym))
         end
+      end
+
+      def boolean!(path, field, value)
+        return false if value.nil?
+        return value if value == true || value == false
+
+        raise Error, "invalid facts file #{path}: #{field} must be true or false"
       end
 
       def misses!(path, counts)

@@ -61,7 +61,7 @@ facts: none (archspec_facts/ absent)
 A violation whose evidence came from a file says so in its note:
 
 ```text
-  note: User references Session (from archspec_facts/rails.yml) (confidence: from_facts_file)
+  note: User references Session (from archspec_facts/rails.yml)
 ```
 
 The JSON format carries the same under `facts_files`, with the producer, commit, entry count and misses per file.
@@ -75,7 +75,7 @@ facts "archspec_facts", associations: :static
 
 Most association targets can be stated from the source alone, and `check` can merge them on every run without a boot. An association becomes a reference in three determinations and no fourth. `declared`: `class_name:` is a string or symbol literal, resolved the way the parser resolves any constant from the declaring class. `through`: `through:` is walked into the intermediate model's own declaration hop by hop, each hop resolved by these same rules, until a target is reached; a chain that meets itself again is a miss. `index`: the bare name is matched against the models the application declares, built from the classes whose ancestry reaches `ApplicationRecord` or `ActiveRecord::Base`, subclasses included, with the declaring class's own namespace tried first, then each enclosing one, and exactly one match required. A collection name matches a model only through the three spellings `s`, `es` and `ies`; `people` matches no model and is a miss.
 
-Nothing else becomes an edge. Polymorphic associations, `source_type:`, a `class_name:` that is not a literal, an association declared in a concern or an abstract class, a subclass restating an inherited association, a name that matches no declared model or more than one, and a `through:` whose intermediate or source does not resolve are counted by cause and reported in the summary. No inflector is consulted; the only names that resolve are names the application declares.
+Nothing else becomes an edge. Polymorphic associations, `source_type:`, a `class_name:` that is not a literal, an association declared in a concern or an abstract class, a subclass restating an inherited association, a name that matches no declared model or more than one, and a `through:` whose intermediate or source does not resolve are counted by cause and reported in the summary. A collection name is matched by a lookup over the declared model names with three plural spellings (`s`, `es`, `ies`) and no irregulars; nothing guesses a name the application does not declare. Files end in `.yml` or `.yaml`.
 
 ```sh
 bundle exec archspec reflect --static

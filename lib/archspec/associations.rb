@@ -12,9 +12,9 @@ module ArchSpec
   # booting. An association becomes a reference in three determinations and
   # no fourth: its class_name: is a literal, its through: walks the
   # intermediates' own declarations hop by hop to a target, or its bare name matches exactly one
-  # model the application declares. Everything else is counted by cause. No
-  # inflector is consulted; the only names that resolve are names the app
-  # declares.
+  # model the application declares. Everything else is counted by cause. A
+  # collection name is matched by a lookup over the declared model names
+  # with three plural spellings and no irregulars, never by an inflector.
   module Associations
     extend self
 
@@ -25,8 +25,7 @@ module ArchSpec
 
     def write(graph, output:, root:)
       facts = facts_for(graph)
-      FileUtils.mkdir_p(File.dirname(output))
-      Facts.write(output, commit: Facts.commit_for(root), dirty: Facts.dirty?(root), **facts)
+      Facts.write_to(output, root: root, **facts)
       facts
     end
 
