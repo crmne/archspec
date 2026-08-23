@@ -13,7 +13,7 @@ module ArchSpec
   # with the standard library's Marshal, and an entry that fails to load is
   # a miss, never an error.
   class ParseCache
-    FORMAT = 1
+    FORMAT = 2
 
     def initialize(directory, root:)
       @directory = File.expand_path(directory, root)
@@ -75,10 +75,10 @@ module ArchSpec
         end
       )
       entry.fetch(:constants).each { |record| replay_constant(graph, path, record) }
-      entry.fetch(:edges).each do |type, from_constant, to, location, confidence, receiver, lexical_nesting|
+      entry.fetch(:edges).each do |type, from_constant, to, location, confidence, receiver, lexical_nesting, receiver_constant|
         graph.add_edge(type: type, from_path: path, from_constant: from_constant, to: to,
                        location: location_at(path, location), confidence: confidence, receiver: receiver,
-                       lexical_nesting: lexical_nesting)
+                       lexical_nesting: lexical_nesting, receiver_constant: receiver_constant)
       end
     end
 
@@ -94,7 +94,8 @@ module ArchSpec
           superclass: constant.superclass,
           abstract: constant.abstract?,
           methods: constant.method_definitions.map do |definition|
-            [definition.name, definition.scope, location_of(definition.location), definition.visibility]
+            [definition.name, definition.scope, location_of(definition.location), definition.visibility,
+             definition.signature&.to_a]
           end,
           mixins: constant.mixins.transform_values(&:to_a),
           associations: constant.associations.map do |declaration|
@@ -107,7 +108,7 @@ module ArchSpec
 
       def edge_record(edge)
         [edge.type, edge.from_constant, edge.to, location_of(edge.location), edge.confidence, edge.receiver,
-         edge.lexical_nesting&.to_a]
+         edge.lexical_nesting&.to_a, edge.receiver_constant]
       end
 
       def replay_constant(graph, path, record)
@@ -116,12 +117,13 @@ module ArchSpec
                                       nesting: record.fetch(:nesting))
         constant.superclass = record.fetch(:superclass)
         constant.abstract = record.fetch(:abstract)
-        record.fetch(:methods).each do |name, scope, location, visibility|
+        record.fetch(:methods).each do |name, scope, location, visibility, signature|
           at = location_at(path, location)
+          signature = Signature.new(*signature) if signature
           if scope == :class
-            constant.add_class_method(name, location: at, visibility: visibility)
+            constant.add_class_method(name, location: at, visibility: visibility, signature: signature)
           else
-            constant.add_instance_method(name, location: at, visibility: visibility)
+            constant.add_instance_method(name, location: at, visibility: visibility, signature: signature)
           end
         end
         record.fetch(:mixins).each { |kind, names| names.each { |name| constant.add_mixin(kind, name) } }

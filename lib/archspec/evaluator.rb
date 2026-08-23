@@ -33,6 +33,9 @@ module ArchSpec
       unused = graph.suppressions.reject { |suppression| matched_suppressions.include?(suppression) }
       stale = todo.entries.reject { |entry| matched_todo_ids.include?(entry.id) }
       graph.record_housekeeping(unused_suppressions: unused.size, stale_todo_entries: stale.size)
+      if graph.resolvers.empty?
+        definition.components_needing_a_resolver(graph).each { |name, fact| graph.record_not_asked(name, fact) }
+      end
 
       reported = reported.map { |diagnostic| doubt_near_dynamic_features(graph, diagnostic) }
       reported = date_against_rules(graph, reported)
@@ -93,10 +96,19 @@ module ArchSpec
       return diagnostic if constant.nil?
 
       features = graph.dynamic_features_for(constant.name, diagnostic.location.path)
-      return doubt_near_disagreements(graph, diagnostic, constant) if features.empty?
+      return doubt_near_engine_diagnostics(graph, diagnostic, constant) if features.empty?
 
       feature = features.min_by { |edge| edge.location.line }
       diagnostic.doubted("#{feature.to} at line #{feature.location.line}")
+    end
+
+    # A finding inside a constant whose ancestry the engine could not settle
+    # rests on a chain the engine itself marked as guessed.
+    def doubt_near_engine_diagnostics(graph, diagnostic, constant)
+      dynamic = graph.engine_diagnostics_for(constant).find { |rule, _path, _line| rule == 'DynamicAncestor' }
+      return doubt_near_disagreements(graph, diagnostic, constant) unless dynamic
+
+      diagnostic.doubted("#{dynamic.first} at line #{dynamic.last}")
     end
 
     # A finding inside a constant where two resolvers read a reference

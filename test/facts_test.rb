@@ -132,7 +132,7 @@ class FactsTest < ArchSpecTest
                       'producer_version' => '1.0.1', 'commit' => nil, 'dirty' => false,
                       'entries' => 1,
                       'entries_by_type' => { 'references' => 1, 'generated_methods' => 0, 'ancestry' => 0,
-                                             'definitions' => 0, 'calls' => 0 },
+                                             'definitions' => 0, 'calls' => 0, 'externals' => 0, 'ancestors' => 0, 'aliases' => 0, 'diagnostics' => 0 },
                       'skipped' => {}, 'misses' => { 'polymorphic' => 2 } }], payload['facts_files']
       assert_equal 'high', payload['violations'].first['confidence']
     end

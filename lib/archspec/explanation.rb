@@ -117,7 +117,7 @@ module ArchSpec
       nodes = graph.constants_named(subject)
       @name = nodes.first.name
       @path = nil
-      paths = nodes.map(&:path).uniq
+      paths = nodes.filter_map(&:path).uniq
       @constants = nodes.map { |node| constant_entry(node) }
       @incoming = incoming_edges(Set[@name])
       @outgoing = outgoing_edges { |edge| edge.from_constant == @name }
@@ -134,7 +134,8 @@ module ArchSpec
       component = graph.components.fetch(component_name)
       @members = {
         files: component.files.map { |file| relative(file) }.sort,
-        constants: component.constants.to_a.sort
+        constants: component.constants.to_a.sort,
+        externals: component.externals.to_a.sort
       }
       @public_face = public_face_for(component_name)
       @fan_in, @fan_out = fans_for(component_name)
@@ -146,8 +147,9 @@ module ArchSpec
       {
         name: node.name,
         kind: node.kind,
-        path: relative(node.path),
-        line: node.location.line,
+        external: node.external,
+        path: node.external? ? nil : relative(node.path),
+        line: node.external? ? nil : node.location.line,
         components: graph.component_assignment_reasons_for_constant(node.name, path: node.path),
         superclass: node.superclass,
         instance_methods: node.instance_methods.to_a.sort,

@@ -34,10 +34,16 @@ module ArchSpec
 
     Resolution = ValueObject.define(:file, :line, :column, :target, :in_workspace)
     Ancestry = ValueObject.define(:owner, :kind, :target, :file, :line, :in_workspace)
-    Definition = ValueObject.define(:owner, :name, :scope, :visibility, :file, :line)
-    Call = ValueObject.define(:file, :line, :method, :receiver, :in_workspace)
+    Definition = ValueObject.define(:owner, :name, :scope, :visibility, :file, :line, :signature)
+    Call = ValueObject.define(:file, :line, :method, :receiver, :scope, :in_workspace)
+    External = ValueObject.define(:name, :kind, :origin, :instance_methods, :class_methods)
+    Ancestors = ValueObject.define(:owner, :instance, :class_side, :in_workspace)
+    Alias = ValueObject.define(:owner, :kind, :name, :target, :file, :line)
+    Diagnostic = ValueObject.define(:rule, :file, :line)
     MIXIN_KINDS = { 'Rubydex::Include' => 'includes', 'Rubydex::Prepend' => 'prepends',
                     'Rubydex::Extend' => 'extends' }.freeze
+    CORE = 'core'
+    DYNAMIC_ANCESTOR = 'DynamicAncestor'
 
     def run(graph, output:, root:, cache_directory: nil)
       facts, = resolve(graph, root: root, cache_directory: cache_directory)
@@ -70,7 +76,9 @@ module ArchSpec
       cache = found ? 'hit' : 'miss'
       found ||= index(root).tap { |indexed| write_index(cached, indexed) if cached }
       facts = facts_for(graph, found[:resolutions], misses: found[:misses], engine_version: found[:engine_version],
-                        ancestry: found[:ancestry], definitions: found[:definitions], calls: found[:calls])
+                        ancestry: found[:ancestry], definitions: found[:definitions], calls: found[:calls],
+                        externals: found.fetch(:externals, []), ancestors: found.fetch(:ancestors, []),
+                        aliases: found.fetch(:aliases, []), diagnostics: found.fetch(:diagnostics, []))
       [facts, found, cache, Process.clock_gettime(Process::CLOCK_MONOTONIC) - started]
     end
 
@@ -78,7 +86,8 @@ module ArchSpec
     # have. Free of the gem so the comparison is tested with stand-ins: a
     # resolution is a file, a line, the resolved target and whether the
     # target is defined under the root.
-    def facts_for(graph, resolutions, misses: {}, engine_version: nil, ancestry: [], definitions: [], calls: [])
+    def facts_for(graph, resolutions, misses: {}, engine_version: nil, ancestry: [], definitions: [], calls: [],
+                  externals: [], ancestors: [], aliases: [], diagnostics: [])
       counts = Hash.new(0)
       misses.each { |cause, count| counts[cause.to_s] += count }
       references = []
@@ -114,6 +123,10 @@ module ArchSpec
         ancestry: ancestry_facts(graph, ancestry, counts),
         definitions: definition_facts(graph, definitions, counts),
         calls: call_facts(graph, calls, counts),
+        externals: external_facts(graph, externals, counts),
+        ancestors: ancestors_facts(graph, ancestors, counts),
+        aliases: alias_facts(graph, aliases, counts),
+        diagnostics: diagnostic_facts(graph, diagnostics),
         misses: counts.sort.to_h
       }
     end
@@ -151,6 +164,9 @@ module ArchSpec
       end.uniq
     end
 
+    # A definition the parser already has is written when the engine knows
+    # what it takes and the parser recorded no signature, which is how a
+    # macro-defined method gets one; otherwise it is counted.
     def definition_facts(graph, entries, counts)
       entries.filter_map do |entry|
         owner = owner_node(graph, entry.owner, entry.file)
@@ -161,12 +177,61 @@ module ArchSpec
 
         known = entry.scope == 'class' ? owner.class_methods : owner.instance_methods
         if known.include?(entry.name.to_sym)
+          described = owner.definition_of(entry.name, entry.scope.to_sym)
           counts['definition_already_resolved'] += 1
-          next
+          next unless described && described.signature.nil? && entry.signature
         end
 
         FactsDefinition.new(owner: owner.name, name: entry.name, scope: entry.scope, visibility: entry.visibility,
-                            file: entry.file, line: entry.line, determination: WORKSPACE)
+                            file: entry.file, line: entry.line, determination: WORKSPACE, signature: entry.signature)
+      end.uniq
+    end
+
+    # Declarations outside the workspace the engine resolved a workspace
+    # reference, ancestor or receiver to, each with the methods the engine
+    # lists, so a component can own them by name and a protocol can read
+    # them; nothing from the bundle that nothing in the workspace reaches.
+    def external_facts(graph, entries, counts)
+      entries.filter_map do |entry|
+        if graph.constants_named(entry.name).any? { |node| !node.external? }
+          counts['external_defined_in_workspace'] += 1
+          next
+        end
+
+        FactsExternal.new(name: entry.name, kind: entry.kind, origin: entry.origin,
+                          instance_methods: entry.instance_methods.map(&:to_sym), class_methods: entry.class_methods.map(&:to_sym))
+      end.uniq(&:name)
+    end
+
+    def ancestors_facts(graph, entries, counts)
+      entries.filter_map do |entry|
+        if graph.constants_named(entry.owner).none? { |node| !node.external? }
+          counts['ancestors_outside_source'] += 1
+          next
+        end
+
+        FactsAncestors.new(owner: entry.owner, instance: entry.instance, class_side: entry.class_side,
+                           determination: entry.in_workspace ? WORKSPACE : GEM)
+      end.uniq(&:owner)
+    end
+
+    def alias_facts(graph, entries, counts)
+      entries.filter_map do |entry|
+        unless graph.files.key?(File.expand_path(entry.file, graph.root))
+          counts['alias_outside_source'] += 1
+          next
+        end
+
+        FactsAlias.new(owner: entry.owner, kind: entry.kind, name: entry.name, target: entry.target, file: entry.file,
+                       line: entry.line, determination: WORKSPACE)
+      end.uniq
+    end
+
+    def diagnostic_facts(graph, entries)
+      entries.filter_map do |entry|
+        next unless graph.files.key?(File.expand_path(entry.file, graph.root))
+
+        FactsDiagnostic.new(rule: entry.rule, file: entry.file, line: entry.line)
       end.uniq
     end
 
@@ -198,7 +263,7 @@ module ArchSpec
         end
 
         FactsCall.new(owner: owner_for(graph, path, entry.line), file: entry.file, line: entry.line,
-                      method: entry.method, receiver: entry.receiver,
+                      method: entry.method, receiver: entry.receiver, scope: entry.scope,
                       determination: entry.in_workspace ? WORKSPACE : GEM)
       end.uniq
     end
@@ -324,11 +389,13 @@ module ArchSpec
 
     def collect(graph, root)
       workspace = "file://#{root}/"
+      origins = origins_of(graph.workspace_paths)
       misses = Hash.new(0)
       resolutions = []
       ancestry = []
       definitions = []
       calls = []
+      reached = {}
 
       graph.constant_references.each do |reference|
         uri = reference.location.uri.to_s
@@ -342,41 +409,167 @@ module ArchSpec
         declaration = attached(reference.declaration)
         next if declaration.nil?
 
+        in_workspace = in_workspace?(declaration, workspace)
+        reach(reached, declaration, workspace) unless in_workspace
         resolutions << Resolution.new(
           file: uri.delete_prefix(workspace),
           line: reference.location.start_line + 1,
           column: reference.location.start_column + 1,
           target: declaration.name.sub(SINGLETON_SCOPE, ''),
-          in_workspace: declaration.definitions.any? { |definition| definition.location.uri.to_s.start_with?(workspace) }
+          in_workspace: in_workspace
         )
       end
 
+      dynamic = dynamic_spans(graph, workspace)
+      ancestors = []
+      aliases = []
       graph.declarations.each do |declaration|
+        aliases.concat(constant_alias_of(declaration, workspace)) if declaration.is_a?(::Rubydex::ConstantAlias)
         next unless declaration.is_a?(::Rubydex::Namespace) && !declaration.is_a?(::Rubydex::SingletonClass)
 
-        collect_ancestry(declaration, workspace, ancestry, misses)
-        collect_definitions(declaration, workspace, definitions)
+        collect_ancestry(declaration, workspace, ancestry, misses, reached)
+        collect_definitions(declaration, workspace, definitions, aliases, misses)
+        next unless in_workspace?(declaration, workspace)
+
+        if dynamic_chain?(declaration, dynamic, workspace)
+          misses['ancestors_dynamic'] += 1
+          next
+        end
+        ancestors << chain_of(declaration, reached, workspace)
       end
 
       graph.method_references.each do |reference|
         uri = reference.location.uri.to_s
         next unless uri.start_with?(workspace)
 
-        receiver = attached(reference.receiver)
+        receiver = reference.receiver
         next unless receiver.is_a?(::Rubydex::Namespace)
 
+        scope = receiver.is_a?(::Rubydex::SingletonClass) ? 'class' : 'instance'
+        receiver = attached(receiver)
+        in_workspace = in_workspace?(receiver, workspace)
+        reach(reached, receiver, workspace) unless in_workspace
         calls << Call.new(file: uri.delete_prefix(workspace), line: reference.location.start_line + 1,
-                          method: reference.name.to_s, receiver: receiver.name.sub(SINGLETON_SCOPE, ''),
-                          in_workspace: in_workspace?(receiver, workspace))
+                          method: reference.name.to_s.delete_suffix('()'), receiver: receiver.name.sub(SINGLETON_SCOPE, ''),
+                          scope: scope, in_workspace: in_workspace)
       end
 
+      diagnostics = []
       graph.diagnostics.each do |diagnostic|
-        next unless diagnostic.location.uri.to_s.start_with?(workspace)
+        uri = diagnostic.location.uri.to_s
+        next unless uri.start_with?(workspace)
 
-        misses["diagnostic_#{diagnostic.rule}"] += 1
+        rule = diagnostic.rule.to_s.split('::').last
+        misses["diagnostic_#{rule}"] += 1
+        diagnostics << Diagnostic.new(rule: rule, file: uri.delete_prefix(workspace), line: diagnostic.location.start_line + 1)
       end
       misses['engine_without_app'] = @engines_without_app if @engines_without_app.to_i.positive?
-      { resolutions: resolutions, ancestry: ancestry, definitions: definitions, calls: calls, misses: misses }
+      { resolutions: resolutions, ancestry: ancestry, definitions: definitions, calls: calls, misses: misses,
+        externals: externals_of(reached, origins, workspace), ancestors: ancestors, aliases: aliases, diagnostics: diagnostics }
+    end
+
+    # The gem each indexed path belongs to, read off the paths the engine
+    # listed: the workspace first, then each locked gem's require path, then
+    # the core library the engine ships as signatures.
+    def origins_of(paths)
+      paths.drop(1).to_h do |path|
+        gem_dir = path.split('/gems/').last.to_s.split('/').first.to_s
+        origin = gem_dir.start_with?('rbs-') && path.end_with?('/core') ? CORE : gem_dir.sub(/-[^-]+\z/, '')
+        [path, origin]
+      end
+    end
+
+    # A declaration outside the workspace that something in it resolved to,
+    # and every ancestor of it, held by name once.
+    def reach(reached, declaration, workspace, depth = 0)
+      declaration = attached(declaration)
+      return if declaration.nil? || !declaration.is_a?(::Rubydex::Namespace) && !declaration.is_a?(::Rubydex::Constant)
+      return if reached.key?(declaration.name) || in_workspace?(declaration, workspace)
+
+      reached[declaration.name] = declaration
+      return unless declaration.is_a?(::Rubydex::Namespace) && depth < 64
+
+      declaration.ancestors.each { |ancestor| reach(reached, ancestor, workspace, depth + 1) }
+      singleton = declaration.singleton_class
+      singleton&.ancestors&.each { |ancestor| reach(reached, ancestor, workspace, depth + 1) }
+    end
+
+    def externals_of(reached, origins, workspace)
+      reached.values.filter_map do |declaration|
+        name = declaration.name.sub(SINGLETON_SCOPE, '')
+        next if name.include?('<')
+
+        kind = case declaration
+               when ::Rubydex::Class then 'class'
+               when ::Rubydex::Module then 'module'
+               else 'constant'
+               end
+        External.new(name: name, kind: kind, origin: origin_of(declaration, origins),
+                     instance_methods: method_names(declaration), class_methods: method_names(declaration.respond_to?(:singleton_class) ? declaration.singleton_class : nil))
+      end.sort_by(&:name)
+    end
+
+    def origin_of(declaration, origins)
+      paths = declaration.definitions.map { |definition| definition.location.uri.to_s.delete_prefix('file://') }
+      found = origins.find { |path, _origin| paths.any? { |file| file.start_with?("#{path}/") } }
+      found ? found.last : CORE
+    end
+
+    def method_names(namespace)
+      return [] unless namespace.respond_to?(:members)
+
+      namespace.members.filter_map { |member| member.unqualified_name.to_s.delete_suffix('()') if member.is_a?(::Rubydex::Method) }.sort
+    end
+
+    # The engine's linearised chain for a workspace namespace, both sides:
+    # the instance ancestors by name, and the singleton's ancestors each read
+    # on the class side (a singleton class, as its attached class's class
+    # methods) or the instance side (a module the class extends).
+    def chain_of(declaration, reached, workspace)
+      instance = declaration.ancestors.map { |ancestor| ancestor.name }
+      class_side = Array(declaration.singleton_class&.ancestors).map do |ancestor|
+        if ancestor.is_a?(::Rubydex::SingletonClass)
+          [attached(ancestor).name, 'class']
+        else
+          [ancestor.name, 'instance']
+        end
+      end
+      (declaration.ancestors + Array(declaration.singleton_class&.ancestors)).each { |ancestor| reach(reached, ancestor, workspace) }
+      Ancestors.new(owner: declaration.name, instance: instance, class_side: class_side, in_workspace: true)
+    end
+
+    def dynamic_spans(graph, workspace)
+      graph.diagnostics.filter_map do |diagnostic|
+        next unless diagnostic.rule.to_s.end_with?(DYNAMIC_ANCESTOR)
+
+        uri = diagnostic.location.uri.to_s
+        [uri, diagnostic.location.start_line] if uri.start_with?(workspace)
+      end
+    end
+
+    def dynamic_chain?(declaration, dynamic, workspace)
+      declaration.definitions.any? do |definition|
+        uri = definition.location.uri.to_s
+        next false unless uri.start_with?(workspace)
+
+        dynamic.any? do |file, line|
+          file == uri && line >= definition.location.start_line && line <= definition.location.end_line
+        end
+      end || declaration.ancestors.any? { |ancestor| ancestor.name.include?('<') && !ancestor.is_a?(::Rubydex::SingletonClass) }
+    end
+
+    def constant_alias_of(declaration, workspace)
+      declaration.definitions.filter_map do |definition|
+        uri = definition.location.uri.to_s
+        next unless uri.start_with?(workspace)
+
+        target = declaration.target
+        next unless target.respond_to?(:name)
+
+        Alias.new(owner: declaration.owner&.name.to_s.sub(SINGLETON_SCOPE, '').then { |owner| owner.empty? ? 'Object' : owner },
+                  kind: 'constant', name: declaration.name, target: target.name.sub(SINGLETON_SCOPE, ''),
+                  file: uri.delete_prefix(workspace), line: definition.location.start_line + 1)
+      end
     end
 
     # A singleton class is the class side of its attached class: a call on
@@ -386,7 +579,7 @@ module ArchSpec
       declaration.is_a?(::Rubydex::SingletonClass) ? declaration.attached_class : declaration
     end
 
-    def collect_ancestry(declaration, workspace, ancestry, misses)
+    def collect_ancestry(declaration, workspace, ancestry, misses, reached)
       declaration.definitions.each do |definition|
         uri = definition.location.uri.to_s
         next unless uri.start_with?(workspace)
@@ -394,44 +587,85 @@ module ArchSpec
         file = uri.delete_prefix(workspace)
         line = definition.location.start_line + 1
         if definition.respond_to?(:superclass) && definition.superclass
-          add_ancestry(ancestry, misses, declaration, 'inherits', definition.superclass, file, line, workspace)
+          add_ancestry(ancestry, misses, declaration, 'inherits', definition.superclass, file, line, workspace, reached)
         end
         next unless definition.respond_to?(:mixins)
 
         definition.mixins.each do |mixin|
           kind = MIXIN_KINDS[mixin.class.name]
-          add_ancestry(ancestry, misses, declaration, kind, mixin.constant_reference, file, line, workspace) if kind
+          add_ancestry(ancestry, misses, declaration, kind, mixin.constant_reference, file, line, workspace, reached) if kind
         end
       end
     end
 
-    def add_ancestry(ancestry, misses, owner, kind, reference, file, line, workspace)
+    def add_ancestry(ancestry, misses, owner, kind, reference, file, line, workspace, reached)
       target = reference.respond_to?(:declaration) ? reference.declaration : nil
       return misses['ancestry_unresolved'] += 1 if target.nil? || target.name.end_with?('>')
 
+      in_workspace = in_workspace?(target, workspace)
+      reach(reached, target, workspace) unless in_workspace
       ancestry << Ancestry.new(owner: owner.name, kind: kind, target: target.name, file: file, line: line,
-                               in_workspace: in_workspace?(target, workspace))
+                               in_workspace: in_workspace)
     end
 
-    def collect_definitions(declaration, workspace, definitions)
+    # An alias whose chain the engine cannot close is no target at all; it is
+    # counted and the definition keeps its name.
+    def alias_target(definition, misses)
+      target = definition.target
+      return nil unless target.respond_to?(:unqualified_name)
+
+      target.unqualified_name.to_s.delete_suffix('()')
+    rescue ::Rubydex::Error
+      misses['alias_cycle'] += 1
+      nil
+    end
+
+    def collect_definitions(declaration, workspace, definitions, aliases, misses)
+      owner = declaration.name.sub(SINGLETON_SCOPE, '')
       declaration.members.each do |member|
         next unless member.is_a?(::Rubydex::Method)
 
         scope = declaration.is_a?(::Rubydex::SingletonClass) ? 'class' : 'instance'
+        name = member.unqualified_name.to_s.delete_suffix('()')
         member.definitions.each do |definition|
           uri = definition.location.uri.to_s
           next unless uri.start_with?(workspace)
 
-          definitions << Definition.new(owner: declaration.name.sub(SINGLETON_SCOPE, ''),
-                                        name: member.unqualified_name.to_s.delete_suffix('()'),
-                                        scope: scope, visibility: member.visibility.to_s, file: uri.delete_prefix(workspace),
-                                        line: definition.location.start_line + 1)
+          file = uri.delete_prefix(workspace)
+          line = definition.location.start_line + 1
+          if definition.is_a?(::Rubydex::MethodAliasDefinition)
+            target = alias_target(definition, misses)
+            aliases << Alias.new(owner: owner, kind: 'method', name: name, target: target, file: file, line: line) if target
+          end
+          definitions << Definition.new(owner: owner, name: name, scope: scope, visibility: member.visibility.to_s,
+                                        file: file, line: line, signature: signature_of(definition))
         end
       end
       return if declaration.is_a?(::Rubydex::SingletonClass)
 
       singleton = declaration.members.find { |member| member.is_a?(::Rubydex::SingletonClass) }
-      collect_definitions(singleton, workspace, definitions) if singleton
+      collect_definitions(singleton, workspace, definitions, aliases, misses) if singleton
+    end
+
+    # What a definition takes, read off the engine's first signature for it;
+    # a forward parameter counts as rest, rest keywords and a block at once.
+    def signature_of(definition)
+      return nil unless definition.respond_to?(:signatures)
+
+      signature = definition.signatures.first
+      return nil unless signature
+
+      parameters = signature.parameters
+      forward = parameters.any?(::Rubydex::Signature::ForwardParameter)
+      Signature.new(
+        parameters.count(::Rubydex::Signature::PositionalParameter) + parameters.count(::Rubydex::Signature::PostParameter),
+        parameters.count(::Rubydex::Signature::OptionalPositionalParameter),
+        parameters.any?(::Rubydex::Signature::RestPositionalParameter) || forward,
+        parameters.select { |parameter| parameter.is_a?(::Rubydex::Signature::KeywordParameter) }.map { |parameter| parameter.name.to_sym },
+        parameters.select { |parameter| parameter.is_a?(::Rubydex::Signature::OptionalKeywordParameter) }.map { |parameter| parameter.name.to_sym },
+        parameters.any?(::Rubydex::Signature::RestKeywordParameter) || forward,
+        parameters.any?(::Rubydex::Signature::BlockParameter) || forward
+      )
     end
 
     def in_workspace?(declaration, workspace)

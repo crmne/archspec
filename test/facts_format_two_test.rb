@@ -142,7 +142,7 @@ class FactsFormatTwoTest < ArchSpecTest
       graph = ArchSpec::Analyzer.analyze(models_definition, root: root)
 
       assert_equal 1, graph.facts_files.size
-      assert_equal({ references: 1, generated_methods: 0, ancestry: 0, definitions: 0, calls: 0 },
+      assert_equal({ references: 1, generated_methods: 0, ancestry: 0, definitions: 0, calls: 0, externals: 0, ancestors: 0, aliases: 0, diagnostics: 0 },
                    graph.facts_files.first.counts)
     end
   end
@@ -187,7 +187,7 @@ class FactsFormatTwoTest < ArchSpecTest
       assert_equal({ 'already_resolved' => 1 }, payload['facts_files'].first['skipped'])
       assert_equal 1, payload['facts_files'].first['entries_by_type']['ancestry']
       assert_equal({ 'producer' => 'test', 'entries' => { 'references' => 0, 'generated_methods' => 0, 'ancestry' => 1,
-                                                          'definitions' => 1, 'calls' => 0 },
+                                                          'definitions' => 1, 'calls' => 0, 'externals' => 0, 'ancestors' => 0, 'aliases' => 0, 'diagnostics' => 0 },
                      'skipped' => { 'already_resolved' => 1 } },
                    payload['census']['facts_entries']['archspec_facts/x.yml'])
     end
@@ -200,8 +200,8 @@ class FactsFormatTwoTest < ArchSpecTest
       ArchSpec::Facts.write(
         path, producer: 'test', producer_version: '1', commit: nil, dirty: false, references: [], generated_methods: [],
         ancestry: [ArchSpec::FactsAncestry.new(owner: 'B', kind: 'includes', target: 'M', file: 'b.rb', line: 2, determination: 'x')],
-        definitions: [ArchSpec::FactsDefinition.new(owner: 'B', name: 'run', scope: 'class', visibility: 'private', file: 'b.rb', line: 3, determination: nil)],
-        calls: [ArchSpec::FactsCall.new(owner: 'B', file: 'b.rb', line: 4, method: 'go', receiver: 'C', determination: 'x')],
+        definitions: [ArchSpec::FactsDefinition.new(owner: 'B', name: 'run', scope: 'class', visibility: 'private', file: 'b.rb', line: 3, determination: nil, signature: nil)],
+        calls: [ArchSpec::FactsCall.new(owner: 'B', file: 'b.rb', line: 4, method: 'go', receiver: 'C', scope: 'instance', determination: 'x')],
         misses: {}
       )
 
@@ -242,9 +242,9 @@ class FactsFormatTwoTest < ArchSpecTest
         ancestry: [ArchSpec::Rubydex::Ancestry.new(owner: 'User', kind: 'inherits', target: 'Base', file: 'app/models/user.rb', line: 1, in_workspace: true),
                    ArchSpec::Rubydex::Ancestry.new(owner: 'User', kind: 'includes', target: 'Trackable', file: 'app/models/user.rb', line: 2, in_workspace: false),
                    ArchSpec::Rubydex::Ancestry.new(owner: 'User', kind: 'extends', target: 'Forwardable', file: 'app/models/user.rb', line: 1, in_workspace: false)],
-        definitions: [ArchSpec::Rubydex::Definition.new(owner: 'User', name: 'save', scope: 'instance', visibility: 'public', file: 'app/models/user.rb', line: 3),
-                      ArchSpec::Rubydex::Definition.new(owner: 'User', name: 'touch', scope: 'instance', visibility: 'public', file: 'app/models/user.rb', line: 3)],
-        calls: [ArchSpec::Rubydex::Call.new(file: 'app/models/user.rb', line: 4, method: 'destroy_all', receiver: 'Base', in_workspace: true)]
+        definitions: [ArchSpec::Rubydex::Definition.new(owner: 'User', name: 'save', scope: 'instance', visibility: 'public', file: 'app/models/user.rb', line: 3, signature: nil),
+                      ArchSpec::Rubydex::Definition.new(owner: 'User', name: 'touch', scope: 'instance', visibility: 'public', file: 'app/models/user.rb', line: 3, signature: nil)],
+        calls: [ArchSpec::Rubydex::Call.new(file: 'app/models/user.rb', line: 4, method: 'destroy_all', receiver: 'Base', scope: 'instance', in_workspace: true)]
       )
 
       assert_equal [['User', 'extends', 'Forwardable', 'rubydex-gem']], facts[:ancestry].map { |e| [e.owner, e.kind, e.target, e.determination] }

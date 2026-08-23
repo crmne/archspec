@@ -51,7 +51,11 @@ module ArchSpec
           output.puts style.bold(entry[:name])
           output.puts
           output.puts "  #{style.note('kind:')} #{entry[:kind]}"
-          output.puts "  #{style.note('file:')} #{entry[:path]}:#{entry[:line]}"
+          if entry[:external]
+            output.puts "  #{style.note('external:')} #{entry[:external]} (no file, never a member)"
+          else
+            output.puts "  #{style.note('file:')} #{entry[:path]}:#{entry[:line]}"
+          end
           print_component_reasons(output, style, entry[:components])
           output.puts "  #{style.note('superclass:')} #{entry[:superclass] || '(none)'}"
           output.puts "  #{style.note('instance methods:')} #{entry[:instance_methods].join(', ')}"
@@ -68,6 +72,7 @@ module ArchSpec
         output.puts "  #{style.note('files:')} #{members[:files].empty? ? '(none)' : members[:files].size}"
         members[:files].each { |file| output.puts "    #{file}" }
         output.puts "  #{style.note('constants:')} #{members[:constants].empty? ? '(none)' : members[:constants].join(', ')}"
+        output.puts "  #{style.note('externals:')} #{members[:externals].join(', ')} (owned by name, never members)" if members[:externals].any?
         print_public_face(output, style, explanation.public_face)
         print_fans(output, style, 'fan-in:', explanation.fan_in)
         print_fans(output, style, 'fan-out:', explanation.fan_out)

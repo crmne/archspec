@@ -50,6 +50,22 @@ module ArchSpec
       @resolvers |= [name.to_sym]
     end
 
+    # Components whose selection needs what only a resolver states: a
+    # namespace or constant list that claims nothing in the workspace, which
+    # is gem code, or descendants of a name the parser holds no chain for.
+    def components_needing_a_resolver(graph)
+      component_specs.values.filter_map do |spec|
+        component = graph.components[spec.name]
+        next unless component && component.constants.empty? && component.externals.empty?
+
+        if spec.descendants_of.any?
+          [spec.name, "descendants of #{spec.descendants_of.join(', ')}"]
+        elsif spec.file_patterns.empty? && (spec.namespaces.any? || spec.constants.any?)
+          [spec.name, "gem code under #{(spec.namespaces + spec.constants).join(', ')}"]
+        end
+      end
+    end
+
     # Where a declared resolver keeps its index between runs: beside the parse
     # cache, under the directory the snapshot owns.
     def resolver_cache_path

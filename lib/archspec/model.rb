@@ -7,7 +7,26 @@ require_relative 'value_object'
 
 module ArchSpec
   ParseError = ValueObject.define(:message, :location)
-  MethodDefinition = ValueObject.define(:owner, :name, :scope, :location, :visibility)
+  MethodDefinition = ValueObject.define(:owner, :name, :scope, :location, :visibility, :signature)
+  # What a method takes, as a producer or the parser recorded it: the count
+  # of required and optional positionals, whether a rest parameter follows,
+  # the required and optional keyword names, whether the rest of the keywords
+  # is taken, and whether a block is named. Nil on a definition nobody
+  # described, which no signature constraint matches.
+  Signature = ValueObject.define(:required, :optional, :rest, :keywords, :optional_keywords, :keyword_rest, :block) do
+    def arity_range
+      rest ? (required..) : (required..(required + optional))
+    end
+
+    def keyword?(name)
+      keywords.include?(name.to_sym) || optional_keywords.include?(name.to_sym)
+    end
+  end
+  # A constant an engine resolved outside the workspace: a gem's or the core
+  # library's declaration, held so a component can own it by name and a
+  # dependency edge can land on it. It has no file, so it is never a member.
+  ExternalConstant = ValueObject.define(:name, :kind, :origin, :instance_methods, :class_methods)
+  AliasDeclaration = ValueObject.define(:owner, :kind, :name, :target, :location)
   AssociationDeclaration = ValueObject.define(
     :owner, :name, :macro, :class_name, :through, :source, :source_type, :polymorphic, :location, :nesting
   )
@@ -33,14 +52,15 @@ module ArchSpec
 
   class ConstantNode
     attr_reader :name, :kind, :path, :location, :instance_methods, :class_methods, :method_definitions, :mixins,
-                :nesting, :associations
+                :nesting, :associations, :external
     attr_accessor :superclass, :abstract
 
-    def initialize(name:, kind:, path:, location:, nesting: [])
+    def initialize(name:, kind:, path:, location:, nesting: [], external: nil)
       @name = name
       @kind = kind
       @path = path
       @location = location
+      @external = external
       @nesting = Array(nesting).dup.freeze
       @instance_methods = Set.new
       @class_methods = Set.new
@@ -62,14 +82,34 @@ module ArchSpec
       kind == :module
     end
 
-    def add_instance_method(name, location:, visibility: :public)
-      instance_methods.add(name.to_sym)
-      method_definitions << MethodDefinition.new(self.name, name.to_sym, :instance, location, visibility)
+    def external?
+      !external.nil?
     end
 
-    def add_class_method(name, location:, visibility: :public)
+    def add_instance_method(name, location:, visibility: :public, signature: nil)
+      instance_methods.add(name.to_sym)
+      method_definitions << MethodDefinition.new(self.name, name.to_sym, :instance, location, visibility, signature)
+    end
+
+    def add_class_method(name, location:, visibility: :public, signature: nil)
       class_methods.add(name.to_sym)
-      method_definitions << MethodDefinition.new(self.name, name.to_sym, :class, location, visibility)
+      method_definitions << MethodDefinition.new(self.name, name.to_sym, :class, location, visibility, signature)
+    end
+
+    def definition_of(name, scope)
+      method_definitions.find { |definition| definition.name == name.to_sym && definition.scope == scope }
+    end
+
+    # Fills in what a producer stated about a definition the parser recorded
+    # without it, and keeps the parser's reading where the two differ.
+    def describe_method(name, scope, signature: nil, visibility: nil)
+      method_definitions.map! do |definition|
+        next definition unless definition.name == name.to_sym && definition.scope == scope
+
+        definition = definition.with(signature: signature) if signature && definition.signature.nil?
+        definition = definition.with(visibility: visibility) if visibility && definition.visibility.nil?
+        definition
+      end
     end
 
     def add_mixin(kind, name)
@@ -143,12 +183,13 @@ module ArchSpec
   end
 
   class Component
-    attr_reader :name, :files, :constants, :constant_occurrences, :file_reasons, :constant_reasons
+    attr_reader :name, :files, :constants, :constant_occurrences, :file_reasons, :constant_reasons, :externals
 
     def initialize(name)
       @name = name.to_sym
       @files = Set.new
       @constants = Set.new
+      @externals = Set.new
       @constant_occurrences = Set.new
       @file_reasons = Hash.new { |hash, key| hash[key] = Set.new }
       @constant_reasons = Hash.new { |hash, key| hash[key] = Set.new }
@@ -175,8 +216,15 @@ module ArchSpec
       constant_reasons[name].add(reason) if reason
     end
 
+    # An external constant the component owns by name: a dependency target,
+    # never a member, so nothing that counts members sees it.
+    def add_external(name, reason: nil)
+      externals.add(name)
+      constant_reasons[name].add(reason) if reason
+    end
+
     def includes_constant?(name, path: nil)
-      return constants.include?(name) unless path
+      return constants.include?(name) || externals.include?(name) unless path
 
       @constant_occurrences.include?([name, path])
     end
@@ -193,7 +241,8 @@ module ArchSpec
     :resolved_references, :unresolved_references, :unresolved_names, :dynamic_features,
     :other_receiver_calls, :ignored_files, :parse_error_files, :producers, :corrupt_cache_entries,
     :unused_suppressions, :stale_todo_entries, :ancestry_resolved, :ancestor_unresolved,
-    :ambiguous_references, :refused_names, :facts_entries, :resolvers
+    :ambiguous_references, :refused_names, :facts_entries, :resolvers, :external_references,
+    :engine_diagnostics, :not_asked
   ) do
     def disagreed_references
       resolvers.values.sum { |counts| counts.fetch(:disagreed, 0) }
@@ -215,8 +264,23 @@ module ArchSpec
         clause(parse_error_files, 'file with parse errors', 'files with parse errors'),
         clause(corrupt_cache_entries, 'unreadable cache entry', 'unreadable cache entries'),
         clause(unused_suppressions, 'unused suppression'),
-        clause(stale_todo_entries, 'stale todo entry', 'stale todo entries')
+        clause(stale_todo_entries, 'stale todo entry', 'stale todo entries'),
+        clause(engine_diagnostic_count, 'engine diagnostic'),
+        not_asked_clause
       ].compact
+    end
+
+    def engine_diagnostic_count
+      engine_diagnostics.values.sum
+    end
+
+    # A component that selects what only a resolver states owns nothing on a
+    # machine without one, and the rules over it raise nothing; the line
+    # says so by name, so a spec never reads clean for the wrong reason.
+    def not_asked_clause
+      return if not_asked.empty?
+
+      "#{not_asked.size} #{not_asked.size == 1 ? 'component' : 'components'} not asked (#{not_asked.map { |name, fact| "#{name}: #{fact}" }.join('; ')})"
     end
 
     def report
@@ -224,6 +288,7 @@ module ArchSpec
         references: {
           resolved: resolved_references,
           through_ancestry: ancestry_resolved,
+          external: external_references,
           unresolved: unresolved_references,
           unresolved_names: unresolved_names,
           refused: {
@@ -240,6 +305,8 @@ module ArchSpec
         corrupt_cache_entries: corrupt_cache_entries,
         facts_entries: facts_entries,
         resolvers: resolvers,
+        engine_diagnostics: engine_diagnostics,
+        not_asked: not_asked,
         unused_suppressions: unused_suppressions,
         stale_todo_entries: stale_todo_entries
       }
@@ -268,7 +335,8 @@ module ArchSpec
     EMPTY_CONSTANTS = [].freeze
     EMPTY_EDGES = [].freeze
 
-    attr_reader :root, :files, :constants, :edges, :components, :facts_files
+    attr_reader :root, :files, :constants, :edges, :components, :facts_files, :externals, :aliases,
+                :engine_diagnostics
     attr_accessor :facts_directory, :ignored_files, :corrupt_cache_entries, :dating_note
 
     def initialize(root)
@@ -292,6 +360,104 @@ module ArchSpec
       @effective_methods_memo = {}
       @resolver_answers = {}
       @resolver_runs = {}
+      @externals = []
+      @aliases = []
+      @alias_targets = {}
+      @method_alias_targets = Hash.new { |hash, key| hash[key] = Set.new }
+      @engine_ancestors = {}
+      @engine_diagnostics = []
+      @not_asked = {}
+    end
+
+    # A declaration outside the workspace an engine resolved: it has no file
+    # and no location, a component owns it by name only, and nothing that
+    # counts members lists it.
+    def add_external(name:, kind:, origin:, instance_methods: [], class_methods: [])
+      normalized = normalize_constant(name)
+      existing = @constants_by_name[normalized].find(&:external?)
+      return existing if existing
+      return nil if @constants_by_name[normalized].any?
+
+      node = ConstantNode.new(name: normalized, kind: kind.to_sym, path: nil, location: nil, external: origin.to_s)
+      instance_methods.each { |method| node.instance_methods.add(method.to_sym) }
+      class_methods.each { |method| node.class_methods.add(method.to_sym) }
+      externals << node
+      @constants_by_name[normalized] << node
+      forget_indexes
+      node
+    end
+
+    # The chain an engine linearised for a namespace, instance and class side,
+    # which the method walks read ahead of the parser's own chain.
+    def record_ancestors(name, instance:, class_side:)
+      @engine_ancestors[normalize_constant(name)] = {
+        instance: instance.map { |ancestor| [normalize_constant(ancestor), :instance] },
+        class: class_side.map { |ancestor, side| [normalize_constant(ancestor), (side || :class).to_sym] }
+      }
+      forget_indexes
+    end
+
+    def engine_ancestors(name, scope)
+      @engine_ancestors.dig(normalize_constant(name), scope)
+    end
+
+    def engine_ancestry_documents
+      @engine_ancestors.sort.to_h do |name, chains|
+        [name, { 'instance' => chains[:instance].map(&:first), 'class' => chains[:class].map { |ancestor, side| [ancestor, side.to_s] } }]
+      end
+    end
+
+    def add_alias(declaration)
+      aliases << declaration
+      if declaration.kind == :constant
+        @alias_targets[normalize_constant(declaration.name)] = normalize_constant(declaration.target)
+      else
+        @method_alias_targets[[normalize_constant(declaration.owner), declaration.name.to_sym]] << declaration.target.to_sym
+      end
+    end
+
+    # The constant a name stands for through every alias on the way, and the
+    # name itself, so a rule naming a target also matches its aliases.
+    def alias_chain(name)
+      chain = [normalize_constant(name)]
+      chain << @alias_targets.fetch(chain.last) while @alias_targets.key?(chain.last) && !chain.include?(@alias_targets.fetch(chain.last))
+      chain
+    end
+
+    def method_alias_targets(owner, name)
+      @method_alias_targets.fetch([normalize_constant(owner), name.to_sym], EMPTY_NAMES)
+    end
+
+    def record_engine_diagnostic(rule:, path:, line:)
+      @engine_diagnostics << [rule.to_s, path, line]
+      @census = nil
+    end
+
+    def engine_diagnostics_for(constant)
+      return EMPTY_EDGES if constant.nil? || constant.path.nil?
+
+      @engine_diagnostics.select do |_rule, path, line|
+        path == constant.path && line >= constant.location.line && line <= constant.location.end_line
+      end
+    end
+
+    # A component that needs a fact only a resolver states, assigned on a
+    # graph without one: recorded by name with the fact it lacked and printed
+    # on the census line, never a finding.
+    def record_not_asked(name, fact)
+      @not_asked[name.to_s] = fact.to_s
+      @census = census.with(not_asked: @not_asked.sort.to_h) if @census
+    end
+
+    # Whether +name+ has +ancestor+ in its resolved chain, the engine's when
+    # it stated one, the parser's otherwise. A name's own self counts.
+    def descends_from?(name, ancestor)
+      wanted = normalize_constant(ancestor)
+      normalized = normalize_constant(name)
+      return true if normalized == wanted
+
+      chain = engine_ancestors(normalized, :instance)&.map(&:first) || linearised_ancestry(normalized, Set.new).flatten
+      chain.include?(wanted)
     end
 
     # Records what a second resolver answered for each reference it saw, by
@@ -349,9 +515,11 @@ module ArchSpec
       constant.abstract = held.abstract?
       held.method_definitions.each do |definition|
         if definition.scope == :class
-          constant.add_class_method(definition.name, location: definition.location, visibility: definition.visibility)
+          constant.add_class_method(definition.name, location: definition.location, visibility: definition.visibility,
+                                                     signature: definition.signature)
         else
-          constant.add_instance_method(definition.name, location: definition.location, visibility: definition.visibility)
+          constant.add_instance_method(definition.name, location: definition.location, visibility: definition.visibility,
+                                                        signature: definition.signature)
         end
       end
       held.mixins.each { |kind, names| names.each { |name| constant.add_mixin(kind, name) } }
@@ -394,11 +562,15 @@ module ArchSpec
 
       facts.files.each do |file|
         facts_files << file
+        merge_externals(file)
         merge_references(file, only)
         merge_generated_methods(file, only)
         merge_ancestry(file, only)
+        merge_ancestors(file)
         merge_definitions(file, only)
+        merge_aliases(file, only)
         merge_calls(file, only)
+        merge_diagnostics(file, only)
       end
     end
 
@@ -476,11 +648,22 @@ module ArchSpec
         constants.each do |constant|
           matched_file = files_matched_by_pattern.include?(constant.path)
           matched_constant = spec.matches_constant?(constant.name)
-          next unless matched_file || matched_constant
+          ancestor = spec.descendants_of.find { |root_name| descends_from?(constant.name, root_name) }
+          next unless matched_file || matched_constant || ancestor
 
           component.add_file(constant.path, reason: "defines #{constant.name}") if matched_constant
-          component.add_constant(constant.name, path: constant.path,
-                                 reason: matched_file ? 'defined in matched file' : 'matched namespace/constant selector')
+          component.add_file(constant.path, reason: "descends from #{ancestor}") if ancestor && !matched_constant
+          reason = if matched_file then 'defined in matched file'
+                   elsif matched_constant then 'matched namespace/constant selector'
+                   else "descends from #{ancestor}"
+                   end
+          component.add_constant(constant.name, path: constant.path, reason: reason)
+        end
+
+        externals.each do |constant|
+          next unless spec.matches_constant?(constant.name)
+
+          component.add_external(constant.name, reason: "matched namespace/constant selector (#{constant.external})")
         end
 
         @components[component.name] = component
@@ -584,8 +767,9 @@ module ArchSpec
       return resolution if answers.nil? || facts_file_for(edge)
       return resolution unless resolution.resolved? && constants_named(resolution.name).any?
 
-      at_column, anywhere = answers.partition { |column, _| column == edge.location.column }
+      at_column, anywhere = answers.partition { |column, _| column == reference_column(edge) }
       candidates = (at_column.empty? ? anywhere : at_column).map(&:last)
+      candidates.reject! { |answer| edge.to.start_with?("#{answer}::") && !same_reference?(answer, resolution.name) }
       agreeing = candidates.find { |answer| same_reference?(answer, resolution.name) }
       return resolution.converged(agreeing) if agreeing
       return resolution if candidates.empty?
@@ -593,6 +777,14 @@ module ArchSpec
       names = at_column.empty? ? line_names(edge) : []
       disputed = candidates.reject { |answer| names.any? { |name| same_reference?(answer, name) } }
       disputed.empty? ? resolution : resolution.disagreed(disputed.sort.first)
+    end
+
+    # A mixin edge sits at its statement, not at the constant it names, so
+    # only a reference edge has a column an answer can be matched to. An
+    # answer naming a prefix of the path the parser wrote is the engine
+    # reading the same path one segment at a time, not another constant.
+    def reference_column(edge)
+      edge.type == :references_constant ? edge.location.column : nil
     end
 
     # Two answers name one reference when they are equal or one is a path the
@@ -635,6 +827,19 @@ module ArchSpec
 
     def effective_methods_in_scope(name, scope)
       scope == :class ? effective_class_methods(name) : effective_instance_methods(name)
+    end
+
+    # The definition a constant answers a method with: its own, else the
+    # first along the engine's chain or the parser's linearised ancestry.
+    def definition_in_chain(name, method_name, scope)
+      chain = engine_ancestors(name, scope)&.map(&:first) || linearised_ancestry(normalize_constant(name), Set.new).flatten
+      chain.each do |ancestor|
+        constants_named(ancestor).each do |node|
+          definition = node.definition_of(method_name, scope)
+          return definition if definition
+        end
+      end
+      nil
     end
 
     def component_assignment_reasons_for_path(path)
@@ -701,6 +906,10 @@ module ArchSpec
         component.files.each { |path| by_path[path].add(component.name) }
         component.constants.each { |name| by_constant[name].add(component.name) }
         component.constant_occurrences.each { |name, path| by_constant[[name, path]].add(component.name) }
+        component.externals.each do |name|
+          by_constant[name].add(component.name)
+          by_constant[[name, nil]].add(component.name)
+        end
       end
 
       by_component = Hash.new { |hash, key| hash[key] = [] }
@@ -739,10 +948,14 @@ module ArchSpec
       [methods.dup, unresolved.dup]
     end
 
+    # A reference the parser recorded and, once the file's externals are held,
+    # resolves to the same target is one fact stated twice; it is counted, so
+    # the edge is not.
     def merge_references(file, only)
       file.references.each do |reference|
         path = File.expand_path(reference.file, root)
         next if only && !only.include?(path)
+        next @facts_merges[file.relative_path]['already_resolved'] += 1 if parser_resolved?(path, reference)
 
         add_edge(
           type: :references_constant,
@@ -753,6 +966,15 @@ module ArchSpec
           lexical_nesting: []
         )
         record_facts_origin(edges.last, file.relative_path)
+      end
+    end
+
+    def parser_resolved?(path, reference)
+      wanted = normalize_constant(reference.target)
+      return false if constants_named(wanted).empty?
+
+      indexes.fetch(:dependency_edges_by_line).fetch([path, reference.line], EMPTY_EDGES).any? do |edge|
+        facts_file_for(edge).nil? && resolve_edge_constant(edge) == wanted
       end
     end
 
@@ -799,6 +1021,27 @@ module ArchSpec
       end
     end
 
+    def merge_externals(file)
+      file.externals.each do |entry|
+        node = add_external(name: entry.name, kind: entry.kind, origin: entry.origin,
+                            instance_methods: entry.instance_methods, class_methods: entry.class_methods)
+        @facts_merges[file.relative_path]['external_defined_in_workspace'] += 1 if node.nil?
+      end
+    end
+
+    # The chains an engine linearised. A chain for a name the parser does not
+    # hold is counted; the names on it are held as externals already.
+    def merge_ancestors(file)
+      file.ancestors.each do |entry|
+        next @facts_merges[file.relative_path]['ancestors_unowned'] += 1 if constants_named(entry.owner).empty?
+
+        record_ancestors(entry.owner, instance: entry.instance, class_side: entry.class_side)
+      end
+    end
+
+    # A definition the parser saw keeps its own reading of the signature and
+    # the visibility; what the producer adds is filled in only where the
+    # parser recorded nothing, and a difference is counted, not resolved.
     def merge_definitions(file, only)
       file.definitions.each do |entry|
         path = File.expand_path(entry.file, root)
@@ -808,16 +1051,53 @@ module ArchSpec
         next @facts_merges[file.relative_path]['unowned'] += 1 unless owner
 
         name = entry.name.to_sym
-        known = entry.scope == 'class' ? owner.class_methods : owner.instance_methods
-        next @facts_merges[file.relative_path]['already_resolved'] += 1 if known.include?(name)
+        scope = entry.scope.to_sym
+        known = scope == :class ? owner.class_methods : owner.instance_methods
+        if known.include?(name)
+          @facts_merges[file.relative_path]['already_resolved'] += 1
+          describe_known_definition(file, owner, name, scope, entry)
+          next
+        end
 
         location = SourceLocation.point(path, entry.line, 1)
         visibility = entry.visibility.to_sym
-        if entry.scope == 'class'
-          owner.add_class_method(name, location: location, visibility: visibility)
+        if scope == :class
+          owner.add_class_method(name, location: location, visibility: visibility, signature: entry.signature)
         else
-          owner.add_instance_method(name, location: location, visibility: visibility)
+          owner.add_instance_method(name, location: location, visibility: visibility, signature: entry.signature)
         end
+      end
+    end
+
+    def describe_known_definition(file, owner, name, scope, entry)
+      definition = owner.definition_of(name, scope)
+      return unless definition
+
+      if definition.signature && entry.signature && definition.signature != entry.signature
+        @facts_merges[file.relative_path]['signature_disagreed'] += 1
+      end
+      if definition.visibility && entry.visibility && definition.visibility.to_s != entry.visibility
+        @facts_merges[file.relative_path]['visibility_disagreed'] += 1
+      end
+      owner.describe_method(name, scope, signature: entry.signature, visibility: entry.visibility&.to_sym)
+    end
+
+    def merge_aliases(file, only)
+      file.aliases.each do |entry|
+        path = File.expand_path(entry.file, root)
+        next if only && !only.include?(path)
+
+        add_alias(AliasDeclaration.new(normalize_constant(entry.owner), entry.kind.to_sym, entry.name, entry.target,
+                                       SourceLocation.point(path, entry.line, 1)))
+      end
+    end
+
+    def merge_diagnostics(file, only)
+      file.diagnostics.each do |entry|
+        path = File.expand_path(entry.file, root)
+        next if only && !only.include?(path)
+
+        record_engine_diagnostic(rule: entry.rule, path: path, line: entry.line)
       end
     end
 
@@ -872,6 +1152,7 @@ module ArchSpec
 
       converged = 0
       disagreed = 0
+      external = 0
 
       edges.each do |edge|
         case edge.type
@@ -879,6 +1160,7 @@ module ArchSpec
           resolution = resolve_edge(edge)
           if resolution.resolved? && constants_named(resolution.name).any?
             resolved += 1
+            external += 1 if constants_named(resolution.name).all?(&:external?)
             through_ancestry += 1 if resolution.determination == :ancestry
             converged += 1 if resolution.determination == :converged
           elsif resolution.cause == :disagreed
@@ -915,7 +1197,10 @@ module ArchSpec
         ambiguous_references: refused[:ambiguous],
         refused_names: refused_names.to_a.sort,
         facts_entries: facts_present? ? facts_entries : nil,
-        resolvers: resolver_census(converged, disagreed, resolved)
+        resolvers: resolver_census(converged, disagreed, resolved),
+        external_references: external,
+        engine_diagnostics: engine_diagnostics.group_by(&:first).sort.to_h { |rule, found| [rule, found.size] },
+        not_asked: @not_asked.sort.to_h
       )
     end
 
@@ -957,6 +1242,9 @@ module ArchSpec
       nodes = constants_named(normalized)
       return [Set.new, Set[normalized]] if nodes.empty?
 
+      engine_chain = engine_methods(normalized, nodes, visited, &)
+      return engine_chain if engine_chain
+
       methods = Set.new
       unresolved = Set.new
 
@@ -983,6 +1271,30 @@ module ArchSpec
         end
       end
 
+      [methods, unresolved]
+    end
+
+    # Where an engine linearised the chain, its order and its ancestors are
+    # the answer: every ancestor it named is held as a node, workspace or
+    # external, and contributes its methods in the scope the walk reads. A
+    # chain the engine could not settle is not recorded, so the parser's
+    # walk answers as before.
+    def engine_methods(normalized, nodes, visited, &)
+      _own, _mixins, scope = yield(nodes.first)
+      chain = engine_ancestors(normalized, scope)
+      return nil unless chain
+
+      methods = Set.new
+      unresolved = Set.new
+      chain.each do |ancestor, side|
+        visited.add(ancestor)
+        ancestor_nodes = constants_named(ancestor)
+        next unresolved.add(ancestor) if ancestor_nodes.empty? && !RESOLVED_ROOTS.include?(ancestor)
+
+        ancestor_nodes.each do |node|
+          methods.merge(side == :class ? node.class_methods : node.instance_methods)
+        end
+      end
       [methods, unresolved]
     end
 

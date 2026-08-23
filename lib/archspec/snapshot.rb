@@ -267,7 +267,31 @@ module ArchSpec
           'files' => graph.files.values.sort_by(&:relative_path).map { |file| file_document(file) },
           'constants' => graph.constants.map { |constant| constant_document(constant, root) },
           'edges' => graph.edges.map { |edge| edge_document(edge, graph, root) },
-          'components' => graph.components.values.map { |component| component_document(component, root) }
+          'components' => graph.components.values.map { |component| component_document(component, root) },
+          'externals' => graph.externals.map { |node| external_document(node) },
+          'ancestors' => graph.engine_ancestry_documents,
+          'aliases' => graph.aliases.map { |declaration| alias_document(declaration, root) },
+          'diagnostics' => graph.engine_diagnostics.map { |rule, path, line| [rule, relative(path, root), line] }
+        }
+      end
+
+      def external_document(node)
+        {
+          'name' => node.name,
+          'kind' => node.kind.to_s,
+          'origin' => node.external,
+          'instance_methods' => node.instance_methods.map(&:to_s).sort,
+          'class_methods' => node.class_methods.map(&:to_s).sort
+        }
+      end
+
+      def alias_document(declaration, root)
+        {
+          'owner' => declaration.owner,
+          'kind' => declaration.kind.to_s,
+          'name' => declaration.name,
+          'target' => declaration.target,
+          'location' => [relative(declaration.location.path, root), declaration.location.line]
         }
       end
 
@@ -302,7 +326,8 @@ module ArchSpec
               'name' => definition.name.to_s,
               'scope' => definition.scope.to_s,
               'location' => location_document(definition.location),
-              'visibility' => definition.visibility.to_s
+              'visibility' => definition.visibility.to_s,
+              'signature' => definition.signature&.to_a
             }
           end,
           'mixins' => constant.mixins.transform_keys(&:to_s).transform_values { |names| names.to_a.sort }
@@ -328,7 +353,8 @@ module ArchSpec
         {
           'name' => component.name.to_s,
           'files' => component.files.map { |path| relative(path, root) }.sort,
-          'constants' => component.constant_occurrences.map { |name, path| [name, relative(path, root)] }.sort
+          'constants' => component.constant_occurrences.map { |name, path| [name, relative(path, root)] }.sort,
+          'externals' => component.externals.to_a.sort
         }
       end
 
@@ -350,6 +376,22 @@ module ArchSpec
         graph = Graph.new(root)
         Array(document['files']).each { |file| restore_file(graph, file, root) }
         Array(document['constants']).each { |constant| restore_constant(graph, constant, root) }
+        Array(document['externals']).each do |external|
+          graph.add_external(name: external.fetch('name'), kind: external.fetch('kind'), origin: external.fetch('origin'),
+                             instance_methods: Array(external['instance_methods']), class_methods: Array(external['class_methods']))
+        end
+        Array(document['ancestors']).each do |owner, chains|
+          graph.record_ancestors(owner, instance: Array(chains['instance']), class_side: Array(chains['class']))
+        end
+        Array(document['aliases']).each do |entry|
+          file, line = entry.fetch('location')
+          absolute = File.expand_path(file, root)
+          graph.add_alias(AliasDeclaration.new(entry.fetch('owner'), entry.fetch('kind').to_sym, entry.fetch('name'),
+                                               entry.fetch('target'), SourceLocation.point(absolute, line, 1)))
+        end
+        Array(document['diagnostics']).each do |rule, file, line|
+          graph.record_engine_diagnostic(rule: rule, path: File.expand_path(file, root), line: line)
+        end
         Array(document['edges']).each { |edge| restore_edge(graph, edge, root) }
         graph.restore_components(Array(document['components']).map { |component| restored_component(component, root) })
         graph
@@ -388,10 +430,11 @@ module ArchSpec
         Array(document['methods']).each do |definition|
           location = restored_location(absolute, definition.fetch('location'))
           visibility = definition.fetch('visibility').to_sym
+          signature = definition['signature'] && Signature.new(*definition['signature'])
           if definition.fetch('scope') == 'class'
-            held.add_class_method(definition.fetch('name'), location: location, visibility: visibility)
+            held.add_class_method(definition.fetch('name'), location: location, visibility: visibility, signature: signature)
           else
-            held.add_instance_method(definition.fetch('name'), location: location, visibility: visibility)
+            held.add_instance_method(definition.fetch('name'), location: location, visibility: visibility, signature: signature)
           end
         end
         Hash(document['mixins']).each do |kind, names|
@@ -422,6 +465,7 @@ module ArchSpec
         Array(document['constants']).each do |name, file|
           component.add_constant(name, path: File.expand_path(file, root))
         end
+        Array(document['externals']).each { |name| component.add_external(name) }
         component
       end
 

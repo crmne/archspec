@@ -10,8 +10,12 @@ module ArchSpec
   FactsReference = ValueObject.define(:owner, :file, :line, :target, :macro, :name, :determination)
   FactsGeneratedMethods = ValueObject.define(:owner, :names)
   FactsAncestry = ValueObject.define(:owner, :kind, :target, :file, :line, :determination)
-  FactsDefinition = ValueObject.define(:owner, :name, :scope, :visibility, :file, :line, :determination)
-  FactsCall = ValueObject.define(:owner, :file, :line, :method, :receiver, :determination)
+  FactsDefinition = ValueObject.define(:owner, :name, :scope, :visibility, :file, :line, :determination, :signature)
+  FactsCall = ValueObject.define(:owner, :file, :line, :method, :receiver, :scope, :determination)
+  FactsExternal = ValueObject.define(:name, :kind, :origin, :instance_methods, :class_methods)
+  FactsAncestors = ValueObject.define(:owner, :instance, :class_side, :determination)
+  FactsAlias = ValueObject.define(:owner, :kind, :name, :target, :file, :line, :determination)
+  FactsDiagnostic = ValueObject.define(:rule, :file, :line)
 
   FactsFile = ValueObject.define(
     :path,
@@ -25,7 +29,11 @@ module ArchSpec
     :ancestry,
     :definitions,
     :calls,
-    :misses
+    :misses,
+    :externals,
+    :ancestors,
+    :aliases,
+    :diagnostics
   ) do
     def entries
       counts.values.sum
@@ -37,7 +45,11 @@ module ArchSpec
         generated_methods: generated_methods.size,
         ancestry: ancestry.size,
         definitions: definitions.size,
-        calls: calls.size
+        calls: calls.size,
+        externals: externals.size,
+        ancestors: ancestors.size,
+        aliases: aliases.size,
+        diagnostics: diagnostics.size
       }
     end
   end
@@ -50,13 +62,16 @@ module ArchSpec
   # there is reported as absent rather than read as clean. Format 2 added
   # ancestry, definitions and calls; a format 1 file is read as format 2
   # with those lists empty, since a producer that wrote it stated nothing
-  # about them.
+  # about them. A format 2 file may also carry what an engine that read the
+  # bundle can state: the declarations outside the workspace it resolved to,
+  # the chains it linearised, the aliases it followed, what each method
+  # takes, and the diagnostics it raised; a file without them stated none.
   class Facts
     FORMAT = 2
     FORMATS = [1, 2].freeze
     DEFAULT_DIRECTORY = 'archspec_facts'
     FILE_KEYS = %w[format producer producer_version commit dirty references generated_methods
-                   ancestry definitions calls misses].freeze
+                   ancestry definitions calls misses externals ancestors aliases diagnostics].freeze
     REQUIRED_FILE_KEYS = %w[format producer producer_version references generated_methods].freeze
     REFERENCE_KEYS = %w[owner file line target macro name determination].freeze
     REQUIRED_REFERENCE_KEYS = %w[owner file line target].freeze
@@ -64,12 +79,23 @@ module ArchSpec
     ANCESTRY_KEYS = %w[owner kind target file line determination].freeze
     REQUIRED_ANCESTRY_KEYS = %w[owner kind target file line].freeze
     ANCESTRY_KINDS = %w[inherits includes prepends extends].freeze
-    DEFINITION_KEYS = %w[owner name scope visibility file line determination].freeze
+    DEFINITION_KEYS = %w[owner name scope visibility file line determination arity keywords block].freeze
     REQUIRED_DEFINITION_KEYS = %w[owner name scope file line].freeze
+    ARITY_KEYS = %w[required optional rest].freeze
+    KEYWORD_KEYS = %w[required optional rest].freeze
     SCOPES = %w[instance class].freeze
     VISIBILITIES = %w[public private protected].freeze
-    CALL_KEYS = %w[owner file line method receiver determination].freeze
+    CALL_KEYS = %w[owner file line method receiver scope determination].freeze
     REQUIRED_CALL_KEYS = %w[owner file line method receiver].freeze
+    EXTERNAL_KEYS = %w[name kind origin instance_methods class_methods].freeze
+    REQUIRED_EXTERNAL_KEYS = %w[name kind origin].freeze
+    EXTERNAL_KINDS = %w[class module constant].freeze
+    ANCESTORS_KEYS = %w[owner instance class determination].freeze
+    REQUIRED_ANCESTORS_KEYS = %w[owner instance class].freeze
+    ALIAS_KEYS = %w[owner kind name target file line determination].freeze
+    REQUIRED_ALIAS_KEYS = %w[owner kind name target file line].freeze
+    ALIAS_KINDS = %w[constant method].freeze
+    DIAGNOSTIC_KEYS = %w[rule file line].freeze
 
     attr_reader :files, :directory
 
@@ -111,7 +137,11 @@ module ArchSpec
         ancestry: ancestry!(path, document.fetch('ancestry', [])),
         definitions: definitions!(path, document.fetch('definitions', [])),
         calls: calls!(path, document.fetch('calls', [])),
-        misses: misses!(path, document['misses'])
+        misses: misses!(path, document['misses']),
+        externals: externals!(path, document.fetch('externals', [])),
+        ancestors: ancestors!(path, document.fetch('ancestors', [])),
+        aliases: aliases!(path, document.fetch('aliases', [])),
+        diagnostics: diagnostics!(path, document.fetch('diagnostics', []))
       )
     rescue Error
       raise
@@ -125,7 +155,7 @@ module ArchSpec
     end
 
     def self.write(path, producer:, producer_version:, commit:, dirty:, references:, generated_methods:, misses:,
-                   ancestry: [], definitions: [], calls: [])
+                   ancestry: [], definitions: [], calls: [], externals: [], ancestors: [], aliases: [], diagnostics: [])
       payload = {
         'format' => FORMAT,
         'producer' => producer,
@@ -165,7 +195,7 @@ module ArchSpec
             'file' => entry.file,
             'line' => entry.line,
             'determination' => entry.determination
-          }.compact
+          }.merge(signature_document(entry.signature)).compact
         end,
         'calls' => calls.sort_by { |entry| [entry.owner, entry.file, entry.line, entry.method, entry.receiver] }.map do |entry|
           {
@@ -174,11 +204,27 @@ module ArchSpec
             'line' => entry.line,
             'method' => entry.method,
             'receiver' => entry.receiver,
+            'scope' => entry.scope,
             'determination' => entry.determination
           }.compact
         end,
         'misses' => misses.sort.to_h
       }
+      payload['externals'] = externals.sort_by(&:name).map do |entry|
+        { 'name' => entry.name, 'kind' => entry.kind, 'origin' => entry.origin,
+          'instance_methods' => entry.instance_methods.map(&:to_s).sort, 'class_methods' => entry.class_methods.map(&:to_s).sort }
+      end
+      payload['ancestors'] = ancestors.sort_by(&:owner).map do |entry|
+        { 'owner' => entry.owner, 'instance' => entry.instance, 'class' => entry.class_side.map { |name, side| [name, side.to_s] },
+          'determination' => entry.determination }.compact
+      end
+      payload['aliases'] = aliases.sort_by { |entry| [entry.owner, entry.kind, entry.name] }.map do |entry|
+        { 'owner' => entry.owner, 'kind' => entry.kind, 'name' => entry.name, 'target' => entry.target,
+          'file' => entry.file, 'line' => entry.line, 'determination' => entry.determination }.compact
+      end
+      payload['diagnostics'] = diagnostics.sort_by { |entry| [entry.file, entry.line, entry.rule] }.map do |entry|
+        { 'rule' => entry.rule, 'file' => entry.file, 'line' => entry.line }
+      end
 
       File.write(path, payload.to_yaml)
     rescue SystemCallError => e
@@ -188,7 +234,7 @@ module ArchSpec
     # A file built in memory by a producer that ran inside check, merged
     # beside the files read from disk and reported under the name it gives.
     def self.built(producer:, producer_version:, references:, generated_methods:, misses:, label:,
-                   ancestry: [], definitions: [], calls: [])
+                   ancestry: [], definitions: [], calls: [], externals: [], ancestors: [], aliases: [], diagnostics: [])
       FactsFile.new(
         path: nil,
         relative_path: label,
@@ -201,8 +247,23 @@ module ArchSpec
         ancestry: ancestry,
         definitions: definitions,
         calls: calls,
-        misses: misses
+        misses: misses,
+        externals: externals,
+        ancestors: ancestors,
+        aliases: aliases,
+        diagnostics: diagnostics
       )
+    end
+
+    def self.signature_document(signature)
+      return {} unless signature
+
+      {
+        'arity' => { 'required' => signature.required, 'optional' => signature.optional, 'rest' => signature.rest },
+        'keywords' => { 'required' => signature.keywords.map(&:to_s), 'optional' => signature.optional_keywords.map(&:to_s),
+                        'rest' => signature.keyword_rest },
+        'block' => signature.block
+      }
     end
 
     def self.commit_for(root)
@@ -253,6 +314,22 @@ module ArchSpec
 
     def calls
       files.flat_map(&:calls)
+    end
+
+    def externals
+      files.flat_map(&:externals)
+    end
+
+    def ancestors
+      files.flat_map(&:ancestors)
+    end
+
+    def aliases
+      files.flat_map(&:aliases)
+    end
+
+    def diagnostics
+      files.flat_map(&:diagnostics)
     end
 
     class << self
@@ -336,9 +413,112 @@ module ArchSpec
             visibility: visibility,
             file: string!(path, 'file', entry['file']),
             line: entry['line'],
+            determination: entry['determination']&.to_s,
+            signature: signature!(path, index, entry)
+          )
+        end
+      end
+
+      # A signature is stated whole or not at all: arity and keywords travel
+      # together, so a producer that knows one knows the other.
+      def signature!(path, index, entry)
+        return nil unless entry.key?('arity') || entry.key?('keywords') || entry.key?('block')
+
+        arity = entry.fetch('arity', {})
+        keywords = entry.fetch('keywords', {})
+        unless arity.is_a?(Hash) && (arity.keys - ARITY_KEYS).empty? && keywords.is_a?(Hash) && (keywords.keys - KEYWORD_KEYS).empty?
+          raise Error, "invalid facts file #{path}: definition #{index} has a malformed signature"
+        end
+
+        Signature.new(
+          Integer(arity.fetch('required', 0)),
+          Integer(arity.fetch('optional', 0)),
+          arity.fetch('rest', false) == true,
+          Array(keywords['required']).map(&:to_sym),
+          Array(keywords['optional']).map(&:to_sym),
+          keywords.fetch('rest', false) == true,
+          entry.fetch('block', false) == true
+        )
+      rescue ArgumentError, TypeError
+        raise Error, "invalid facts file #{path}: definition #{index} has a malformed signature"
+      end
+
+      def externals!(path, entries)
+        raise Error, "invalid facts file #{path}: externals must be a list" unless entries.is_a?(Array)
+
+        entries.map.with_index(1) do |entry, index|
+          fields!(path, 'external', index, entry, EXTERNAL_KEYS, REQUIRED_EXTERNAL_KEYS)
+          one_of!(path, 'external', index, 'kind', entry['kind'], EXTERNAL_KINDS)
+
+          FactsExternal.new(
+            name: string!(path, 'name', entry['name']),
+            kind: entry['kind'],
+            origin: string!(path, 'origin', entry['origin']),
+            instance_methods: names!(path, 'external', index, entry.fetch('instance_methods', [])),
+            class_methods: names!(path, 'external', index, entry.fetch('class_methods', []))
+          )
+        end
+      end
+
+      def ancestors!(path, entries)
+        raise Error, "invalid facts file #{path}: ancestors must be a list" unless entries.is_a?(Array)
+
+        entries.map.with_index(1) do |entry, index|
+          fields!(path, 'ancestors entry', index, entry, ANCESTORS_KEYS, REQUIRED_ANCESTORS_KEYS)
+          class_side = entry['class']
+          unless class_side.is_a?(Array) && class_side.all? { |pair| pair.is_a?(Array) && pair.size == 2 }
+            raise Error, "invalid facts file #{path}: ancestors entry #{index} needs class pairs of name and side"
+          end
+
+          class_side.each { |_name, side| one_of!(path, 'ancestors entry', index, 'side', side, SCOPES) }
+
+          FactsAncestors.new(
+            owner: string!(path, 'owner', entry['owner']),
+            instance: names!(path, 'ancestors entry', index, entry['instance']).map(&:to_s),
+            class_side: class_side.map { |name, side| [string!(path, 'class', name), side] },
             determination: entry['determination']&.to_s
           )
         end
+      end
+
+      def aliases!(path, entries)
+        raise Error, "invalid facts file #{path}: aliases must be a list" unless entries.is_a?(Array)
+
+        entries.map.with_index(1) do |entry, index|
+          fields!(path, 'alias', index, entry, ALIAS_KEYS, REQUIRED_ALIAS_KEYS)
+          line!(path, 'alias', index, entry['line'])
+          one_of!(path, 'alias', index, 'kind', entry['kind'], ALIAS_KINDS)
+
+          FactsAlias.new(
+            owner: string!(path, 'owner', entry['owner']),
+            kind: entry['kind'],
+            name: string!(path, 'name', entry['name']),
+            target: string!(path, 'target', entry['target']),
+            file: string!(path, 'file', entry['file']),
+            line: entry['line'],
+            determination: entry['determination']&.to_s
+          )
+        end
+      end
+
+      def diagnostics!(path, entries)
+        raise Error, "invalid facts file #{path}: diagnostics must be a list" unless entries.is_a?(Array)
+
+        entries.map.with_index(1) do |entry, index|
+          fields!(path, 'diagnostic', index, entry, DIAGNOSTIC_KEYS, DIAGNOSTIC_KEYS)
+          line!(path, 'diagnostic', index, entry['line'])
+
+          FactsDiagnostic.new(rule: string!(path, 'rule', entry['rule']), file: string!(path, 'file', entry['file']),
+                              line: entry['line'])
+        end
+      end
+
+      def names!(path, label, index, names)
+        unless names.is_a?(Array) && names.all? { |name| name.is_a?(String) && !name.empty? }
+          raise Error, "invalid facts file #{path}: #{label} #{index} needs a list of names"
+        end
+
+        names.map(&:to_sym)
       end
 
       def calls!(path, entries)
@@ -348,12 +528,16 @@ module ArchSpec
           fields!(path, 'call', index, entry, CALL_KEYS, REQUIRED_CALL_KEYS)
           line!(path, 'call', index, entry['line'])
 
+          scope = entry.fetch('scope', 'instance')
+          one_of!(path, 'call', index, 'scope', scope, SCOPES)
+
           FactsCall.new(
             owner: string!(path, 'owner', entry['owner']),
             file: string!(path, 'file', entry['file']),
             line: entry['line'],
             method: string!(path, 'method', entry['method']),
             receiver: string!(path, 'receiver', entry['receiver']),
+            scope: scope,
             determination: entry['determination']&.to_s
           )
         end

@@ -6,14 +6,15 @@ module ArchSpec
   # ArchSpec::DSL::Context#component. The analyzer uses it to assign files and
   # constants to the component.
   class ComponentSpec
-    attr_reader :name, :file_patterns, :except_patterns, :namespaces, :constants
+    attr_reader :name, :file_patterns, :except_patterns, :namespaces, :constants, :descendants_of
 
-    def initialize(name, files: [], except: [], namespace: nil, constants: nil)
+    def initialize(name, files: [], except: [], namespace: nil, constants: nil, descendants_of: nil)
       @name = name.to_sym
       @file_patterns = Array(files).compact.map(&:to_s)
       @except_patterns = Array(except).compact.map(&:to_s)
       @namespaces = Array(namespace).compact.map { |value| normalize_constant(value) }
       @constants = Array(constants).compact.map { |value| normalize_constant(value) }
+      @descendants_of = Array(descendants_of).compact.map { |value| normalize_constant(value) }
     end
 
     def merge!(other)
@@ -21,6 +22,7 @@ module ArchSpec
       @except_patterns |= other.except_patterns
       @namespaces |= other.namespaces
       @constants |= other.constants
+      @descendants_of |= other.descendants_of
       self
     end
 

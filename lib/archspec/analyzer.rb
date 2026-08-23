@@ -480,10 +480,11 @@ module ArchSpec
           candidate.path == path
         end)
           location = SourceLocation.from_prism(path, node.location)
+          signature = signature_of(node.parameters)
           if node.receiver || default_scope == :class
-            constant.add_class_method(node.name, location: location, visibility: visibility)
+            constant.add_class_method(node.name, location: location, visibility: visibility, signature: signature)
           else
-            constant.add_instance_method(node.name, location: location, visibility: visibility)
+            constant.add_instance_method(node.name, location: location, visibility: visibility, signature: signature)
           end
         end
 
@@ -499,6 +500,24 @@ module ArchSpec
         end
 
         visit_children(graph, path, node, current_constant: current_constant, namespace: namespace, nesting: nesting)
+      end
+
+      # What a definition takes, read off its parameter list. A forward
+      # parameter (...) takes everything, so it counts as rest, rest keywords
+      # and a block at once.
+      def signature_of(parameters)
+        return Signature.new(0, 0, false, [], [], false, false) if parameters.nil?
+
+        forward = parameters.keyword_rest.is_a?(Prism::ForwardingParameterNode)
+        Signature.new(
+          parameters.requireds.size + parameters.posts.size,
+          parameters.optionals.size,
+          !parameters.rest.nil? || forward,
+          parameters.keywords.select { |keyword| keyword.is_a?(Prism::RequiredKeywordParameterNode) }.map { |keyword| keyword.name },
+          parameters.keywords.select { |keyword| keyword.is_a?(Prism::OptionalKeywordParameterNode) }.map { |keyword| keyword.name },
+          !parameters.keyword_rest.nil?,
+          !parameters.block.nil? || forward
+        )
       end
 
       def method_definition_owner(graph, node, current_constant, nesting)
