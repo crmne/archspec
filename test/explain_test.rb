@@ -215,4 +215,17 @@ class ExplainTest < ArchSpecTest
   def explain(root, *argv)
     archspec(root, 'explain', *argv)
   end
+
+  def test_explain_shows_every_reopening_of_a_constant
+    with_shop do |root|
+      write "#{root}/app/models/twice.rb", "module Twice\n  def a; end\nend\n"
+      write "#{root}/app/models/twice_again.rb", "module Twice\n  def b; end\nend\n"
+
+      out = explain(root, 'Twice')
+
+      assert_equal 2, out.scan(/^  file: /).size
+      assert_match(%r{file: app/models/twice\.rb:1}, out)
+      assert_match(%r{file: app/models/twice_again\.rb:1}, out)
+    end
+  end
 end

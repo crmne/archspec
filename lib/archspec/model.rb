@@ -467,9 +467,11 @@ module ArchSpec
     end
 
     def dynamic_features_for(constant_name, path)
-      indexes.fetch(:dynamic_features_by_path).fetch(path, EMPTY_EDGES).select do |edge|
-        edge.from_constant == constant_name
-      end
+      dynamic_features_in(path).select { |edge| edge.from_constant == constant_name }
+    end
+
+    def dynamic_features_in(path)
+      indexes.fetch(:dynamic_features_by_path).fetch(path, EMPTY_EDGES)
     end
 
     def component_names_for_path(path)

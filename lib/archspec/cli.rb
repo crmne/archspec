@@ -36,6 +36,10 @@ module ArchSpec
       'github' => Formatters::GitHub,
       'sarif' => Formatters::SARIF
     }.freeze
+    EXPLAIN_FORMATTERS = {
+      'text' => Formatters::Explanation,
+      'json' => Formatters::ExplanationJSON
+    }.freeze
 
     def run(argv, output: $stdout, error: $stderr)
       argv = argv.dup
@@ -337,7 +341,7 @@ module ArchSpec
       current = Receipt.new(
         format: Snapshot::FORMAT, archspec_version: ArchSpec::VERSION, root: root, definition_digest: nil,
         patterns: (definition.analysis_patterns + definition.ignore_patterns).sort, parsed_set_digest: '',
-        rule_ids: [], commit: nil, dirty: false, payload_digest: nil
+        rule_ids: [], finding_ids: [], commit: nil, dirty: false, payload_digest: nil
       )
       current.incomparable_with(snapshot.receipt) || tree_changed_since(definition, root, snapshot)
     rescue Error => e
@@ -357,14 +361,7 @@ module ArchSpec
     end
 
     def explain_formatter_for(name)
-      case name
-      when 'text'
-        Formatters::Explanation
-      when 'json'
-        Formatters::ExplanationJSON
-      else
-        raise UsageError, "unknown format: #{name.inspect} (expected text or json)"
-      end
+      lookup(EXPLAIN_FORMATTERS, name)
     end
 
     # Runs the Active Record reflector inside the application through
@@ -502,7 +499,10 @@ module ArchSpec
     # registered name may replace a shipped one and an unknown name lists
     # everything that would have worked.
     def formatter_for(name, definition)
-      registry = FORMATTERS.merge(definition.registered_formatters)
+      lookup(FORMATTERS.merge(definition.registered_formatters), name)
+    end
+
+    def lookup(registry, name)
       registry.fetch(name) do
         raise UsageError, "unknown format: #{name.inspect} (registered: #{registry.keys.join(', ')})"
       end

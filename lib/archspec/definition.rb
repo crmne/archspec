@@ -24,6 +24,8 @@ module ArchSpec
     DEFAULT_CACHE_DIRECTORY = '.archspec/cache'
 
     attr_accessor :name, :root_path, :todo_path, :facts_path, :cache_path, :base_dir, :static_associations
+    SHIPPED_FORMATS = %w[text json github sarif].freeze
+
     attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules, :registered_formatters
 
     def initialize(name = nil)
@@ -42,6 +44,10 @@ module ArchSpec
     end
 
     def add_formatter(name, formatter)
+      if SHIPPED_FORMATS.include?(name.to_s)
+        raise Error, "formatter #{name.to_s.inspect} is shipped with archspec; register your own under another name"
+      end
+
       @registered_formatters[name.to_s] = formatter
     end
 

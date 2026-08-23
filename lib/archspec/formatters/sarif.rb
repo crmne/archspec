@@ -135,12 +135,13 @@ module ArchSpec
         properties = {
           confidence: diagnostic.confidence.to_s,
           caveat: diagnostic.caveat,
-          since: diagnostic.since&.to_s,
+          since: diagnostic.since&.iso8601,
+          age: diagnostic.age&.to_s,
           suggestedAction: diagnostic.suggested_action,
-          evidence: diagnostic.evidence
+          evidence: diagnostic.evidence,
+          bucket: bucket
         }
-        properties[:bucket] = bucket if bucket
-        properties
+        properties.compact
       end
 
       def run_properties_for(graph, extra)

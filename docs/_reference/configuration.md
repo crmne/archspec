@@ -126,7 +126,7 @@ Every finding that can be cut from the graph also carries an action: for a depen
 formatter :junit, JunitFormatter
 ```
 
-Registers an output format under a name, selectable with `archspec check --format junit`. The object answers `print(output, graph:, diagnostics:)` and, to take part in a baseline check, `print_delta(output, graph:, diagnostics:, delta:, mode:)`; without the second a `--baseline` run under that format is a usage error. It receives the same graph and diagnostics the shipped `text`, `json`, `github` and `sarif` formats read, and registering one of those names replaces it. See [CLI]({% link _reference/cli.md %}) for the two CI formats.
+Registers an output format under a name, selectable with `archspec check --format junit`. The object answers `print(output, graph:, diagnostics:)` and, to take part in a baseline check, `print_delta(output, graph:, diagnostics:, delta:, mode:)`; without the second a `--baseline` run under that format is a usage error. It receives the same graph and diagnostics the shipped `text`, `json`, `github` and `sarif` formats read; those four names are taken, and registering one of them is an error, so a format a team depends on cannot be swapped out from inside the spec. See [CLI]({% link _reference/cli.md %}) for the two CI formats.
 
 ## Suppressions
 

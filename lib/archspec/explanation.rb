@@ -259,7 +259,7 @@ module ArchSpec
           unknown_receivers += 1
         end
       end
-      dynamic = paths.flat_map { |file| graph.dynamic_features_for(nil, file) }.map do |edge|
+      dynamic = paths.flat_map { |file| graph.dynamic_features_in(file) }.map do |edge|
         { feature: edge.to, line: edge.location.line, constant: edge.from_constant }
       end
       {
@@ -316,8 +316,10 @@ module ArchSpec
 
         before = @all_diagnostics.select { |diagnostic| diagnostic.rule == rule.id }
         after = reported(yield(rule, graph))
-        appearing.concat(after.reject { |diagnostic| before_ids(before).include?(diagnostic.fingerprint(root: root)) })
-        vanishing.concat(before.reject { |diagnostic| before_ids(after).include?(diagnostic.fingerprint(root: root)) })
+        known = fingerprints(before)
+        remaining = fingerprints(after)
+        appearing.concat(after.reject { |diagnostic| known.include?(diagnostic.fingerprint(root: root)) })
+        vanishing.concat(before.reject { |diagnostic| remaining.include?(diagnostic.fingerprint(root: root)) })
       rescue StandardError => e
         not_computed << { rule: rule.id, cause: e.message }
       end
@@ -343,7 +345,7 @@ module ArchSpec
         .reject { |d| graph.suppressions_matching(d).any? || @todo.id_for(d) }
     end
 
-    def before_ids(diagnostics)
+    def fingerprints(diagnostics)
       diagnostics.map { |diagnostic| diagnostic.fingerprint(root: root) }.to_set
     end
 

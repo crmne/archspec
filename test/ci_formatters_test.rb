@@ -242,4 +242,12 @@ class CiFormattersTest < ArchSpecTest
   def check(root, argv, output)
     Dir.chdir(root) { ArchSpec::CLI.run(['check', *argv], output: output, error: output) }
   end
+
+  def test_a_shipped_format_name_cannot_be_registered_over
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define { formatter 'text', Object.new.tap { |o| o.define_singleton_method(:print) { |*| } } }
+    end
+
+    assert_match(/"text" is shipped with archspec/, error.message)
+  end
 end
