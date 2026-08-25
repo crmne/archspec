@@ -808,4 +808,68 @@ class RulesTest < ArchSpecTest
 
     assert_match(/no_cycles references unknown component: controlers/, error.message)
   end
+
+  def test_namespace_only_reopenings_do_not_claim_the_constant
+    with_project do |root|
+      write "#{root}/app/models/project.rb", <<~RUBY
+        class Project
+          def active? = true
+        end
+      RUBY
+
+      write "#{root}/app/jobs/project/expiration_job.rb", <<~RUBY
+        class Project
+          class ExpirationJob
+            def perform = nil
+          end
+        end
+      RUBY
+
+      write "#{root}/app/services/project_archiver.rb", <<~RUBY
+        class ProjectArchiver
+          def call
+            Project.new
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :jobs, in: 'app/jobs/**/*.rb'
+        component :services, in: 'app/services/**/*.rb'
+        services.can_only_use :models
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_namespace_without_real_definition_still_belongs_to_its_component
+    with_project do |root|
+      write "#{root}/app/services/payments/charge.rb", <<~RUBY
+        module Payments
+          class Charge
+            def call = nil
+          end
+        end
+      RUBY
+
+      write "#{root}/app/models/invoice.rb", <<~RUBY
+        class Invoice
+          Payments
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :services, in: 'app/services/**/*.rb'
+        models.cannot_use :services
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/models must not depend on services/, diagnostics.first.message)
+    end
+  end
 end
