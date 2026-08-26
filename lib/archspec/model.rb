@@ -3,12 +3,10 @@
 require 'pathname'
 require 'set'
 
-require_relative 'value_object'
-
 module ArchSpec
-  ParseError = ValueObject.define(:message, :location)
-  AnalysisDiagnostic = ValueObject.define(:rule, :message, :location)
-  MethodSignature = ValueObject.define(
+  ParseError = Data.define(:message, :location)
+  AnalysisDiagnostic = Data.define(:rule, :message, :location)
+  MethodSignature = Data.define(
     :required,
     :optional,
     :rest,
@@ -49,9 +47,9 @@ module ArchSpec
        ('forwarding' if forward)].compact.join(', ')
     end
   end
-  MethodDefinition = ValueObject.define(:owner, :name, :scope, :location, :visibility, :signatures, :alias_target)
+  MethodDefinition = Data.define(:owner, :name, :scope, :location, :visibility, :signatures, :alias_target)
 
-  Suppression = ValueObject.define(:rule, :start_line, :end_line, :reason) do
+  Suppression = Data.define(:rule, :start_line, :end_line, :reason) do
     def matches?(diagnostic)
       (rule.nil? || rule == diagnostic.rule) &&
         diagnostic.location.line >= start_line &&
@@ -128,7 +126,7 @@ module ArchSpec
     end
   end
 
-  Edge = ValueObject.define(
+  Edge = Data.define(
     :type,
     :from_path,
     :from_constant,

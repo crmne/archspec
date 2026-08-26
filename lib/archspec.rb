@@ -2,7 +2,6 @@
 
 require_relative 'archspec/error'
 require_relative 'archspec/version'
-require_relative 'archspec/value_object'
 require_relative 'archspec/source_location'
 require_relative 'archspec/diagnostic'
 require_relative 'archspec/component_spec'

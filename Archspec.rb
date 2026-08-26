@@ -25,7 +25,6 @@ component :rule_checks, in: 'lib/archspec/rules/**/*.rb'
 component :formatters, in: 'lib/archspec/formatters/**/*.rb'
 component :support, in: %w[
   lib/archspec/error.rb
-  lib/archspec/value_object.rb
   lib/archspec/version.rb
 ]
 

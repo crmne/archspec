@@ -123,14 +123,14 @@ module ArchSpec
     # Rubydex supplies the semantic graph. This pass records the few facts
     # whose syntax matters to ArchSpec's rules or that Rubydex does not model.
     class SyntaxOverlay
-      Owner = ValueObject.define(:name, :scope)
-      ConstantSite = ValueObject.define(:path, :name, :owner, :nesting, :location)
-      CallSite = ValueObject.define(:path, :name, :owner, :receiver, :receiver_name, :scope, :nesting, :location)
-      CallResolution = ValueObject.define(:receiver, :scope)
-      GeneratedMethod = ValueObject.define(:path, :owner, :message, :node, :location, :visibility, :scope)
-      MethodOwner = ValueObject.define(:path, :location, :owner)
-      DeclarationName = ValueObject.define(:path, :raw, :qualified, :location)
-      DeclarationFallback = ValueObject.define(
+      Owner = Data.define(:name, :scope)
+      ConstantSite = Data.define(:path, :name, :owner, :nesting, :location)
+      CallSite = Data.define(:path, :name, :owner, :receiver, :receiver_name, :scope, :nesting, :location)
+      CallResolution = Data.define(:receiver, :scope)
+      GeneratedMethod = Data.define(:path, :owner, :message, :node, :location, :visibility, :scope)
+      MethodOwner = Data.define(:path, :location, :owner)
+      DeclarationName = Data.define(:path, :raw, :qualified, :location)
+      DeclarationFallback = Data.define(
         :path,
         :name,
         :kind,
@@ -140,8 +140,8 @@ module ArchSpec
         :superclass_location,
         :dynamic_superclass
       )
-      MethodFallback = ValueObject.define(:path, :owner, :name, :scope, :location, :visibility, :signatures)
-      MixinFallback = ValueObject.define(:path, :owner, :message, :target, :location, :nesting)
+      MethodFallback = Data.define(:path, :owner, :name, :scope, :location, :visibility, :signatures)
+      MixinFallback = Data.define(:path, :owner, :message, :target, :location, :nesting)
 
       DYNAMIC_MESSAGES = %i[
         class_eval
