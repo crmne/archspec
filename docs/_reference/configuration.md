@@ -25,7 +25,15 @@ Todo ids are computed from the rule, path, message, and evidence, not the line n
 component :controllers, in: "app/controllers/**/*.rb"
 component :models,      in: "app/models/**/*.rb"
 component :billing,     namespace: "Billing"
+component :records,     descendants_of: "ApplicationRecord"
+component :workflows,
+  in: "app/models/**/*.rb",
+  except: "app/models/**/*_workflow.rb"
 ```
+
+`except:` subtracts only from the `in:` patterns. Explicit `namespace:`,
+`constants:`, and `descendants_of:` selectors remain explicit. The same hash
+form works inside architecture options such as `layers:` and `components:`.
 
 Declare one component per subdirectory with `each_directory`, which is handy for engines and packs:
 
@@ -63,9 +71,15 @@ shared_kernel.can_only_be_used_by :billing, :catalog
 services.must_implement :call
 services.must_implement_one_of :call, :resolve
 services.cannot_call :render, :redirect_to, :params, :session
+jobs.must_implement :perform_later, scope: :class
+commands.must_implement :call, arity: 1, keywords: :actor
+models.cannot_call :find_by_sql, receiver: "ActiveRecord::Base"
 ```
 
-These are name-based checks. They are useful for Rails boundaries and method protocols. See [Method Rules]({% link _rules/methods.md %}) and [Protocol Rules]({% link _rules/protocols.md %}).
+RubyDEX resolves static constant receivers, class-side ancestry, method aliases,
+and method signatures for these checks. Calls through dynamic receivers remain
+unknown rather than guessed. See [Method Rules]({% link _rules/methods.md %})
+and [Protocol Rules]({% link _rules/protocols.md %}).
 
 For projects that avoid anonymous command-object style APIs, forbid method definitions too:
 
@@ -95,6 +109,20 @@ no_cycles
 `no_cycles` checks component dependency cycles.
 
 See [Cycle Rules]({% link _rules/cycles.md %}).
+
+## Reasons
+
+Every rule-creating call accepts `because:`:
+
+```ruby
+models.cannot_use :controllers,
+  because: "models must remain independent of the request"
+```
+
+The reason is printed with each finding and included in JSON, but stays outside
+the todo fingerprint. Adding or editing a reason does not invalidate an
+existing todo file. Repeating the same merged rule with two different reasons
+is rejected when the configuration loads.
 
 ## Suppressions
 

@@ -11,11 +11,11 @@ Gem::Specification.new do |spec|
   spec.summary = 'Architecture linter for Ruby and Rails.'
   spec.description = 'A static architecture linter for Ruby and Rails. Declare your ' \
                      'components, dependencies, and boundaries in one file, then check ' \
-                     'every change in CI. It reads source with Prism and never boots the app.'
+                     'every change in CI. It indexes source with Rubydex and never boots the app.'
   spec.homepage = 'https://archspecrb.dev'
   spec.license = 'MIT'
 
-  spec.required_ruby_version = '>= 3.1.3'
+  spec.required_ruby_version = '>= 3.2'
 
   spec.metadata['homepage_uri'] = spec.homepage
   spec.metadata['source_code_uri'] = 'https://github.com/crmne/archspec'
@@ -30,6 +30,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.add_dependency 'prism', '>= 1.0'
+  spec.add_dependency 'rubydex', '~> 0.4.0'
 
   spec.add_development_dependency 'minitest', '>= 5.20', '< 6'
   spec.add_development_dependency 'rake', '>= 13.0'

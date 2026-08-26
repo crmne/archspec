@@ -15,6 +15,8 @@ After reading this guide, you will know:
 
 ## Installation
 
+ArchSpec requires Ruby 3.2 or newer.
+
 Add ArchSpec to your Gemfile:
 
 ```ruby

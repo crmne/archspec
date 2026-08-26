@@ -12,6 +12,7 @@ module ArchSpec
           files: graph.files.size,
           constants: graph.constants.size,
           facts: graph.edges.size,
+          analysis: graph.analysis_census,
           violations: diagnostics.map { |diagnostic| diagnostic.to_h(root: graph.root) }
         )
       end

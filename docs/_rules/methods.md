@@ -28,6 +28,18 @@ services.cannot_call :render, :params, receiver: :none
 
 `pdf.render` and `client.params` then pass, while a bare `render` or `params` fails. The `:rails` architectures use `receiver: :none` for the controller API. A bare call to a method the component defines, inherits, or generates with `attr_*`, Rails `attribute`, `alias_attribute`, `enum`, `store_accessor`, `delegate`, or an Active Record association macro is treated as a call to its own API and is not flagged. The association macros cover the reader and writer, plus the `build_`, `create_`, and `reload_` helpers on `belongs_to` and `has_one`.
 
+Pass a constant name to match a semantic class receiver and its descendants:
+
+```ruby
+models.cannot_call :find_by_sql, receiver: "ActiveRecord::Base"
+```
+
+`User.find_by_sql` is caught when `User` descends from `ActiveRecord::Base`;
+`connection.find_by_sql` is not. ArchSpec resolves static constant receivers
+and refuses to guess the type of local variables. Calls through method aliases
+are matched to their target when the receiver can be resolved, so forbidding
+`destroy_all` also catches a resolved alias such as `Store.wipe`.
+
 ## Forbid Definitions
 
 ```ruby

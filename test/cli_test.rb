@@ -310,6 +310,7 @@ class CLITest < ArchSpecTest
       assert_equal 0, status
       parsed = JSON.parse(output.string)
       assert_equal 1, parsed.fetch('files')
+      assert parsed.fetch('analysis').key?('unresolved_constants')
       assert_equal [], parsed.fetch('violations')
     end
   end
@@ -375,6 +376,9 @@ class CLITest < ArchSpecTest
       assert_match(/superclass: ApplicationRecord/, output.string)
       assert_match(/instance methods: name/, output.string)
       assert_match(/class methods: find/, output.string)
+      assert_match(/resolved ancestors: ApplicationRecord/, output.string)
+      assert_match(/incoming dependencies:/, output.string)
+      assert_match(/analysis gaps:/, output.string)
     end
   end
 end

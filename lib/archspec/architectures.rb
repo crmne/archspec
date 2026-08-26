@@ -296,9 +296,10 @@ module ArchSpec
         Rules::NamingRule.new(
           source: nil,
           selector: Rules::Naming::NameSelector.new(regex),
-          constraint: Rules::Naming::Forbidden.new(because: reason),
+          constraint: Rules::Naming::Forbidden.new,
           scope: scope
-        )
+        ),
+        because: reason
       )
     end
 
@@ -314,11 +315,14 @@ module ArchSpec
 
     def define_component(dsl, name, selector)
       if selector.is_a?(Hash)
+        selector = selector.to_h.transform_keys(&:to_sym)
         dsl.component(
           name,
           in: selector[:in] || selector[:files],
+          except: selector[:except],
           namespace: selector[:namespace],
-          constants: selector[:constants]
+          constants: selector[:constants],
+          descendants_of: selector[:descendants_of]
         )
       else
         dsl.component(name, in: selector)

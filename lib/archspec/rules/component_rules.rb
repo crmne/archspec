@@ -5,11 +5,10 @@ module ArchSpec
     # Backs ArchSpec::DSL::ComponentProxy#must_be_empty. Flags every file in a
     # component that is meant to hold none.
     class MustBeEmptyRule
-      attr_reader :source, :because
+      attr_reader :source
 
-      def initialize(source, because: nil)
+      def initialize(source)
         @source = source.to_sym
-        @because = because
       end
 
       def merge_key
@@ -29,7 +28,7 @@ module ArchSpec
 
           Diagnostic.new(
             rule: id,
-            message: because ? "#{source} must stay empty: #{because}" : "#{source} must stay empty",
+            message: "#{source} must stay empty",
             location: SourceLocation.point(path, 1, 1),
             evidence: "#{relative} belongs to #{source}"
           )

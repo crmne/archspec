@@ -28,6 +28,7 @@ module ArchSpec
         if diagnostics.empty?
           output.puts "ArchSpec passed: #{graph.files.size} files, #{graph.constants.size} constants, " \
                       "#{graph.edges.size} facts checked."
+          print_census(output, graph)
           return
         end
 
@@ -40,13 +41,15 @@ module ArchSpec
 
         label = diagnostics.size == 1 ? 'architecture violation' : 'architecture violations'
         output.puts style.bold("#{diagnostics.size} #{label} found.")
+        print_census(output, graph)
       end
 
       def print_diagnostic(output, style, graph, diagnostic, sources)
         location = diagnostic.location
         relative = location.relative_path(graph.root)
 
-        output.puts "#{style.severity('[error]')} #{style.bold(diagnostic.message)} #{style.faint("[#{diagnostic.rule}]")}"
+        header = "#{style.severity('[error]')} #{style.bold(diagnostic.message)} #{style.faint("[#{diagnostic.rule}]")}"
+        output.puts header
         output.puts
         output.puts "#{relative}:#{location.line}:#{location.column}"
         print_frame(output, style, location, sources[location.path])
@@ -55,6 +58,7 @@ module ArchSpec
           output.puts
           output.puts "  #{style.note('note:')} #{note}"
         end
+        output.puts "  #{style.note('reason:')} #{diagnostic.reason}" if diagnostic.reason
         output.puts
       end
 
@@ -106,6 +110,20 @@ module ArchSpec
         File.readlines(path, chomp: true).map { |line| line.scrub.tr("\t", ' ') }
       rescue SystemCallError
         []
+      end
+
+      def print_census(output, graph)
+        census = graph.analysis_census
+        clauses = []
+        if census[:unresolved_constants].positive?
+          clauses << "#{census[:unresolved_constants]} unresolved constant references"
+        end
+        clauses << "#{census[:dynamic_features]} dynamic features" if census[:dynamic_features].positive?
+        clauses << "#{census[:unknown_receivers]} calls with unknown receivers" if census[:unknown_receivers].positive?
+        census[:rubydex_diagnostics].each do |rule, count|
+          clauses << "#{count} RubyDEX #{rule} #{count == 1 ? 'diagnostic' : 'diagnostics'}"
+        end
+        output.puts "Analysis gaps: #{clauses.join(', ')}." unless clauses.empty?
       end
     end
   end

@@ -18,7 +18,7 @@ Rule id: `components.empty`
 Every file that lands in the component fails the check:
 
 ```text
-[error] services must stay empty: behavior belongs on models [components.empty]
+[error] services must stay empty [components.empty]
 
 app/services/create_user.rb:1:1
 
@@ -27,10 +27,12 @@ app/services/create_user.rb:1:1
     2 │   def perform
 
   note: app/services/create_user.rb belongs to services
+  reason: behavior belongs on models
 ```
 
 The `because:` reason is optional but recommended. It appears in the failure
-message and tells the reader where the code should go instead.
+and tells the reader where the code should go instead. Like every rule reason,
+it stays outside the diagnostic fingerprint.
 
 ## When To Use It
 

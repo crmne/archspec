@@ -81,7 +81,9 @@ bundle exec archspec explain app/models/user.rb
 bundle exec archspec explain Billing::Invoice
 ```
 
-Shows what ArchSpec knows about a file or constant: defined constants, component assignment reasons, suppressions, and outgoing facts.
+Shows what ArchSpec knows about a file or constant: defined constants,
+component assignment reasons, suppressions, resolved ancestry, outgoing facts,
+incoming dependencies, and analysis gaps.
 
 ```text
 app/models/user.rb
@@ -95,6 +97,9 @@ app/models/user.rb
     1:14 │ inherits from ApplicationRecord
      2:3 │ calls has_many
      9:5 │ references UsersController
+  incoming dependencies:
+    4:7 │ references User
+  analysis gaps: 1 unknown receiver
 ```
 
 Explaining a constant shows where it is defined, its components, its superclass, and its methods:
@@ -107,6 +112,12 @@ User
   components:
     models: defined in matched file
   superclass: ApplicationRecord
+  resolved ancestors: ApplicationRecord
+  unresolved ancestors: ActiveRecord::Base
   instance methods: controller_peek, summary
   class methods: find_active
+  outgoing facts:
+    1:14 │ inherits from ApplicationRecord
+  incoming dependencies: (none)
+  analysis gaps: (none)
 ```

@@ -7,7 +7,18 @@ class AnalyzerTest < ArchSpecTest
     with_project do |root|
       write "#{root}/app/controllers/admin/users/roles_controller.rb", <<~RUBY
         module Admin
-          class Users::RolesController
+          module Trackable
+          end
+
+          class BaseController
+          end
+
+          class Users::RolesController < BaseController
+            TOKEN = :ok
+            include Trackable
+
+            def index = :ok
+            private :index
           end
         end
       RUBY
@@ -19,6 +30,84 @@ class AnalyzerTest < ArchSpecTest
       graph = ArchSpec::Analyzer.analyze(definition, root: root)
 
       assert_includes graph.constants.map(&:name), 'Admin::Users::RolesController'
+      controller = graph.constants_named('Admin::Users::RolesController').first
+      assert_includes controller.instance_methods, :index
+      assert_equal :private, controller.method_definitions.find { |method| method.name == :index }.visibility
+      assert_includes graph.constants.map(&:name), 'Admin::Users::RolesController::TOKEN'
+      refute_includes graph.constants.map(&:name), 'Users::RolesController::TOKEN'
+      inheritance = graph.edges.find do |edge|
+        edge.type == :inherits_from && edge.from_constant == 'Admin::Users::RolesController'
+      end
+      assert_equal 'Admin::BaseController', graph.resolve_edge_constant(inheritance)
+      mixin = graph.edges.find do |edge|
+        edge.type == :includes && edge.from_constant == 'Admin::Users::RolesController'
+      end
+      assert_equal 'Admin::Trackable', graph.resolve_edge_constant(mixin)
+    end
+  end
+
+  def test_compact_class_paths_are_rebased_by_location
+    with_project do |root|
+      write "#{root}/app/controllers/roles_controllers.rb", <<~RUBY
+        module Admin
+          class Users::RolesController
+            TOKEN = :admin
+            def admin = TOKEN
+          end
+        end
+
+        module Staff
+          class Users::RolesController
+            TOKEN = :staff
+            def staff = TOKEN
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :controllers, in: 'app/controllers/**/*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      admin = graph.constants_named('Admin::Users::RolesController').first
+      staff = graph.constants_named('Staff::Users::RolesController').first
+
+      assert_equal %i[admin], admin.instance_methods.to_a
+      assert_equal %i[staff], staff.instance_methods.to_a
+      assert graph.constants_named('Admin::Users::RolesController::TOKEN').one?
+      assert graph.constants_named('Staff::Users::RolesController::TOKEN').one?
+    end
+  end
+
+  def test_static_mixin_fallbacks_cover_top_level_calls_without_indexing_extend_self
+    with_project do |root|
+      write "#{root}/lib/extensions.rb", <<~RUBY
+        module SerializationPatch
+        end
+
+        prepend SerializationPatch
+
+        module Helpers
+          extend self
+
+          def answer = 42
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :extensions, in: 'lib/**/*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      top_level_prepend = graph.edges.any? do |edge|
+        edge.type == :prepends && edge.from_constant.nil? && edge.to == 'SerializationPatch'
+      end
+      assert top_level_prepend
+      extend_self = graph.edges.find do |edge|
+        edge.type == :extends && edge.from_constant == 'Helpers' && edge.to == 'Helpers'
+      end
+      assert_nil extend_self, extend_self&.inspect
     end
   end
 
@@ -176,6 +265,44 @@ class AnalyzerTest < ArchSpecTest
 
       assert_equal ['User'], graph.constants.map(&:name)
       assert_equal ["#{root}/app/models/user.rb"], graph.files.keys
+    end
+  end
+
+  def test_component_exclusions_subtract_only_from_file_patterns
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/app/models/import_workflow.rb", "class ImportWorkflow; end\n"
+
+      definition = ArchSpec.define do
+        component :domain, in: 'app/models/**/*.rb', except: 'app/models/**/*_workflow.rb', constants: 'ImportWorkflow'
+        component :workflows, in: 'app/models/**/*_workflow.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal %w[ImportWorkflow User], graph.components.fetch(:domain).constants.to_a.sort
+      assert_equal %w[ImportWorkflow], graph.components.fetch(:workflows).constants.to_a
+      refute_includes graph.components.fetch(:domain).file_reasons.fetch("#{root}/app/models/import_workflow.rb"),
+        'defined in matched file'
+    end
+  end
+
+  def test_components_can_select_transitive_descendants
+    with_project do |root|
+      write "#{root}/app/models/application_record.rb", "class ApplicationRecord; end\n"
+      write "#{root}/app/models/account.rb", "class Account < ApplicationRecord; end\n"
+      write "#{root}/app/models/admin.rb", "class Admin < Account; end\n"
+      write "#{root}/app/models/report.rb", "class Report; end\n"
+
+      definition = ArchSpec.define do
+        component :records, descendants_of: 'ApplicationRecord'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal %w[Account Admin], graph.components.fetch(:records).constants.to_a.sort
+      assert_equal ['descends from ApplicationRecord'],
+        graph.component_assignment_reasons_for_constant('Admin').fetch(:records)
     end
   end
 
@@ -400,7 +527,8 @@ class AnalyzerTest < ArchSpecTest
             def call = code
           end
           Events = Module.new
-          Fallback = Class.new(StandardError)
+          Error = Class.new(StandardError)
+          Fallback = Class.new(Error)
         end
 
         DEFAULT_RATE = 0.1
@@ -423,11 +551,16 @@ class AnalyzerTest < ArchSpecTest
 
       fallback = graph.constants_named('Billing::Fallback').first
       assert_equal :class, fallback.kind
-      assert_equal 'StandardError', fallback.superclass
+      assert_equal 'Billing::Error', fallback.superclass
+      inheritance = graph.edges.find do |edge|
+        edge.type == :inherits_from && edge.from_constant == 'Billing::Fallback'
+      end
+      assert_equal 'Error', inheritance.to
+      assert_equal 'Billing::Error', graph.resolve_edge_constant(inheritance)
     end
   end
 
-  def test_builds_graph_from_direct_prism_parse
+  def test_builds_graph_from_rubydex_with_syntax_overlay
     with_project do |root|
       write "#{root}/app/models/user.rb", <<~RUBY
         class User < ApplicationRecord

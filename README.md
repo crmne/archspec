@@ -4,7 +4,7 @@
 
 <strong>Executable architecture specifications for Ruby and Rails</strong>
 
-<p>Declare your components and boundaries in one <code>Archspec.rb</code>, and every change gets checked in CI, whether a person or a coding agent wrote it. No AI involved, just Prism.</p>
+<p>Declare your components and boundaries in one <code>Archspec.rb</code>, and every change gets checked in CI, whether a person or a coding agent wrote it. No AI involved, just static analysis.</p>
 
 Battle tested in [<picture><source media="(prefers-color-scheme: dark)" srcset="https://rubyllm.com/assets/images/logotype_dark.svg"><img src="https://rubyllm.com/assets/images/logotype.svg" alt="RubyLLM" height="30" align="absmiddle"></picture>](https://rubyllm.com) and at [<picture><source media="(prefers-color-scheme: dark)" srcset="https://chatwithwork.com/logotype-dark.svg"><img src="https://chatwithwork.com/logotype.svg" alt="Chat with Work" height="30" align="absmiddle"></picture>](https://chatwithwork.com)
 
@@ -18,7 +18,7 @@ Battle tested in [<picture><source media="(prefers-color-scheme: dark)" srcset="
 
 ---
 
-ArchSpec turns your architecture into executable checks: components, layers, constant references, inheritance, mixins, named method calls, method protocols, naming conventions, cycles, and Rails boundaries. It is plain static analysis: it reads Ruby source with Prism, never boots the app, and no AI is involved in checking your code. The full Discourse app, 1,899 files, checks in 2.5 seconds.
+ArchSpec turns your architecture into executable checks: components, layers, constant references, inheritance, mixins, named method calls, method protocols, naming conventions, cycles, and Rails boundaries. It is plain static analysis: Rubydex builds the semantic index, Prism supplies a small syntax overlay, the app never boots, and no AI is involved in checking your code.
 
 ## Why ArchSpec?
 
@@ -100,10 +100,13 @@ Write local rules in plain Ruby:
 component :controllers, in: "app/controllers/**/*.rb"
 component :models, in: "app/models/**/*.rb"
 component :services, in: "app/services/**/*.rb"
+component :records, descendants_of: "ApplicationRecord"
 
 controllers.can_only_use :models, :services
 models.cannot_use :controllers
-services.cannot_call :render, :redirect_to, :params, :session
+services.cannot_call :render, :redirect_to, :params, :session,
+  because: "services do not own the HTTP response"
+models.cannot_call :find_by_sql, receiver: "ActiveRecord::Base"
 services.cannot_instantiate_and_invoke
 ```
 
@@ -124,7 +127,7 @@ architecture :cqrs,
 - **Layers:** dependency direction and cycles
 - **Rails:** controller APIs kept out of models and services
 - **Architectures:** Rails, vanilla Rails, layered, hexagonal, clean, modular monolith, CQRS, event-driven, and Ruby conventions bundles
-- **Protocols:** required methods such as `resolve`, `perform`, or project-specific interfaces
+- **Protocols:** instance/class APIs and callable signatures such as `call(amount, actor:)`
 - **Naming:** conventions on a component's public API, such as banning `get_`/`set_` or pairing `with_x` with `without_x`
 - **Objects:** rules against one-shot `Something.new(...).whatever` command objects
 - **Empty components:** directories that must stay empty, like `app/services` in vanilla Rails
@@ -135,6 +138,8 @@ architecture :cqrs,
 ArchSpec does not check Zeitwerk constant names. Zeitwerk does that itself. Add `Zeitwerk::Loader.eager_load_all` (or your loader's `eager_load`) to your test suite or CI. It raises on any file that does not define the constant its path implies, using your real inflector and ignores.
 
 ## Installation
+
+ArchSpec requires Ruby 3.2 or newer.
 
 Add ArchSpec to your Gemfile:
 
@@ -172,8 +177,9 @@ bundle exec archspec check --update-todo
 bundle exec archspec explain app/models/user.rb
 ```
 
-`explain` shows why a file or constant belongs to a component and which outgoing
-facts ArchSpec found:
+`explain` shows why a file or constant belongs to a component, its resolved
+ancestry, outgoing facts, incoming dependencies, and anything the analysis
+could not prove:
 
 ```text
 app/models/user.rb

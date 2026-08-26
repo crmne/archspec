@@ -30,6 +30,44 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_rules_carry_a_reason_without_changing_their_fingerprint
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; UsersController; end\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+
+      plain = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :controllers, in: 'app/controllers/**/*.rb'
+        models.cannot_use :controllers
+      end
+      explained = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :controllers, in: 'app/controllers/**/*.rb'
+        models.cannot_use :controllers, because: 'models must remain independent of the request'
+      end
+
+      plain_diagnostic = diagnostics_for(plain, root).first
+      explained_diagnostic = diagnostics_for(explained, root).first
+
+      assert_equal plain_diagnostic.fingerprint(root: root), explained_diagnostic.fingerprint(root: root)
+      assert_equal 'models must remain independent of the request', explained_diagnostic.reason
+      assert_equal 'models must remain independent of the request', explained_diagnostic.to_h(root: root)[:reason]
+    end
+  end
+
+  def test_merged_rules_reject_conflicting_reasons
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :controllers, in: 'app/controllers/**/*.rb'
+        models.cannot_use :controllers, because: 'one reason'
+        models.cannot_use :controllers, because: 'another reason'
+      end
+    end
+
+    assert_match 'same rule cannot have two reasons', error.message
+  end
+
   def test_allow_dependencies_reports_other_declared_components
     with_project do |root|
       write "#{root}/app/controllers/users_controller.rb", <<~RUBY
@@ -85,6 +123,193 @@ class RulesTest < ArchSpecTest
       assert(diagnostics.any? { |diagnostic| diagnostic.message == 'BadService must implement #call' })
       assert(diagnostics.any? { |diagnostic| diagnostic.message == 'services must not call #render' })
     end
+  end
+
+  def test_class_side_protocols_follow_superclasses_and_extended_modules
+    with_project do |root|
+      write "#{root}/lib/job_support.rb", <<~RUBY
+        module Schedulable
+          def perform_later = nil
+        end
+
+        class ApplicationJob
+          def self.enqueue = nil
+        end
+      RUBY
+      write "#{root}/app/jobs/good_job.rb", <<~RUBY
+        class GoodJob < ApplicationJob
+          extend Schedulable
+        end
+      RUBY
+      write "#{root}/app/jobs/bad_job.rb", "class BadJob; end\n"
+
+      definition = ArchSpec.define do
+        source 'lib/**/*.rb'
+        component :jobs, in: 'app/jobs/**/*.rb'
+        jobs.must_implement :perform_later, scope: :class
+        jobs.must_implement_one_of :enqueue, :perform_later, scope: :class
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal ['BadJob must implement .perform_later',
+                    'BadJob must implement one of .enqueue, .perform_later'], diagnostics.map(&:message).sort
+    end
+  end
+
+  def test_protocols_can_require_a_callable_signature
+    with_project do |root|
+      write "#{root}/app/services/charge.rb", <<~RUBY
+        class Charge
+          def call(amount, actor:) = amount
+        end
+      RUBY
+      write "#{root}/app/services/flexible.rb", <<~RUBY
+        class Flexible
+          def call(amount = nil, **options) = amount
+        end
+      RUBY
+      write "#{root}/app/services/refund.rb", <<~RUBY
+        class Refund
+          def call = nil
+        end
+      RUBY
+      write "#{root}/app/services/strict.rb", <<~RUBY
+        class Strict
+          def call(amount, actor:, request_id:) = amount
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :services, in: 'app/services/**/*.rb'
+        services.must_implement :call, arity: 1, keywords: :actor
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal [
+        'Refund must implement #call accepting 1 positional argument and keywords actor:',
+        'Strict must implement #call accepting 1 positional argument and keywords actor:'
+      ], diagnostics.map(&:message).sort
+      assert diagnostics.all? { |diagnostic| diagnostic.confidence == :high }
+      assert_includes diagnostics.map(&:evidence), 'Refund #call accepts 0 positional'
+      assert_includes diagnostics.map(&:evidence), 'Strict #call accepts 1 positional, keywords actor:, request_id:'
+    end
+  end
+
+  def test_protocol_signatures_use_the_method_ruby_will_dispatch_to
+    with_project do |root|
+      write "#{root}/lib/base_command.rb", <<~RUBY
+        class BaseCommand
+          def call(amount, actor:) = amount
+        end
+      RUBY
+      write "#{root}/app/commands/charge.rb", <<~RUBY
+        class Charge < BaseCommand
+          def call(amount) = amount
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        source 'lib/**/*.rb'
+        component :commands, in: 'app/commands/**/*.rb'
+        commands.must_implement :call, arity: 1, keywords: :actor
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal ['Charge must implement #call accepting 1 positional argument and keywords actor:'],
+        diagnostics.map(&:message)
+      assert_equal 'Charge #call accepts 1 positional', diagnostics.first.evidence
+    end
+  end
+
+  def test_protocol_options_are_validated
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :jobs, in: 'app/jobs/**/*.rb'
+        jobs.must_implement :perform, scope: :singleton
+      end
+    end
+    assert_match 'scope: must be :instance or :class', error.message
+
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :jobs, in: 'app/jobs/**/*.rb'
+        jobs.must_implement :perform, arity: -1
+      end
+    end
+    assert_match 'arity: must be a non-negative Integer', error.message
+  end
+
+  def test_cannot_call_can_match_a_semantic_class_receiver
+    with_project do |root|
+      write "#{root}/app/models/application_record.rb", <<~RUBY
+        class ApplicationRecord < ActiveRecord::Base
+        end
+      RUBY
+      write "#{root}/app/models/user.rb", "class User < ApplicationRecord; end\n"
+      write "#{root}/app/models/connection.rb", "class Connection; def self.find_by_sql(query) = query; end\n"
+      write "#{root}/app/models/report.rb", <<~RUBY
+        class Report
+          def users = User.find_by_sql('SELECT * FROM users')
+          def raw = Connection.find_by_sql('SELECT 1')
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.cannot_call :find_by_sql, receiver: 'ActiveRecord::Base'
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_equal 'models must not call #find_by_sql', diagnostics.first.message
+      assert_equal 'Report calls find_by_sql on User', diagnostics.first.evidence
+    end
+  end
+
+  def test_cannot_call_follows_method_aliases_on_resolved_receivers
+    with_project do |root|
+      write "#{root}/app/models/store.rb", <<~RUBY
+        class Store
+          def self.destroy_all = nil
+
+          class << self
+            alias_method :wipe, :destroy_all
+            alias_method :erase, :wipe
+          end
+        end
+      RUBY
+      write "#{root}/app/models/cleanup.rb", <<~RUBY
+        class Cleanup
+          def call = Store.erase
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.cannot_call :destroy_all
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_equal 'models must not call #destroy_all', diagnostics.first.message
+      assert_equal 'Cleanup calls erase (alias of destroy_all)', diagnostics.first.evidence
+    end
+  end
+
+  def test_cannot_call_rejects_non_constant_semantic_receivers
+    error = assert_raises(ArchSpec::Error) do
+      ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        models.cannot_call :save, receiver: :self
+      end
+    end
+
+    assert_match 'must be :any, :none or a constant name', error.message
   end
 
   def test_cycle_rule_reports_component_cycles
@@ -752,7 +977,8 @@ class RulesTest < ArchSpecTest
       diagnostics = diagnostics_for(definition, root)
 
       assert_equal ['components.empty'], diagnostics.map(&:rule)
-      assert_match(/services must stay empty: behavior belongs on models/, diagnostics.first.message)
+      assert_equal 'services must stay empty', diagnostics.first.message
+      assert_equal 'behavior belongs on models', diagnostics.first.reason
     end
   end
 

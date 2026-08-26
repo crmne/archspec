@@ -14,7 +14,8 @@ After reading this guide, you will know:
 
 ## What ArchSpec Uses
 
-ArchSpec reads Ruby source with Prism. It does not boot Rails.
+ArchSpec indexes Ruby source with Rubydex and uses Prism for a handful of
+syntax-specific facts. It does not boot Rails.
 
 In Rails apps, the useful evidence is the file layout:
 

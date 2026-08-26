@@ -89,17 +89,26 @@ module ArchSpec
       end
 
       # Declares a component: a named set of files, matched by glob, namespace,
-      # or explicit constant.
+      # explicit constant, or semantic ancestry.
       #
       #   component :services, in: "app/services/**/*.rb"
+      #   component :workflows, in: "app/models/**/*.rb", except: "app/models/legacy/**/*.rb"
       #   component :billing, namespace: "Billing"
       #   component :legacy, constants: %w[OldReport OldExport]
+      #   component :records, descendants_of: "ApplicationRecord"
       #
       # Returns an ArchSpec::DSL::ComponentProxy for attaching rules. The
       # component is also available by name later in the file.
-      def component(name, in: nil, namespace: nil, constants: nil)
+      def component(name, in: nil, except: nil, namespace: nil, constants: nil, descendants_of: nil)
         add_component(
-          ComponentSpec.new(name, files: binding.local_variable_get(:in), namespace: namespace, constants: constants)
+          ComponentSpec.new(
+            name,
+            files: binding.local_variable_get(:in),
+            except: except,
+            namespace: namespace,
+            constants: constants,
+            descendants_of: descendants_of
+          )
         )
         ComponentProxy.new(self, name)
       end
@@ -129,16 +138,16 @@ module ArchSpec
       #   no_cycles among: %i[billing catalog shared]
       #
       # Rule id: +dependencies.no_cycles+.
-      def no_cycles(among: nil)
+      def no_cycles(among: nil, because: nil)
         DSL.assert_known_components!(self, among, for_rule: 'no_cycles') if among
-        add_rule(Rules::NoCyclesRule.new(among: among))
+        add_rule(Rules.with_reason(Rules::NoCyclesRule.new(among: among), because))
       end
 
       # Adds a custom rule object. A rule responds to +id+ and
       # <tt>evaluate(graph)</tt>, returning ArchSpec::Diagnostic objects. Use
       # this to extend ArchSpec with project-specific checks.
-      def rule(rule)
-        add_rule(rule)
+      def rule(rule, because: nil)
+        add_rule(Rules.with_reason(rule, because))
       end
 
       def method_missing(name, ...)
@@ -172,9 +181,9 @@ module ArchSpec
       #   controllers.can_only_use :models, :services
       #
       # Rule id: +dependencies.allow+.
-      def can_only_use(*targets)
+      def can_only_use(*targets, because: nil)
         DSL.assert_known_components!(definition, targets, for_rule: "#{name}.can_only_use")
-        add_rule(Rules::AllowDependenciesRule.new(name, targets))
+        add_rule(Rules::AllowDependenciesRule.new(name, targets), because: because)
         self
       end
 
@@ -184,9 +193,9 @@ module ArchSpec
       #   models.cannot_use :controllers, :helpers
       #
       # Rule id: +dependencies.forbid+.
-      def cannot_use(*targets)
+      def cannot_use(*targets, because: nil)
         DSL.assert_known_components!(definition, targets, for_rule: "#{name}.cannot_use")
-        add_rule(Rules::ForbidDependenciesRule.new(name, targets))
+        add_rule(Rules::ForbidDependenciesRule.new(name, targets), because: because)
         self
       end
 
@@ -197,26 +206,27 @@ module ArchSpec
       #   shared_kernel.can_only_be_used_by :billing, :catalog
       #
       # Rule id: +dependencies.consumers+.
-      def can_only_be_used_by(*consumers)
+      def can_only_be_used_by(*consumers, because: nil)
         DSL.assert_known_components!(definition, consumers, for_rule: "#{name}.can_only_be_used_by")
-        add_rule(Rules::AllowedConsumersRule.new(name, consumers))
+        add_rule(Rules::AllowedConsumersRule.new(name, consumers), because: because)
         self
       end
 
       # Forbids calling the named methods. By default any receiver matches, so
       # this catches +record.update+ and +cache.update+ alike. Pass
-      # <tt>receiver: :none</tt> to match only bare, implicit-+self+ calls, which
-      # is how the Rails presets keep the controller API out of models.
+      # <tt>receiver: :none</tt> to match only bare, implicit-+self+ calls, or a
+      # constant name to match that semantic class receiver and its descendants.
       #
       #   queries.cannot_call :save, :update, :destroy
       #   services.cannot_call :render, :params, receiver: :none
+      #   models.cannot_call :find_by_sql, receiver: "ActiveRecord::Base"
       #
       # A bare call to a method the component defines, inherits, or generates
       # with +attr_*+, Rails +attribute+, or +delegate+ is treated as its own API
-      # and not flagged.
+      # and not flagged. Resolved method aliases are matched to their target.
       # Rule id: +methods.forbid+.
-      def cannot_call(*methods, receiver: :any)
-        add_rule(Rules::CannotCallRule.new(name, methods, receiver: receiver))
+      def cannot_call(*methods, receiver: :any, because: nil)
+        add_rule(Rules::CannotCallRule.new(name, methods, receiver: receiver), because: because)
         self
       end
 
@@ -227,8 +237,8 @@ module ArchSpec
       #   models.cannot_define :call
       #
       # Rule id: +methods.define_forbid+.
-      def cannot_define(*methods)
-        add_rule(Rules::CannotDefineMethodRule.new(name, methods))
+      def cannot_define(*methods, because: nil)
+        add_rule(Rules::CannotDefineMethodRule.new(name, methods), because: because)
         self
       end
 
@@ -237,8 +247,8 @@ module ArchSpec
       # toward plain methods over anonymous command objects.
       #
       # Rule id: +objects.instantiate_and_invoke_forbid+.
-      def cannot_instantiate_and_invoke
-        add_rule(Rules::CannotInstantiateAndInvokeRule.new(name))
+      def cannot_instantiate_and_invoke(because: nil)
+        add_rule(Rules::CannotInstantiateAndInvokeRule.new(name), because: because)
         self
       end
 
@@ -248,8 +258,8 @@ module ArchSpec
       #   models.cannot_reference_constants "ActionController", "ActionView"
       #
       # Rule id: +constants.forbid+.
-      def cannot_reference_constants(*constants)
-        add_rule(Rules::CannotReferenceConstantsRule.new(name, constants))
+      def cannot_reference_constants(*constants, because: nil)
+        add_rule(Rules::CannotReferenceConstantsRule.new(name, constants), because: because)
         self
       end
 
@@ -263,8 +273,11 @@ module ArchSpec
       # +constants+ matches exact names, +namespace+ matches a name and its
       # children. Code inside the component may still reach its own internals.
       # Rule id: +dependencies.privacy+.
-      def public_api(*patterns, constants: nil, namespace: nil)
-        add_rule(Rules::PublicApiRule.new(name, files: patterns, constants: constants, namespaces: namespace))
+      def public_api(*patterns, constants: nil, namespace: nil, because: nil)
+        add_rule(
+          Rules::PublicApiRule.new(name, files: patterns, constants: constants, namespaces: namespace),
+          because: because
+        )
         self
       end
 
@@ -276,8 +289,8 @@ module ArchSpec
       #   model_concerns.cannot_reference_includers
       #
       # Rule id: +concerns.independence+.
-      def cannot_reference_includers
-        add_rule(Rules::ConcernIndependenceRule.new(name))
+      def cannot_reference_includers(because: nil)
+        add_rule(Rules::ConcernIndependenceRule.new(name), because: because)
         self
       end
 
@@ -290,34 +303,48 @@ module ArchSpec
       #
       # Rule id: +components.empty+.
       def must_be_empty(because: nil)
-        add_rule(Rules::MustBeEmptyRule.new(name, because: because))
+        add_rule(Rules::MustBeEmptyRule.new(name), because: because)
         self
       end
 
       # Requires every class in the component to implement all the named
-      # instance methods. Methods inherited from resolvable superclasses or
-      # mixins count.
+      # methods. Instance methods are checked by default; pass
+      # <tt>scope: :class</tt> for the class side. Methods inherited from
+      # resolvable superclasses or mixins count. Optional +arity:+ and
+      # +keywords:+ constraints check whether each method accepts that call.
       #
       #   commands.must_implement :perform
+      #   commands.must_implement :call, arity: 1, keywords: :actor
+      #   jobs.must_implement :perform_later, scope: :class
       #
       # Rule id: +protocol.must_implement+.
-      def must_implement(*methods)
+      def must_implement(*methods, scope: :instance, arity: nil, keywords: nil, because: nil)
         raise Error, 'must_implement requires at least one method' if methods.flatten.compact.empty?
 
         methods.each do |method_name|
-          add_rule(Rules::MustImplementRule.new(name, method_name))
+          add_rule(
+            Rules::MustImplementRule.new(
+              name,
+              method_name,
+              scope: scope,
+              arity: arity,
+              keywords: keywords
+            ),
+            because: because
+          )
         end
         self
       end
 
       # Requires every class in the component to implement at least one of the
-      # named instance methods. Useful when a protocol allows either name.
+      # named methods. Useful when a protocol allows either name. Pass
+      # <tt>scope: :class</tt> to check the class side.
       #
       #   commands.must_implement_one_of :perform, :call
       #
       # Rule id: +protocol.must_implement_one_of+.
-      def must_implement_one_of(*methods)
-        add_rule(Rules::MustImplementOneOfRule.new(name, methods))
+      def must_implement_one_of(*methods, scope: :instance, because: nil)
+        add_rule(Rules::MustImplementOneOfRule.new(name, methods, scope: scope), because: because)
         self
       end
 
@@ -338,13 +365,17 @@ module ArchSpec
 
       private
 
-      def add_rule(rule)
+      def add_rule(rule, because: nil)
+        rule = Rules.with_reason(rule, because)
         if rule.respond_to?(:merge_key)
           existing = definition.rules.find do |candidate|
             candidate.respond_to?(:merge_key) && candidate.merge_key == rule.merge_key
           end
 
-          return existing.merge!(rule) if existing.respond_to?(:merge!)
+          if existing
+            Rules.with_reason(existing, rule.archspec_because) if rule.respond_to?(:archspec_because)
+            return existing.merge!(rule) if existing.respond_to?(:merge!)
+          end
           return existing if existing
         end
 

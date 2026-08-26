@@ -36,7 +36,9 @@ models.method_names.matching(/\A(get|set)_/).forbidden(because: "use attr reader
 
 Rule id: `naming.forbidden`
 
-Every selected method fails. Use it to ban a naming style outright. The `because:` text is appended to the message.
+Every selected method fails. Use it to ban a naming style outright. The
+`because:` text is reported as the rule's reason and stays outside the todo
+fingerprint.
 
 ## Require a Sibling
 

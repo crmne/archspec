@@ -2,9 +2,8 @@
 
 module ArchSpec
   # A frozen value type with positional or keyword construction and #with,
-  # mirroring Ruby 3.2's Data.define. Deliberately hand-rolled: the gem
-  # supports Ruby 3.1, where Data does not exist. Do not replace this with
-  # Data until the required Ruby version reaches 3.2.
+  # mirroring Data.define. Deliberately hand-rolled so its public behavior is
+  # explicit and stable.
   module ValueObject
     def self.define(*members, &block)
       klass = Struct.new(*members) do

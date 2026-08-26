@@ -7,7 +7,49 @@ require_relative 'value_object'
 
 module ArchSpec
   ParseError = ValueObject.define(:message, :location)
-  MethodDefinition = ValueObject.define(:owner, :name, :scope, :location, :visibility)
+  AnalysisDiagnostic = ValueObject.define(:rule, :message, :location)
+  MethodSignature = ValueObject.define(
+    :required,
+    :optional,
+    :rest,
+    :keywords,
+    :optional_keywords,
+    :keyword_rest,
+    :block,
+    :forward
+  ) do
+    def accepts_arity?(arity)
+      return true if forward
+
+      maximum = rest ? Float::INFINITY : required + optional
+      arity >= required && arity <= maximum
+    end
+
+    def accepts_keywords?(names)
+      return true if forward
+
+      names = names.to_set
+      return false unless keywords.all? { |name| names.include?(name) }
+      return true if keyword_rest
+
+      names.all? { |name| keywords.include?(name) || optional_keywords.include?(name) }
+    end
+
+    def describe
+      positional =
+        if rest
+          "#{required}+ positional"
+        elsif optional.positive?
+          "#{required}..#{required + optional} positional"
+        else
+          "#{required} positional"
+        end
+      named = (keywords.map { |name| "#{name}:" } + optional_keywords.map { |name| "#{name}:?" }).join(', ')
+      [positional, ("keywords #{named}" unless named.empty?), ('**keywords' if keyword_rest), ('&block' if block),
+       ('forwarding' if forward)].compact.join(', ')
+    end
+  end
+  MethodDefinition = ValueObject.define(:owner, :name, :scope, :location, :visibility, :signatures, :alias_target)
 
   Suppression = ValueObject.define(:rule, :start_line, :end_line, :reason) do
     def matches?(diagnostic)
@@ -58,14 +100,18 @@ module ArchSpec
       kind == :module
     end
 
-    def add_instance_method(name, location:, visibility: :public)
+    def add_instance_method(name, location:, visibility: :public, signatures: [], alias_target: nil)
       instance_methods.add(name.to_sym)
-      method_definitions << MethodDefinition.new(self.name, name.to_sym, :instance, location, visibility)
+      method_definitions << MethodDefinition.new(
+        self.name, name.to_sym, :instance, location, visibility, signatures, alias_target
+      )
     end
 
-    def add_class_method(name, location:, visibility: :public)
+    def add_class_method(name, location:, visibility: :public, signatures: [], alias_target: nil)
       class_methods.add(name.to_sym)
-      method_definitions << MethodDefinition.new(self.name, name.to_sym, :class, location, visibility)
+      method_definitions << MethodDefinition.new(
+        self.name, name.to_sym, :class, location, visibility, signatures, alias_target
+      )
     end
 
     def add_mixin(kind, name)
@@ -90,7 +136,11 @@ module ArchSpec
     :location,
     :confidence,
     :receiver,
-    :lexical_nesting
+    :lexical_nesting,
+    :resolved_to,
+    :resolved_receiver,
+    :receiver_scope,
+    :resolved_method
   ) do
     VERBS = {
       references_constant: 'references',
@@ -152,7 +202,7 @@ module ArchSpec
 
     RESOLVED_ROOTS = %w[Object BasicObject].freeze
 
-    attr_reader :root, :files, :constants, :edges, :components
+    attr_reader :root, :files, :constants, :edges, :components, :analysis_diagnostics
 
     def initialize(root)
       @root = File.expand_path(root)
@@ -161,6 +211,9 @@ module ArchSpec
       @constants_by_name = Hash.new { |hash, key| hash[key] = [] }
       @edges = []
       @components = {}
+      @analysis_diagnostics = []
+      @effective_definition_cache = {}
+      @effective_method_cache = {}
     end
 
     def add_file(path:, parse_errors:, suppressions: [])
@@ -188,9 +241,34 @@ module ArchSpec
     end
 
     def add_edge(type:, from_path:, from_constant:, to:, location:, confidence: :high, receiver: nil,
-                 lexical_nesting: nil)
+                 lexical_nesting: nil, resolved_to: nil, resolved_receiver: nil, receiver_scope: nil,
+                 resolved_method: nil)
       nesting = lexical_nesting&.map { |name| normalize_constant(name) }&.freeze
-      edges << Edge.new(type, from_path, from_constant, to.to_s, location, confidence, receiver, nesting)
+      edges << Edge.new(
+        type,
+        from_path,
+        from_constant,
+        to.to_s,
+        location,
+        confidence,
+        receiver,
+        nesting,
+        resolved_to,
+        resolved_receiver,
+        receiver_scope,
+        resolved_method
+      )
+    end
+
+    def add_analysis_diagnostic(rule:, message:, location:)
+      analysis_diagnostics << AnalysisDiagnostic.new(rule, message, location)
+    end
+
+    def set_namespace_only(name, path, value)
+      normalized = normalize_constant(name)
+      @constants_by_name[normalized].each do |constant|
+        constant.namespace_only = value if constant.path == path && (constant.class? || constant.module?)
+      end
     end
 
     def constants_named(name)
@@ -220,9 +298,14 @@ module ArchSpec
       component_specs.each do |spec|
         component = Component.new(spec.name)
         files_matched_by_pattern = Set.new
+        excluded_files = spec.exclude_patterns.each_with_object(Set.new) do |pattern, matches|
+          each_matching_file(pattern) { |path| matches.add(path) }
+        end
 
         spec.file_patterns.each do |pattern|
           each_matching_file(pattern) do |path|
+            next if excluded_files.include?(path)
+
             files_matched_by_pattern.add(path)
             component.add_file(path, reason: "matched file pattern #{pattern}")
           end
@@ -231,11 +314,20 @@ module ArchSpec
         constants.each do |constant|
           matched_file = files_matched_by_pattern.include?(constant.path) && !defers_to_real_definition?(constant)
           matched_constant = spec.matches_constant?(constant.name)
-          next unless matched_file || matched_constant
+          matched_ancestor = spec.matching_ancestor(constant.name, self)
+          next unless matched_file || matched_constant || matched_ancestor
 
-          component.add_file(constant.path, reason: "defines #{constant.name}") if matched_constant
+          component.add_file(constant.path, reason: "defines #{constant.name}") if matched_constant || matched_ancestor
+          reason =
+            if matched_file
+              'defined in matched file'
+            elsif matched_ancestor
+              "descends from #{matched_ancestor}"
+            else
+              'matched namespace/constant selector'
+            end
           component.add_constant(constant.name, path: constant.path,
-                                 reason: matched_file ? 'defined in matched file' : 'matched namespace/constant selector')
+                                 reason: reason)
         end
 
         @components[component.name] = component
@@ -301,50 +393,137 @@ module ArchSpec
     # appeared. This matters for compact class declarations and superclass
     # expressions, where inferring scope from the finished class name is wrong.
     def resolve_edge_constant(edge)
+      return normalize_constant(edge.resolved_to) if edge.resolved_to
+
       resolve_constant_reference(edge.to, edge.from_constant, lexical_nesting: edge.lexical_nesting)
     end
 
-    # Instance methods a constant responds to, walking resolvable superclasses
-    # and include/prepend mixins. Returns [methods, unresolved ancestor names];
-    # a non-empty second element means the answer is incomplete.
-    def effective_instance_methods(name, visited = Set.new)
+    # Every resolvable ancestor in Ruby lookup order, plus names whose
+    # declarations are outside the analyzed source. The scope controls whether
+    # mixins come from include/prepend or extend; superclass traversal applies
+    # to both sides.
+    def ancestor_names(name, scope: :instance, visited: Set.new)
       normalized = normalize_constant(name)
-      return [Set.new, Set.new] if visited.include?(normalized)
+      return [Set.new, Set.new] if visited.include?(normalized) || RESOLVED_ROOTS.include?(normalized)
 
-      visited.add(normalized)
-      return [Set.new, Set.new] if RESOLVED_ROOTS.include?(normalized)
-
+      visited = visited.dup.add(normalized)
       nodes = constants_named(normalized)
       return [Set.new, Set[normalized]] if nodes.empty?
 
-      methods = Set.new
+      ancestors = Set.new
       unresolved = Set.new
-
       nodes.each do |node|
-        methods.merge(node.instance_methods)
-
-        mixins = node.mixins[:include].to_a + node.mixins[:prepend].to_a
-
+        mixins = scope == :class ? node.mixins[:extend] : node.mixins[:prepend] | node.mixins[:include]
         mixins.each do |ancestor|
-          resolved_name = resolve_constant_reference(
-            ancestor,
-            node.name,
-            lexical_nesting: [node.name] + node.nesting
-          )
-          ancestor_methods, ancestor_unresolved = effective_instance_methods(resolved_name, visited)
-          methods.merge(ancestor_methods)
-          unresolved.merge(ancestor_unresolved)
+          resolved = resolve_constant_reference(ancestor, node.name, lexical_nesting: [node.name] + node.nesting)
+          ancestors.add(resolved)
+          nested, missing = ancestor_names(resolved, visited: visited)
+          ancestors.merge(nested)
+          unresolved.merge(missing)
         end
 
-        if node.superclass
-          resolved_name = resolve_constant_reference(node.superclass, node.name, lexical_nesting: node.nesting)
-          ancestor_methods, ancestor_unresolved = effective_instance_methods(resolved_name, visited)
-          methods.merge(ancestor_methods)
-          unresolved.merge(ancestor_unresolved)
-        end
+        next unless node.superclass
+
+        resolved = resolve_constant_reference(node.superclass, node.name, lexical_nesting: node.nesting)
+        ancestors.add(resolved)
+        nested, missing = ancestor_names(resolved, scope: scope, visited: visited)
+        ancestors.merge(nested)
+        unresolved.merge(missing)
       end
 
-      [methods, unresolved]
+      [ancestors, unresolved]
+    end
+
+    def effective_instance_methods(name)
+      effective_methods(name, :instance)
+    end
+
+    def effective_class_methods(name)
+      effective_methods(name, :class)
+    end
+
+    # Method definitions visible on a constant, including resolvable ancestry.
+    # Extended modules contribute their instance methods to the class side.
+    def effective_method_definitions(name, scope, visited = Set.new)
+      normalized = normalize_constant(name)
+      key = [normalized, scope]
+      cached = @effective_definition_cache[key]
+      return cached if visited.empty? && cached
+
+      root = visited.empty?
+      return [[], Set.new] if visited.include?(key)
+
+      visited = visited.dup.add(key)
+      return [[], Set.new] if RESOLVED_ROOTS.include?(normalized)
+
+      nodes = constants_named(normalized)
+      return [[], Set[normalized]] if nodes.empty?
+
+      definitions = []
+      visible_names = Set.new
+      unresolved = Set.new
+
+      if scope == :instance
+        append_mixin_definitions(nodes, :prepend, definitions, visible_names, unresolved, visited)
+      end
+
+      own = nodes.flat_map { |node| node.method_definitions.select { |definition| definition.scope == scope } }
+      append_visible_definitions(definitions, visible_names, own)
+
+      mixin_kind = scope == :class ? :extend : :include
+      append_mixin_definitions(nodes, mixin_kind, definitions, visible_names, unresolved, visited)
+      append_superclass_definitions(nodes, scope, definitions, visible_names, unresolved, visited)
+
+      result = [definitions, unresolved]
+      @effective_definition_cache[key] = result if root
+      result
+    end
+
+    def resolve_method_alias(owner, name, scope, visited = Set.new)
+      name = name.to_sym
+      return if visited.include?(name)
+
+      definitions, = effective_method_definitions(owner, scope)
+      targets = definitions.filter_map do |definition|
+        definition.alias_target if definition.name == name
+      end.uniq
+      return unless targets.one?
+
+      target = targets.first
+      resolve_method_alias(owner, target, scope, visited.dup.add(name)) || target
+    end
+
+    def effective_methods(name, scope)
+      key = [normalize_constant(name), scope]
+      @effective_method_cache[key] ||= begin
+        definitions, unresolved = effective_method_definitions(name, scope)
+        [definitions.map(&:name).to_set, unresolved]
+      end
+    end
+
+    def incoming_dependency_edges(name)
+      normalized = normalize_constant(name)
+      dependency_edges.select { |edge| resolve_edge_constant(edge) == normalized }
+    end
+
+    def analysis_census(path: nil)
+      scoped_edges = path ? edges.select { |edge| edge.from_path == path } : edges
+      scoped_diagnostics =
+        if path
+          analysis_diagnostics.select { |diagnostic| diagnostic.location.path == path }
+        else
+          analysis_diagnostics
+        end
+      unresolved = scoped_edges.select { |edge| DEPENDENCY_EDGE_TYPES.include?(edge.type) }.count do |edge|
+        constants_named(resolve_edge_constant(edge)).empty?
+      end
+
+      {
+        unresolved_constants: unresolved,
+        dynamic_features: scoped_edges.count { |edge| edge.type == :dynamic_feature },
+        unknown_receivers: scoped_edges.count { |edge| edge.type == :calls_named_method && edge.receiver == :other },
+        rubydex_diagnostics: scoped_diagnostics.group_by(&:rule).transform_values(&:size).sort.to_h
+      }
     end
 
     def component_assignment_reasons_for_path(path)
@@ -377,6 +556,39 @@ module ArchSpec
     end
 
     private
+
+    def append_mixin_definitions(nodes, kind, definitions, visible_names, unresolved, visited)
+      mixins = nodes.flat_map do |node|
+        node.mixins[kind].map { |ancestor| [node, ancestor] }
+      end
+
+      mixins.reverse_each do |node, ancestor|
+        resolved_name = resolve_constant_reference(
+          ancestor,
+          node.name,
+          lexical_nesting: [node.name] + node.nesting
+        )
+        inherited, missing = effective_method_definitions(resolved_name, :instance, visited)
+        append_visible_definitions(definitions, visible_names, inherited)
+        unresolved.merge(missing)
+      end
+    end
+
+    def append_superclass_definitions(nodes, scope, definitions, visible_names, unresolved, visited)
+      nodes.filter_map(&:superclass).uniq.each do |superclass|
+        node = nodes.find { |candidate| candidate.superclass == superclass }
+        resolved_name = resolve_constant_reference(superclass, node.name, lexical_nesting: node.nesting)
+        inherited, missing = effective_method_definitions(resolved_name, scope, visited)
+        append_visible_definitions(definitions, visible_names, inherited)
+        unresolved.merge(missing)
+      end
+    end
+
+    def append_visible_definitions(definitions, visible_names, candidates)
+      names = candidates.map(&:name).to_set - visible_names
+      definitions.concat(candidates.select { |definition| names.include?(definition.name) })
+      visible_names.merge(names)
+    end
 
     def defers_to_real_definition?(constant)
       constant.namespace_only &&

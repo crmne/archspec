@@ -6,7 +6,7 @@ permalink: /
 hero:
   name: ArchSpec
   text: Executable architecture specifications for Ruby and Rails
-  tagline: Guarantee your agents and your team follow your conventions. ArchSpec turns them into static analysis checks that run in CI on every change. No AI involved, just Prism.
+  tagline: Guarantee your agents and your team follow your conventions. ArchSpec turns them into static analysis checks that run in CI on every change. No AI involved, just static analysis.
   code_panel:
     - title: Boundaries
       link: /rules/dependencies/
@@ -84,7 +84,7 @@ hero:
 features:
   - icon: "⚡"
     title: Check on every commit
-    details: "[`archspec check`](/getting-started/) reads your code with Prism, with no app boot and no database. Fast enough for CI, a git hook, and [every change an agent makes](/checking-ai-written-code/)."
+    details: "[`archspec check`](/getting-started/) indexes your code with Rubydex and a small Prism syntax pass, with no app boot and no database. Fast enough for CI, a git hook, and [every change an agent makes](/checking-ai-written-code/)."
   - icon: "🧱"
     title: Boundaries and dependencies
     details: "Allowed and forbidden [references](/rules/dependencies/) between layers and packs, [dependency direction and cycles](/rules/cycles/), [controller APIs kept out of models](/rules/methods/), [method protocols](/rules/protocols/), and [one-shot command objects](/rules/objects/)."

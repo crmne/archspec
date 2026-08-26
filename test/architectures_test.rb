@@ -149,6 +149,26 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
+  def test_architecture_component_hashes_accept_exclusions_and_ancestry
+    with_project do |root|
+      write "#{root}/app/models/application_record.rb", "class ApplicationRecord; end\n"
+      write "#{root}/app/models/user.rb", "class User < ApplicationRecord; end\n"
+      write "#{root}/app/models/import_workflow.rb", "class ImportWorkflow; end\n"
+
+      definition = ArchSpec.define do
+        architecture :layered, layers: {
+          workflows: { in: 'app/models/**/*.rb', except: 'app/models/user.rb' },
+          records: { descendants_of: 'ApplicationRecord' }
+        }
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal %w[ApplicationRecord ImportWorkflow], graph.components.fetch(:workflows).constants.to_a.sort
+      assert_equal %w[User], graph.components.fetch(:records).constants.to_a
+    end
+  end
+
   def test_hexagonal_architecture_keeps_domain_away_from_adapters
     with_project do |root|
       write "#{root}/app/domain/order.rb", "class Order; PaymentGatewayAdapter; end\n"

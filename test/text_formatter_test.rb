@@ -43,10 +43,11 @@ class TextFormatterTest < ArchSpecTest
 
       text = check_output(definition, root)
 
-      assert_match(/\[error\] services must stay empty: behavior belongs on models \[components\.empty\]/, text)
+      assert_match(/\[error\] services must stay empty \[components\.empty\]/, text)
       assert_match(/→ 1 │ class CreateUser; end$/, text)
       assert_match(/  │ \^$/, text)
       assert_match(%r{note: app/services/create_user\.rb belongs to services}, text)
+      assert_match(/reason: behavior belongs on models/, text)
     end
   end
 
@@ -62,6 +63,42 @@ class TextFormatterTest < ArchSpecTest
       text = check_output(definition, root)
 
       assert_match(/unresolved ancestors: SomeGem::Base \(confidence: medium\)/, text)
+    end
+  end
+
+  def test_rule_reasons_are_printed_separately_from_fingerprinted_messages
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; UsersController; end\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :controllers, in: 'app/controllers/**/*.rb'
+        models.cannot_use :controllers, because: 'models should work without an HTTP request'
+      end
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      diagnostics = ArchSpec::Evaluator.evaluate(definition, graph)
+      output = StringIO.new
+
+      ArchSpec::Formatters::Text.print(output, graph: graph, diagnostics: diagnostics)
+
+      assert_match(/reason: models should work without an HTTP request/, output.string)
+    end
+  end
+
+  def test_analysis_gaps_are_reported_without_becoming_violations
+    with_project do |root|
+      write "#{root}/app/models/user.rb", <<~RUBY
+        class User < ExternalRecord
+          def fetch(client) = client.fetch
+        end
+      RUBY
+      definition = ArchSpec.define { component :models, in: 'app/models/**/*.rb' }
+
+      text = check_output(definition, root)
+
+      assert_match(/ArchSpec passed/, text)
+      assert_match(/Analysis gaps: .*unresolved constant references/, text)
+      assert_match(/calls with unknown receivers/, text)
     end
   end
 

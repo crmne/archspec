@@ -21,7 +21,8 @@ class NamingRulesTest < ArchSpecTest
 
       assert_equal 1, diagnostics.size
       assert_equal 'naming.forbidden', diagnostics.first.rule
-      assert_equal 'User must not define #get_name: use plain names', diagnostics.first.message
+      assert_equal 'User must not define #get_name', diagnostics.first.message
+      assert_equal 'use plain names', diagnostics.first.reason
       assert_equal :high, diagnostics.first.confidence
     end
   end

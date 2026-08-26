@@ -10,9 +10,11 @@ require_relative 'archspec/model'
 require_relative 'archspec/definition'
 require_relative 'archspec/todo'
 require_relative 'archspec/dsl'
+require_relative 'archspec/rubydex_index'
 require_relative 'archspec/analyzer'
 require_relative 'archspec/evaluator'
 require_relative 'archspec/architectures'
+require_relative 'archspec/rules/reasoned'
 require_relative 'archspec/rules/component_rules'
 require_relative 'archspec/rules/concern_rules'
 require_relative 'archspec/rules/dependency_rules'
@@ -30,7 +32,8 @@ require_relative 'archspec/cli'
 #
 # You describe components, dependencies, and boundaries in an +Archspec.rb+
 # file written in the ArchSpec::DSL, then run <tt>archspec check</tt> to verify
-# every change. ArchSpec reads Ruby source with Prism and never boots the app.
+# every change. ArchSpec indexes Ruby source with Rubydex, uses Prism for a
+# handful of syntax-specific facts, and never boots the app.
 #
 # The DSL is the public API. An +Archspec.rb+ file is evaluated directly:
 #

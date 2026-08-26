@@ -74,30 +74,21 @@ module ArchSpec
 
       # Forbids any selected method from existing. Rule id +naming.forbidden+.
       class Forbidden
-        def initialize(because: nil)
-          @because = because
-        end
-
         def id
           'naming.forbidden'
         end
 
         def diagnostics(selected, rule, _graph)
           selected.map do |definition, _match|
+            evidence = "#{definition.owner} defines #{definition.scope} method #{definition.name} " \
+                       "(#{rule.selector.describe})"
             Diagnostic.new(
               rule: id,
-              message: message_for(definition),
+              message: "#{definition.owner} must not define ##{definition.name}",
               location: definition.location,
-              evidence: "#{definition.owner} defines #{definition.scope} method #{definition.name} (#{rule.selector.describe})"
+              evidence: evidence
             )
           end
-        end
-
-        private
-
-        def message_for(definition)
-          base = "#{definition.owner} must not define ##{definition.name}"
-          @because ? "#{base}: #{@because}" : base
         end
       end
 
@@ -106,7 +97,7 @@ module ArchSpec
       # interpolates the selector's named captures, as in
       # <tt>requires("without_%{base}")</tt>. Rule id +naming.requires+.
       class Requires
-        def initialize(template, on: nil, scope: :instance, because: nil)
+        def initialize(template, on: nil, scope: :instance)
           unless NamingRule::VALID_SCOPES.include?(scope)
             raise Error, "requires scope: must be :instance or :class, got #{scope.inspect}"
           end
@@ -115,7 +106,6 @@ module ArchSpec
           @template = template
           @on = on
           @target_scope = scope
-          @because = because
         end
 
         def id
@@ -163,8 +153,7 @@ module ArchSpec
             else
               "a matching ##{sibling}"
             end
-          base = "#{definition.owner}##{definition.name} requires #{clause}"
-          @because ? "#{base}: #{@because}" : base
+          "#{definition.owner}##{definition.name} requires #{clause}"
         end
       end
 
@@ -190,17 +179,17 @@ module ArchSpec
         end
 
         def forbidden(except: [], because: nil)
-          add(Forbidden.new(because: because), except)
+          add(Forbidden.new, except, because)
         end
 
         def requires(template, on: nil, scope: :instance, except: [], because: nil)
           validate_template!(template)
-          add(Requires.new(template, on: component_name(on), scope: scope, because: because), except)
+          add(Requires.new(template, on: component_name(on), scope: scope), except, because)
         end
 
         private
 
-        def add(constraint, except)
+        def add(constraint, except, because)
           rule = NamingRule.new(
             source: @component.name,
             selector: @selector,
@@ -208,7 +197,7 @@ module ArchSpec
             scope: @scope,
             except: except
           )
-          @component.definition.add_rule(rule)
+          @component.definition.add_rule(Rules.with_reason(rule, because))
           @component
         end
 
@@ -224,7 +213,7 @@ module ArchSpec
         end
 
         def validate_template!(template)
-          return unless template.is_a?(String)
+          return unless template.is_a?(String) && template.include?('%')
 
           captures = @selector.regex.names.to_h { |name| [name.to_sym, name] }
           template % captures
