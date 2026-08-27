@@ -115,6 +115,17 @@ jobs:
           bundler-cache: true
           working-directory: docs
 
+      - name: Verify stable version in docs
+        run: |
+          ruby -ryaml -rrubygems/version -r ./lib/archspec/version -e '
+            version = Gem::Version.new(ArchSpec::VERSION)
+            exit if version.prerelease?
+
+            current = YAML.safe_load_file("docs/_data/versions.yml").fetch("current")
+            expected = "v#{version}"
+            abort "Docs version #{current} does not match #{expected}." unless current == expected
+          '
+
       - name: Set up Pages
         id: pages
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')

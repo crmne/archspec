@@ -1,7 +1,7 @@
-current: v1.0.1
+current: v1.1.0
 items:
-  - id: v1.0.1
-    title: v1.0.1
+  - id: v1.1.0
+    title: v1.1.0
     url: /
   - title: Releases
     url: https://github.com/crmne/archspec/releases
