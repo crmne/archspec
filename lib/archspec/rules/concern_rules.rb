@@ -35,14 +35,14 @@ module ArchSpec
           next if consumers.empty?
 
           target = graph.resolve_edge_constant(edge)
-          next if within_namespace?(target, edge.from_constant)
-
-          includer = consumers.find { |name| within_namespace?(target, name) }
-          next unless includer
+          owner = [edge.from_constant, *consumers]
+            .select { |namespace| within_namespace?(target, namespace) }
+            .max_by(&:length)
+          next unless consumers.include?(owner)
 
           Diagnostic.new(
             rule: id,
-            message: "#{edge.from_constant} must not reference its includer #{includer}",
+            message: "#{edge.from_constant} must not reference its includer #{owner}",
             location: edge.location,
             evidence: "#{edge.from_constant} #{edge.verb} #{target}"
           )

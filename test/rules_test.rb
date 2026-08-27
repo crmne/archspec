@@ -890,6 +890,36 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_concern_independence_flags_an_includer_nested_beneath_the_concern
+    with_project do |root|
+      write "#{root}/app/models/concerns/trackable.rb", <<~RUBY
+        module Trackable
+          def record_class
+            Trackable::Record
+          end
+        end
+      RUBY
+
+      write "#{root}/app/models/trackable/record.rb", <<~RUBY
+        module Trackable
+          class Record
+            include ::Trackable
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :concerns, in: 'app/models/concerns/**/*.rb'
+        concerns.cannot_reference_includers
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/Trackable must not reference its includer Trackable::Record/, diagnostics.first.message)
+    end
+  end
+
   def test_can_only_be_used_by_flags_unapproved_consumers
     with_project do |root|
       write "#{root}/app/kernel/money.rb", "class Money; end\n"
