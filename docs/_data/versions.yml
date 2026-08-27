@@ -1,7 +1,6 @@
-current: v1.1.0
+current: auto
 items:
-  - id: v1.1.0
-    title: v1.1.0
+  - title: Latest
     url: /
   - title: Releases
     url: https://github.com/crmne/archspec/releases

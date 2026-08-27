@@ -53,6 +53,8 @@ defaults:
       layout: default
 
 jekyll_vitepress:
+  version:
+    file: ../lib/archspec/version.rb
   seo:
     page_type: TechArticle
     image:
