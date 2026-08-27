@@ -830,6 +830,66 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_concern_independence_allows_reference_to_its_own_constants
+    with_project do |root|
+      write "#{root}/app/models/widget.rb", <<~RUBY
+        class Widget
+          include Naming
+        end
+      RUBY
+
+      write "#{root}/app/models/concerns/widget/naming.rb", <<~RUBY
+        class Widget
+          module Naming
+            DEFAULT = "x"
+
+            def name_or_default
+              DEFAULT
+            end
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :concerns, in: 'app/models/concerns/**/*.rb'
+        concerns.cannot_reference_includers
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_concern_independence_flags_reference_to_constants_owned_by_includer
+    with_project do |root|
+      write "#{root}/app/models/widget.rb", <<~RUBY
+        class Widget
+          DEFAULT = "x"
+          include Naming
+        end
+      RUBY
+
+      write "#{root}/app/models/concerns/widget/naming.rb", <<~RUBY
+        class Widget
+          module Naming
+            def name_or_default
+              Widget::DEFAULT
+            end
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :concerns, in: 'app/models/concerns/**/*.rb'
+        concerns.cannot_reference_includers
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/Widget::Naming must not reference its includer Widget/, diagnostics.first.message)
+    end
+  end
+
   def test_can_only_be_used_by_flags_unapproved_consumers
     with_project do |root|
       write "#{root}/app/kernel/money.rb", "class Money; end\n"

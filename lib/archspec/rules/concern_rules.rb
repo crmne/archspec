@@ -35,7 +35,9 @@ module ArchSpec
           next if consumers.empty?
 
           target = graph.resolve_edge_constant(edge)
-          includer = consumers.find { |name| target == name || target.start_with?("#{name}::") }
+          next if within_namespace?(target, edge.from_constant)
+
+          includer = consumers.find { |name| within_namespace?(target, name) }
           next unless includer
 
           Diagnostic.new(
@@ -48,6 +50,10 @@ module ArchSpec
       end
 
       private
+
+      def within_namespace?(constant, namespace)
+        constant == namespace || constant.start_with?("#{namespace}::")
+      end
 
       # Maps each mixed-in module to the set of constants that mix it in.
       def includers_by_module(graph)
