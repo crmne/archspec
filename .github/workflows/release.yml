@@ -169,11 +169,27 @@ jobs:
           fi
 
           prerelease_args=()
+          is_prerelease=false
           if ruby -rrubygems/version -e 'exit Gem::Version.new(ARGV.fetch(0)).prerelease? ? 0 : 1' "$VERSION"; then
             prerelease_args=(--prerelease)
+            is_prerelease=true
           fi
 
-          previous_tag=$(git tag --sort=-v:refname --list 'v*' | grep -v "^${TAG}$" | head -n 1 || true)
+          previous_tag=""
+          while IFS= read -r candidate; do
+            if [ "$candidate" = "$TAG" ]; then
+              continue
+            fi
+
+            candidate_version="${candidate#v}"
+            if [ "$is_prerelease" = "false" ] && ruby -rrubygems/version -e 'exit Gem::Version.new(ARGV.fetch(0)).prerelease? ? 0 : 1' "$candidate_version"; then
+              continue
+            fi
+
+            previous_tag="$candidate"
+            break
+          done < <(git tag --sort=-v:refname --list 'v*')
+
           if [ -n "$previous_tag" ]; then
             commit_range="${previous_tag}..${release_target}"
           else
