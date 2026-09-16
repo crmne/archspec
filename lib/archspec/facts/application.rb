@@ -29,7 +29,7 @@ module ArchSpec
             add_dependency(graph, MIXIN_TYPES.fetch(fact.kind), fact.owner, fact.target, fact.location, match_location: false)
           end
           batch.exposures.each do |fact|
-            graph.expose_instance_methods(fact.source.name, as_owner: fact.owner, scope: fact.scope)
+            graph.expose_instance_methods(fact.source.name, as_owner: exposure_owner_name(fact.owner), scope: fact.scope)
           end
           batch.gaps.each do |fact|
             graph.add_edge(type: :dynamic_feature, from_path: fact.source.path, from_constant: fact.source.name,
@@ -49,11 +49,15 @@ module ArchSpec
 
       def validate_exposures(graph, facts)
         facts.group_by { |fact| fact.source.name }.each do |source, entries|
-          projections = entries.map { |fact| [fact.owner, fact.scope] }
+          projections = entries.map { |fact| [exposure_owner_name(fact.owner), fact.scope] }
           existing = graph.method_exposure(source)
           projections << existing if existing
           raise Error, "conflicting method exposure facts for #{source}" if projections.uniq.size > 1
         end
+      end
+
+      def exposure_owner_name(owner)
+        owner.respond_to?(:name) ? owner.name : owner
       end
 
       def add_dependency(graph, type, source, target, location, match_location: true)
