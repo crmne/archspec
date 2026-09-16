@@ -22,6 +22,9 @@ module ArchSpec
 
       def methods(owner:, names:, location:, scope: :instance, visibility: :public,
                   signatures: [], alias_target: nil, mode: :if_missing, installation: nil)
+        unless alias_target.nil? || alias_target.is_a?(String) || alias_target.is_a?(Symbol)
+          raise Error, 'alias target must be a String or Symbol'
+        end
         entry = entry_for(owner, location).merge('owner' => owner.name, 'names' => names.map(&:to_s),
           'scope' => scope.to_s, 'visibility' => visibility.to_s, 'mode' => mode.to_s,
           'signatures' => signatures.map do |signature|
@@ -29,7 +32,7 @@ module ArchSpec
               value.is_a?(Array) ? value.map(&:to_s) : value
             end
           end)
-        entry['alias_target'] = alias_target.to_s if alias_target
+        entry['alias_target'] = alias_target.to_s unless alias_target.nil?
         entry['installation'] = location_for(installation) if installation
         @entries['methods'] << entry
       end

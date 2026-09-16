@@ -246,6 +246,19 @@ class FactBuilderTest < ArchSpecTest
     end
   end
 
+  def test_builder_rejects_non_string_alias_target_values
+    with_project do |root|
+      write "#{root}/lib/record.rb", "class Record; end\n"
+      graph = analyze(root)
+      owner = graph.constants_named('Record').first
+      builder = builder_for(graph)
+      error = assert_raises(ArchSpec::Error) do
+        builder.methods(owner: owner, names: ['generated'], location: owner.location, alias_target: false)
+      end
+      assert_match(/alias target must be a String or Symbol/, error.message)
+    end
+  end
+
   private
 
   def analyze(root)

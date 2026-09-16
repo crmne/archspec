@@ -31,8 +31,8 @@ module ArchSpec
 
       def compile
         validate_envelope
-        Operations.new(**LIST_KEYS.to_h do |key|
-          [key.to_sym, Array(@document[key]).flat_map { |entry| public_send("decode_#{key}", entry) }]
+        Operations.new(*LIST_KEYS.map do |key|
+          Array(@document[key]).flat_map { |entry| public_send("decode_#{key}", entry) }
         end)
       end
 
@@ -137,7 +137,16 @@ module ArchSpec
           [key.to_sym, string_list(value.fetch(key, []), "signature #{key}").map(&:to_sym)]
         end
         invalid('required and optional keywords overlap') unless (keywords[:keywords] & keywords[:optional_keywords]).empty?
-        MethodSignature.new(**counts, **flags, **keywords)
+        MethodSignature.new(
+          counts.fetch(:required),
+          counts.fetch(:optional),
+          flags.fetch(:rest),
+          keywords.fetch(:keywords),
+          keywords.fetch(:optional_keywords),
+          flags.fetch(:keyword_rest),
+          flags.fetch(:block),
+          flags.fetch(:forward)
+        )
       end
 
       def validate_entry(entry, keys)
