@@ -38,6 +38,8 @@ require_relative 'archspec/rails_reflector'
 # handful of syntax-specific facts, and never boots the app during checks.
 # The opt-in <tt>archspec reflect</tt> command boots Rails separately to
 # capture resolved association facts for later static checks.
+# Framework integrations share ArchSpec::Facts::Builder for in-memory facts
+# and versioned snapshots, including methods, mixins, and receiver bindings.
 #
 # The DSL is the public API. An +Archspec.rb+ file is evaluated directly:
 #

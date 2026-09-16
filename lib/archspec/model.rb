@@ -298,6 +298,10 @@ module ArchSpec
       @method_exposures[name] = [as_owner, scope]
     end
 
+    def method_exposure(name)
+      @method_exposures[name]
+    end
+
     def clear_method_caches
       @effective_definition_cache.clear
       @effective_method_cache.clear
