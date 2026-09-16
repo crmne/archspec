@@ -185,6 +185,11 @@ Rails and captures its resolved associations. Ordinary checks read the snapshot
 without booting the app, and reject stale snapshots after source or configuration
 changes. See the [association reflection guide](https://archspecrb.dev/association-reflection/).
 
+Other libraries can write facts through the same format. The
+[framework integration guide](https://archspecrb.dev/framework-integrations/)
+documents custom producers and explains how reflection complements static
+framework modeling, including ActiveSupport concerns.
+
 `explain` shows why a file or constant belongs to a component, its resolved
 ancestry, outgoing facts, incoming dependencies, and anything the analysis
 could not prove:

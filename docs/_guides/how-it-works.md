@@ -38,7 +38,10 @@ those snapshots as data and reject them when their source inputs change.
    (`RubydexIndex`)
 4. **Merge facts.** The Prism overlay adds literal `require` calls, dynamic
    syntax, framework macros, and other source-shape facts Rubydex does not
-   expose. (`Analyzer::SyntaxOverlay`)
+   expose. Static concern modeling then assigns callback methods, mixins, and
+   call receivers to their consumers. Finally, configured external facts are
+   validated and imported. (`Analyzer::SyntaxOverlay`, `ConcernSemantics`,
+   `Facts.load_into`)
 5. **Assign components.** Each `component` declaration claims files by glob,
    constants by namespace/name, or classes by ancestry. `except:` subtracts
    from file globs. A file can belong to several components; the `explain`
@@ -84,6 +87,10 @@ app/models/user.rb
   outgoing facts:
     2:22 │ references UsersController
 ```
+
+Framework integrations can supply facts through static modeling or explicit
+runtime capture. See [Framework integrations]({% link _guides/framework-integrations.md %})
+for the distinction, the custom producer contract, and its current limits.
 
 ## A Violation, Traced
 

@@ -28,7 +28,9 @@ Opt into externally produced association or generated-method facts with
 `facts "archspec_facts"`. `check` and `explain` read the directory's `.yml`
 snapshots without running the application. `archspec reflect` explicitly boots
 Rails to produce `rails.yml`. Missing or stale configured snapshots fail the
-check. See [Association reflection]({% link _guides/association-reflection.md %}).
+check. See [Association reflection]({% link _guides/association-reflection.md %})
+for Rails and [Framework integrations]({% link _guides/framework-integrations.md %})
+for custom producers.
 
 ## Components
 

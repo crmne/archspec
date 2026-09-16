@@ -4,6 +4,8 @@ module ArchSpec
   # Normalizes the explicit ActiveSupport::Concern DSL after semantic indexing.
   # Callback bodies retain lexical constant references, but their mixins and
   # methods are installed on the consumer. No application code is executed.
+  # Source ownership is normalized here; established effects are emitted through
+  # Facts::Builder, using the same application path as external producers.
   class ConcernSemantics
     ModuleBody = Data.define(:name, :path, :body)
     Callback = Data.define(:kind, :methods, :mixins, :calls)
@@ -13,7 +15,6 @@ module ArchSpec
       @modules = []
       @callbacks = Hash.new { |hash, key| hash[key] = [] }
       @dependencies = Hash.new { |hash, key| hash[key] = [] }
-      @callback_calls = []
     end
 
     def record_module(name, path, body)
@@ -27,15 +28,16 @@ module ArchSpec
       @concerns = @modules.select { |mod| extends_concern?(mod) }.map(&:name).to_set
       return if @concerns.empty?
 
+      @facts = Facts::Builder.new(graph, producer: 'active_support_concern')
       normalize_blocks
       defer_dependencies
       rebuild_mixins
       install_consumers
       @concerns.each do |name|
-        graph.expose_instance_methods("#{name}::ClassMethods", as_owner: name, scope: :class)
+        source = graph.constants_named("#{name}::ClassMethods").first
+        @facts.expose_methods(source: source, owner: graph.constants_named(name).first, scope: :class) if source
       end
-      graph.clear_method_caches
-      apply_callback_receivers
+      @facts.apply
     end
 
     private
@@ -74,7 +76,7 @@ module ArchSpec
           if kind != :extend && @concerns.include?(target)
             install_concern(consumer, target, kind, edge, visited)
           else
-            consumer.add_mixin(kind, target)
+            add_mixin(consumer, kind, target, edge)
           end
         end
       end
@@ -104,7 +106,7 @@ module ArchSpec
       name = "#{mod.name}::ClassMethods"
       target = graph.add_constant(name: name, kind: :module, path: mod.path,
                                  location: location, nesting: [mod.name])
-      extract_methods(mod, location).each { |method| install_method(target, method) }
+      extract_methods(mod, location).each { |method| @facts.method_definition(owner: target, definition: method) }
       graph.edges.map! do |edge|
         next edge unless edge.from_constant == mod.name && within?(location, edge.location)
 
@@ -135,9 +137,8 @@ module ArchSpec
       @callbacks[mod.name] << Callback.new(node.name, certain_methods, certain_mixins, calls)
       return if methods == certain_methods && mixins == certain_mixins
 
-      graph.add_edge(type: :dynamic_feature, from_path: mod.path, from_constant: mod.name,
-                     to: "conditional #{node.name} callback", location: location,
-                     confidence: :unknown_due_to_dynamic_feature)
+      source = graph.constants_named(mod.name).find { |constant| constant.path == mod.path }
+      @facts.gap(source: source, message: "conditional #{node.name} callback", location: location)
     end
 
     def extract_methods(mod, location)
@@ -198,52 +199,18 @@ module ArchSpec
             add_mixin(consumer, mixin_kind, target, edge)
           end
         end
-        callback.methods.each { |method| install_callback_method(consumer, method, origin) }
+        callback.methods.each do |method|
+          @facts.method_definition(owner: consumer, definition: method, installation: origin.location)
+        end
         callback.calls.each do |edge|
           method = callback.methods.find { |definition| within?(definition.location, edge.location) }
-          @callback_calls << [edge, consumer.name, method ? method.scope : :class]
+          @facts.bind_receiver(edge: edge, receiver: consumer.name, scope: method ? method.scope : :class)
         end
       end
     end
 
-    def apply_callback_receivers
-      originals = @callback_calls.map(&:first).to_set
-      graph.edges.reject! { |edge| originals.include?(edge) }
-      @callback_calls.uniq.each do |edge, receiver, scope|
-        graph.edges << edge.with(resolved_receiver: receiver, receiver_scope: scope,
-          resolved_method: graph.resolve_method_alias(receiver, edge.to, scope))
-      end
-    end
-
-    def install_callback_method(consumer, method, origin)
-      existing = consumer.method_definitions.select { |definition| definition.name == method.name && definition.scope == method.scope }
-      return if existing.any? do |definition|
-        definition.location.path == consumer.path && origin.location.path == consumer.path &&
-          definition.location.line > origin.location.line
-      end
-
-      consumer.method_definitions.reject! { |definition| existing.include?(definition) }
-      install_method(consumer, method)
-    end
-
     def add_mixin(consumer, kind, target, origin)
-      consumer.add_mixin(kind, target)
-      type = kind == :singleton_prepend ? :extends : MIXINS.key(kind)
-      return if graph.edges.any? do |edge|
-        edge.from_constant == consumer.name && edge.from_path == consumer.path &&
-          edge.type == type && graph.resolve_edge_constant(edge) == target
-      end
-
-      graph.add_edge(type: type, from_constant: consumer.name, from_path: consumer.path,
-                     to: target, resolved_to: target, location: origin.location)
-    end
-
-    def install_method(constant, method)
-      definition = method.with(owner: constant.name)
-      return if constant.method_definitions.include?(definition)
-
-      constant.method_definitions << definition
-      (definition.scope == :class ? constant.class_methods : constant.instance_methods).add(definition.name)
+      @facts.mixin(owner: consumer, kind: kind, target: target, location: origin.location)
     end
 
     def within?(outer, inner)
