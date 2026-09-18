@@ -18,6 +18,8 @@ Rule id: `dependencies.allow`
 
 `can_only_use` is an allowlist. References from `controllers` to any other declared component fail.
 
+When the target belongs to several components and one of them is on the list, the reference passes.
+
 ## Forbid Specific Components
 
 ```ruby
@@ -26,7 +28,7 @@ models.cannot_use :controllers
 
 Rule id: `dependencies.forbid`
 
-`cannot_use` is narrower. References to listed components fail; other declared dependencies are allowed unless another rule forbids them.
+`cannot_use` is narrower. References to listed components fail; other declared dependencies are allowed unless another rule forbids them. When the target belongs to several components and one of them is on the list, the reference fails.
 
 ## Allow Only These Consumers
 

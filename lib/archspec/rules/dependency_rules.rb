@@ -42,9 +42,10 @@ module ArchSpec
 
       def evaluate(graph)
         relevant_edges(graph).flat_map do |edge|
-          graph.target_components_for(edge).filter_map do |target|
-            next if target == source || targets.include?(target)
+          owners = graph.target_components_for(edge)
+          next [] if owners.any? { |target| target == source || targets.include?(target) }
 
+          owners.map do |target|
             Diagnostic.new(
               rule: id,
               message: "#{source} may not depend on #{target}",
@@ -107,9 +108,8 @@ module ArchSpec
         graph.dependency_edges.flat_map do |edge|
           next [] unless graph.target_components_for(edge).include?(source)
 
-          offenders = graph.source_components_for(edge).reject do |component|
-            component == source || consumers.include?(component)
-          end
+          offenders = graph.source_components_for(edge)
+          next [] if offenders.any? { |component| component == source || consumers.include?(component) }
 
           offenders.map do |offender|
             Diagnostic.new(
