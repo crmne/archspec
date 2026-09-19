@@ -1188,4 +1188,101 @@ class RulesTest < ArchSpecTest
       assert_match(/models must not depend on services/, diagnostics.first.message)
     end
   end
+
+  def test_consumer_allowlist_accepts_a_file_that_one_approved_component_claims
+    with_project do |root|
+      write "#{root}/app/kernel/money.rb", "class Money; end\n"
+      write "#{root}/app/billing/invoice.rb", "class Invoice; Money; end\n"
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        component :kernel, in: 'app/kernel/**/*.rb'
+        component :billing, in: 'app/billing/**/*.rb'
+        component :everything, in: 'app/**/*.rb'
+        kernel.can_only_be_used_by :billing
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_consumer_allowlist_still_flags_a_file_no_approved_component_claims
+    with_project do |root|
+      write "#{root}/app/kernel/money.rb", "class Money; end\n"
+      write "#{root}/app/reporting/report.rb", "class Report; Money; end\n"
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        component :kernel, in: 'app/kernel/**/*.rb'
+        component :billing, in: 'app/billing/**/*.rb'
+        component :reporting, in: 'app/reporting/**/*.rb'
+        component :everything, in: 'app/**/*.rb'
+        kernel.can_only_be_used_by :billing
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal %w[dependencies.consumers dependencies.consumers], diagnostics.map(&:rule)
+      assert_equal ['kernel may only be used by billing, not everything',
+                    'kernel may only be used by billing, not reporting'], diagnostics.map(&:message).sort
+    end
+  end
+
+  def test_allowlist_accepts_a_target_that_one_allowed_component_claims
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User < ApplicationRecord; end\n"
+      write "#{root}/app/models/application_record.rb", "class ApplicationRecord; end\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; User; end\n"
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        component :controllers, in: 'app/controllers/**/*.rb'
+        component :models, in: 'app/models/**/*.rb'
+        component :records, descendants_of: 'ApplicationRecord'
+        controllers.can_only_use :models
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_allowlist_still_flags_a_target_no_allowed_component_claims
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/app/services/create_user.rb", "class CreateUser; User; end\n"
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        component :services, in: 'app/services/**/*.rb'
+        component :models, in: 'app/models/**/*.rb'
+        component :domain, in: 'app/models/**/*.rb'
+        component :controllers, in: 'app/controllers/**/*.rb'
+        services.can_only_use :controllers
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal ['services may not depend on domain',
+                    'services may not depend on models'], diagnostics.map(&:message).sort
+    end
+  end
+
+  def test_denylist_flags_a_target_any_forbidden_component_claims
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/app/services/create_user.rb", "class CreateUser; User; end\n"
+
+      definition = ArchSpec.define do
+        source 'app/**/*.rb'
+        component :services, in: 'app/services/**/*.rb'
+        component :models, in: 'app/models/**/*.rb'
+        component :domain, in: 'app/models/**/*.rb'
+        services.cannot_use :domain
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal ['services must not depend on domain'], diagnostics.map(&:message)
+    end
+  end
 end
