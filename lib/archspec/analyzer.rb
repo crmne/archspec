@@ -3,11 +3,14 @@
 require 'prism'
 require 'set'
 
+require_relative 'sources/ruby'
+require_relative 'sources/erb'
+
 module ArchSpec
   module Analyzer
     extend self
 
-    SOURCES = [Sources::Ruby].freeze
+    SOURCES = [Sources::Ruby, Sources::Erb].freeze
 
     def analyze(definition, root:, include_facts: true)
       root = File.expand_path(root)

@@ -3,6 +3,231 @@
 require 'test_helper'
 
 class AnalyzerTest < ArchSpecTest
+  def test_erb_prism_roots_report_dependencies_and_calls_at_template_positions
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      path = "#{root}/app/views/index.html.erb"
+      write path, <<~ERB
+        <h1>Users</h1>
+          <%= User.count %>
+        <%
+          User.count
+        %>
+        <% if User.count %>
+            <%= User.count %>
+        <% end %>
+        <%= User %>
+      ERB
+      definition = ArchSpec.define do
+        component :views, in: 'app/views/**/*.erb'
+        component :models, in: 'app/models/**/*.rb'
+        views.cannot_use :models
+        views.cannot_call :count
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+      dependencies = diagnostics.select { |diagnostic| diagnostic.rule == 'dependencies.forbid' }
+      calls = diagnostics.select { |diagnostic| diagnostic.rule == 'methods.forbid' }
+
+      assert_equal [
+        ArchSpec::SourceLocation.new(path, 2, 7, 2, 11),
+        ArchSpec::SourceLocation.new(path, 4, 3, 4, 7),
+        ArchSpec::SourceLocation.new(path, 6, 7, 6, 11),
+        ArchSpec::SourceLocation.new(path, 7, 9, 7, 13),
+        ArchSpec::SourceLocation.new(path, 9, 5, 9, 9)
+      ], dependencies.map(&:location)
+      assert_equal [
+        ArchSpec::SourceLocation.new(path, 2, 7, 2, 17),
+        ArchSpec::SourceLocation.new(path, 4, 3, 4, 13),
+        ArchSpec::SourceLocation.new(path, 6, 7, 6, 17),
+        ArchSpec::SourceLocation.new(path, 7, 9, 7, 19)
+      ], calls.map(&:location)
+    end
+  end
+
+  def test_malformed_ruby_in_erb_reports_syntax_errors_with_template_locations
+    with_project do |root|
+      path = "#{root}/app/views/index.html.erb"
+      write path, "<div>\n  <%= User.count) %>\n"
+      definition = ArchSpec.define do
+        component :views, in: 'app/views/**/*.erb'
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      refute_empty diagnostics
+      diagnostics.each do |diagnostic|
+        assert_equal 'parser.syntax', diagnostic.rule
+        assert_equal ArchSpec::SourceLocation.new(path, 2, 17, 2, 18), diagnostic.location
+      end
+    end
+  end
+
+  def test_erb_same_line_suppressions_and_ruby_comment_extraction_limits
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      path = "#{root}/app/views/index.html.erb"
+      write path, <<~ERB
+        <%# archspec:disable-line dependencies.forbid -- before %><%= User.count %>
+        <%= User.count %><%# archspec:disable-line dependencies.forbid -- after %>
+        <% # archspec:disable-line dependencies.forbid %><%= User.count %>
+        <%= User.count %><% # archspec:disable-line dependencies.forbid %>
+        <%= User.count # archspec:disable-line dependencies.forbid
+        %>
+        <%= User.count %>
+      ERB
+      definition = ArchSpec.define do
+        component :views, in: 'app/views/**/*.erb'
+        component :models, in: 'app/models/**/*.rb'
+        views.cannot_use :models
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      diagnostics = ArchSpec::Evaluator.evaluate(definition, graph)
+
+      assert_equal [3, 4, 7], diagnostics.map { |diagnostic| diagnostic.location.line }
+      # Herb omits the single-line Ruby comments but retains the adjacent expressions.
+      assert_equal [1, 2, 3, 4, 5, 7],
+                   graph.edges.select { |edge| edge.to == 'User' }.map { |edge| edge.location.line }
+      assert_equal [
+        ArchSpec::Suppression.new('dependencies.forbid', 1, 1, 'before'),
+        ArchSpec::Suppression.new('dependencies.forbid', 2, 2, 'after'),
+        ArchSpec::Suppression.new('dependencies.forbid', 5, 5, nil)
+      ], graph.files.fetch(path).suppressions
+    end
+  end
+
+  def test_erb_mixed_comment_blocks_are_sorted_by_template_position
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      path = "#{root}/app/views/index.html.erb"
+      write path, <<~ERB
+        <%# archspec:disable dependencies.forbid -- outer %><% # archspec:disable dependencies.forbid -- inner
+        %>
+        <%= User.count %>
+        <%# archspec:enable dependencies.forbid %>
+        <%= User.count %>
+        <% # archspec:enable dependencies.forbid
+        %><%= User.count %>
+        <% # archspec:disable dependencies.forbid -- ruby first
+        %><%# archspec:enable dependencies.forbid %>
+        <%= User.count %>
+        <%# archspec:enable dependencies.forbid %>
+      ERB
+      definition = ArchSpec.define do
+        component :views, in: 'app/views/**/*.erb'
+        component :models, in: 'app/models/**/*.rb'
+        views.cannot_use :models
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      diagnostics = ArchSpec::Evaluator.evaluate(definition, graph)
+
+      assert_equal [7, 10], diagnostics.map { |diagnostic| diagnostic.location.line }
+      assert_equal [
+        ArchSpec::Suppression.new('dependencies.forbid', 1, 3, 'inner'),
+        ArchSpec::Suppression.new('dependencies.forbid', 1, 5, 'outer'),
+        ArchSpec::Suppression.new('dependencies.forbid', 8, 8, 'ruby first')
+      ], graph.files.fetch(path).suppressions
+    end
+  end
+
+  def test_erb_wildcard_and_omitted_rules_suppress_through_eof
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      expression = "<%= User.count.to_s %>\n"
+      write "#{root}/app/views/wildcard.html.erb", expression
+      definition = ArchSpec.define do
+        component :views, in: 'app/views/**/*.erb'
+        component :models, in: 'app/models/**/*.rb'
+        views.cannot_use :models
+        views.cannot_call :count
+      end
+
+      assert_equal %w[dependencies.forbid methods.forbid], diagnostics_for(definition, root).map(&:rule).sort
+
+      write "#{root}/app/views/wildcard.html.erb",
+            "<%# archspec:disable * -- accepted boundary %>\n#{expression}"
+      write "#{root}/app/views/omitted.html.erb",
+            "<% # archspec:disable -- accepted boundary\n%>\n#{expression}"
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_empty ArchSpec::Evaluator.evaluate(definition, graph)
+      %w[wildcard omitted].each do |name|
+        assert_equal [ArchSpec::Suppression.new(nil, 1, Float::INFINITY, 'accepted boundary')],
+                     graph.files.fetch("#{root}/app/views/#{name}.html.erb").suppressions
+      end
+    end
+  end
+
+  def test_erb_ordinary_comments_and_directive_like_strings_are_not_analyzed_as_suppressions
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      path = "#{root}/app/views/index.html.erb"
+      write path, <<~ERB
+        <%# User.count %>
+        <%# ordinary comment text %>
+        <% # just a Ruby comment %>
+        <!-- archspec:disable dependencies.forbid -->
+        <%= '# archspec:disable dependencies.forbid' %>
+        <%= 'archspec:disable dependencies.forbid' %>
+        <%= User.count %>
+      ERB
+      definition = ArchSpec.define do
+        component :views, in: 'app/views/**/*.erb'
+        component :models, in: 'app/models/**/*.rb'
+        views.cannot_use :models
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      diagnostics = ArchSpec::Evaluator.evaluate(definition, graph)
+
+      assert_empty graph.files.fetch(path).suppressions
+      assert_equal [7], diagnostics.map { |diagnostic| diagnostic.location.line }
+      assert_equal [7], graph.edges.select { |edge| edge.to == 'User' }.map { |edge| edge.location.line }
+    end
+  end
+
+  def test_erb_multiline_comments_and_control_flow_comments_use_physical_lines
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      path = "#{root}/app/views/index.html.erb"
+      write path, <<~ERB
+        <%# ordinary first line
+          archspec:disable-next-line dependencies.forbid -- closing tag
+        %>
+        <%= User.count %>
+        <%# archspec:disable-next-line dependencies.forbid %>
+
+        <%= User.count %>
+        <%# ordinary first line
+          archspec:disable-next-line dependencies.forbid -- after multiline %>
+        <%= User.count %>
+        <% if true # archspec:disable-next-line dependencies.forbid -- control flow
+          User.count
+        %>
+        <%= User.count %>
+        <% end %>
+      ERB
+      definition = ArchSpec.define do
+        component :views, in: 'app/views/**/*.erb'
+        component :models, in: 'app/models/**/*.rb'
+        views.cannot_use :models
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      diagnostics = ArchSpec::Evaluator.evaluate(definition, graph)
+
+      assert_equal [4, 7, 14], diagnostics.map { |diagnostic| diagnostic.location.line }
+      assert_equal [
+        ArchSpec::Suppression.new('dependencies.forbid', 3, 3, 'closing tag'),
+        ArchSpec::Suppression.new('dependencies.forbid', 6, 6, nil),
+        ArchSpec::Suppression.new('dependencies.forbid', 10, 10, 'after multiline'),
+        ArchSpec::Suppression.new('dependencies.forbid', 12, 12, 'control flow')
+      ], graph.files.fetch(path).suppressions
+    end
+  end
+
   def test_rake_sources_report_dependencies_and_honor_ignores
     with_project do |root|
       write "#{root}/app/models/user.rb", "class User; end\n"
@@ -21,7 +246,8 @@ class AnalyzerTest < ArchSpecTest
       graph = ArchSpec::Analyzer.analyze(definition, root: root)
       diagnostics = ArchSpec::Evaluator.evaluate(definition, graph)
 
-      assert_equal %w[app/models/user.rb lib/tasks/cleanup.rake], graph.files.values.map(&:relative_path)
+      assert_equal %w[app/models/user.rb lib/tasks/cleanup.rake lib/tasks/template.erb],
+                   graph.files.values.map(&:relative_path)
       assert_equal ['dependencies.forbid'], diagnostics.map(&:rule)
       assert_equal 2, diagnostics.first.location.line
       assert_equal 3, diagnostics.first.location.column
