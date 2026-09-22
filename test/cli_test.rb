@@ -290,6 +290,158 @@ class CLITest < ArchSpecTest
     end
   end
 
+  def test_check_todo_fails_on_obsolete_entries
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        component :controllers, in: "app/controllers/**/*.rb"
+        models.cannot_use :controllers
+        todo "archspec_todo.yml"
+      RUBY
+      write "#{root}/app/models/user.rb", "class User; UsersController; end\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+      Dir.chdir(root) { ArchSpec::CLI.run(['check', '--update-todo'], output: StringIO.new, error: StringIO.new) }
+
+      fresh = StringIO.new
+      fresh_status = Dir.chdir(root) { ArchSpec::CLI.run(['check', '--check-todo'], output: fresh, error: StringIO.new) }
+
+      assert_equal 0, fresh_status
+      assert_match(/ArchSpec passed/, fresh.string)
+
+      write "#{root}/app/models/user.rb", "class User; end\n"
+
+      plain = StringIO.new
+      plain_status = Dir.chdir(root) { ArchSpec::CLI.run(['check'], output: plain, error: StringIO.new) }
+      assert_equal 0, plain_status
+
+      stale = StringIO.new
+      stale_status = Dir.chdir(root) { ArchSpec::CLI.run(['check', '--check-todo'], output: stale, error: StringIO.new) }
+
+      assert_equal 1, stale_status
+      assert_match(/1 obsolete todo entry matches no current violation/, stale.string)
+      assert_match(%r{app/models/user\.rb: models must not depend on controllers \[dependencies\.forbid\]}, stale.string)
+      assert_match(/User references UsersController/, stale.string)
+      assert_match(/--update-todo/, stale.string)
+      assert_match(/ArchSpec found no violations/, stale.string)
+      refute_match(/ArchSpec passed/, stale.string)
+    end
+  end
+
+  def test_check_todo_json_lists_obsolete_entries
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        component :controllers, in: "app/controllers/**/*.rb"
+        models.cannot_use :controllers
+        todo "archspec_todo.yml"
+      RUBY
+      write "#{root}/app/models/user.rb", "class User; UsersController; end\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+      Dir.chdir(root) { ArchSpec::CLI.run(['check', '--update-todo'], output: StringIO.new, error: StringIO.new) }
+      write "#{root}/app/models/user.rb", "class User; end\n"
+
+      output = StringIO.new
+      status = Dir.chdir(root) do
+        ArchSpec::CLI.run(['check', '--check-todo', '--format', 'json'], output: output, error: StringIO.new)
+      end
+      report = JSON.parse(output.string)
+
+      assert_equal 1, status
+      assert_empty report['violations']
+      assert_equal 1, report['obsolete_todo'].size
+      assert_equal 'dependencies.forbid', report['obsolete_todo'].first['rule']
+      assert_equal 'app/models/user.rb', report['obsolete_todo'].first['path']
+
+      without = StringIO.new
+      Dir.chdir(root) { ArchSpec::CLI.run(['check', '--format', 'json'], output: without, error: StringIO.new) }
+      refute JSON.parse(without.string).key?('obsolete_todo')
+    end
+  end
+
+  def test_check_todo_scopes_obsolete_entries_to_path_arguments
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        component :controllers, in: "app/controllers/**/*.rb"
+        models.cannot_use :controllers
+        controllers.cannot_use :models
+        todo "archspec_todo.yml"
+      RUBY
+      write "#{root}/app/models/user.rb", "class User; UsersController; end\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; User; end\n"
+      Dir.chdir(root) { ArchSpec::CLI.run(['check', '--update-todo'], output: StringIO.new, error: StringIO.new) }
+      write "#{root}/app/models/user.rb", "class User; end\n"
+
+      scoped = StringIO.new
+      scoped_status = Dir.chdir(root) do
+        ArchSpec::CLI.run(['check', 'app/controllers', '--check-todo'], output: scoped, error: StringIO.new)
+      end
+      assert_equal 0, scoped_status
+      refute_match(/obsolete/, scoped.string)
+
+      whole = StringIO.new
+      whole_status = Dir.chdir(root) { ArchSpec::CLI.run(['check', '--check-todo'], output: whole, error: StringIO.new) }
+      assert_equal 1, whole_status
+      assert_match(/1 obsolete todo entry/, whole.string)
+    end
+  end
+
+  def test_check_todo_fails_when_the_todo_file_is_missing
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        todo "archspec_todo.yml"
+      RUBY
+      write "#{root}/app/models/user.rb", "class User; end\n"
+
+      error = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['check', '--check-todo'], output: StringIO.new, error: error) }
+
+      assert_equal 1, status
+      assert_match(/todo file archspec_todo\.yml does not exist/, error.string)
+
+      plain_status = Dir.chdir(root) { ArchSpec::CLI.run(['check'], output: StringIO.new, error: StringIO.new) }
+      assert_equal 0, plain_status
+    end
+  end
+
+  def test_update_todo_counts_entries_not_diagnostics
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        component :controllers, in: "app/controllers/**/*.rb"
+        models.cannot_use :controllers
+        todo "archspec_todo.yml"
+      RUBY
+      write "#{root}/app/models/user.rb", "class User\n  UsersController\n  UsersController\nend\n"
+      write "#{root}/app/controllers/users_controller.rb", "class UsersController; end\n"
+
+      output = StringIO.new
+      Dir.chdir(root) { ArchSpec::CLI.run(['check', '--update-todo'], output: output, error: StringIO.new) }
+
+      assert_match(/with 1 violation\./, output.string)
+    end
+  end
+
+  def test_check_todo_rejects_update_todo_and_requires_a_configured_todo
+    with_project do |root|
+      write "#{root}/Archspec.rb", "component :models, in: \"app/models/**/*.rb\"\n"
+      write "#{root}/app/models/user.rb", "class User; end\n"
+
+      error = StringIO.new
+      status = Dir.chdir(root) do
+        ArchSpec::CLI.run(['check', '--check-todo', '--update-todo'], output: StringIO.new, error: error)
+      end
+      assert_equal 1, status
+      assert_match(/cannot combine --update-todo with --check-todo/, error.string)
+
+      error = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['check', '--check-todo'], output: StringIO.new, error: error) }
+      assert_equal 1, status
+      assert_match(/no todo configured/, error.string)
+    end
+  end
+
   def test_update_todo_never_accepts_parse_errors
     with_project do |root|
       write "#{root}/Archspec.rb", <<~RUBY

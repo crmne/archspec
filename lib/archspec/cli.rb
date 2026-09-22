@@ -7,11 +7,12 @@ module ArchSpec
   # dispatches the +init+, +check+, +explain+, +reflect+, and +version+ subcommands.
   #
   #   archspec init
-  #   archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
+  #   archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo|--check-todo]
   #   archspec explain PATH_OR_CONSTANT
   #
   # #run returns the process exit status: 0 when clean, 1 when violations are
-  # found.
+  # found (or, with <tt>--check-todo</tt>, when the todo lists violations that
+  # no longer occur).
   module CLI
     extend self
 
@@ -102,6 +103,7 @@ module ArchSpec
         config: CONFIG_FILE,
         format: 'text',
         update_todo: false,
+        check_todo: false,
         help: false
       }
 
@@ -111,6 +113,9 @@ module ArchSpec
         opts.on('--format FORMAT', 'Output text or json') { |value| options[:format] = value }
         opts.on('--update-todo', 'Replace the configured todo with current violations') do
           options[:update_todo] = true
+        end
+        opts.on('--check-todo', 'Also fail when the configured todo lists violations that no longer occur') do
+          options[:check_todo] = true
         end
         opts.on('-h', '--help', 'Show this help') { options[:help] = true }
       end
@@ -122,31 +127,39 @@ module ArchSpec
       end
 
       raise Error, 'cannot combine --update-todo with path arguments' if options[:update_todo] && argv.any?
+      raise Error, 'cannot combine --update-todo with --check-todo' if options[:update_todo] && options[:check_todo]
 
       formatter = formatter_for(options[:format])
       definition, root = load_definition(options[:config])
-      graph = Analyzer.analyze(definition, root: root)
       todo_path = todo_path_for(definition, root)
-      todo = options[:update_todo] ? Todo.empty(root: root) : Todo.load(todo_path, root: root)
-      diagnostics = Evaluator.evaluate(definition, graph, todo: todo)
-      diagnostics = scope_to_paths(diagnostics, argv, root)
+      if (options[:update_todo] || options[:check_todo]) && !todo_path
+        raise Error, "no todo configured; add `todo \"archspec_todo.yml\"` to #{options[:config]}"
+      end
+
+      if options[:check_todo] && !File.exist?(todo_path)
+        raise Error, "todo file #{Pathname(todo_path).relative_path_from(Pathname(root))} does not exist; " \
+                     'run `archspec check --update-todo` to create it'
+      end
+
+      graph = Analyzer.analyze(definition, root: root)
+      candidates = Evaluator.unsuppressed(definition, graph)
 
       if options[:update_todo]
-        unless todo_path
-          raise Error,
-                "no todo configured; add `todo \"archspec_todo.yml\"` to #{options[:config]}"
-        end
-
         # Syntax errors are never an accepted baseline; they must be fixed.
-        accepted = diagnostics.reject { |diagnostic| diagnostic.rule == 'parser.syntax' }
-        Todo.write(todo_path, accepted, root: root)
-        label = accepted.size == 1 ? 'violation' : 'violations'
-        output.puts "Updated #{Pathname(todo_path).relative_path_from(Pathname(root))} with #{accepted.size} #{label}."
+        accepted = candidates.reject { |diagnostic| diagnostic.rule == 'parser.syntax' }
+        count = Todo.write(todo_path, accepted, root: root)
+        label = count == 1 ? 'violation' : 'violations'
+        output.puts "Updated #{Pathname(todo_path).relative_path_from(Pathname(root))} with #{count} #{label}."
         return 0
       end
 
-      formatter.print(output, graph: graph, diagnostics: diagnostics)
-      diagnostics.empty? ? 0 : 1
+      todo = Todo.load(todo_path, root: root)
+      diagnostics = candidates.reject { |diagnostic| todo.include?(diagnostic) }
+      diagnostics = scope_to_paths(diagnostics, argv, root)
+      obsolete = scope_entries_to_paths(todo.unmatched_by(candidates), argv, root) if options[:check_todo]
+
+      formatter.print(output, graph: graph, diagnostics: diagnostics, obsolete_todo: obsolete)
+      diagnostics.empty? && (obsolete.nil? || obsolete.empty?) ? 0 : 1
     end
 
     def explain(argv, output)
@@ -226,11 +239,18 @@ module ArchSpec
       return diagnostics if paths.empty?
 
       expanded = paths.map { |path| File.expand_path(path, root) }
-      diagnostics.select do |diagnostic|
-        expanded.any? do |path|
-          diagnostic.location.path == path || diagnostic.location.path.start_with?("#{path}/")
-        end
-      end
+      diagnostics.select { |diagnostic| within?(diagnostic.location.path, expanded) }
+    end
+
+    def scope_entries_to_paths(entries, paths, root)
+      return entries if paths.empty?
+
+      expanded = paths.map { |path| File.expand_path(path, root) }
+      entries.select { |entry| entry['path'].nil? || within?(File.expand_path(entry['path'], root), expanded) }
+    end
+
+    def within?(path, scopes)
+      scopes.any? { |scope| path == scope || path.start_with?("#{scope}/") }
     end
 
     def todo_path_for(definition, root)
@@ -255,7 +275,7 @@ module ArchSpec
       when 'init'
         'Usage: archspec init [PATH] [--force]'
       when 'check'
-        'Usage: archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]'
+        'Usage: archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo|--check-todo]'
       when 'explain'
         'Usage: archspec explain PATH_OR_CONSTANT [--config PATH]'
       when 'reflect'
@@ -266,7 +286,7 @@ module ArchSpec
         <<~TEXT
           Usage:
             archspec init [PATH] [--force]
-            archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo]
+            archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo|--check-todo]
             archspec explain PATH_OR_CONSTANT [--config PATH]
             archspec reflect [--config PATH] [--environment NAME]
             archspec version
