@@ -80,7 +80,7 @@ Each entry records the violation's stable id and the fields the id is built from
 bundle exec archspec check --check-todo
 ```
 
-Runs the normal check and additionally fails when the todo lists an entry that no current violation matches, because the violation was fixed or is now suppressed locally. These are exactly the entries `--update-todo` would drop, so a fixed violation cannot linger in the burn-down list. Obsolete entries are printed before the verdict; with `--format json` they appear under `obsolete_todo`. With path arguments, only entries under those paths are reported. The configured todo file has to exist. Use this in CI instead of regenerating the file and diffing it. It cannot be combined with `--update-todo`.
+Runs the normal check and additionally fails when the todo lists an entry that no current violation matches, because the violation was fixed or is now suppressed locally. These are exactly the entries `--update-todo` would drop, so a fixed violation cannot linger in the burn-down list. Obsolete entries are printed before the verdict; with `--format json` they appear under `obsolete_todo`. With path arguments, only entries under those paths are reported; entries that record no path, such as bare ids, are reported only by an unscoped run. The configured todo file has to exist. Use this in CI instead of regenerating the file and diffing it. It cannot be combined with `--update-todo`.
 
 ## reflect
 

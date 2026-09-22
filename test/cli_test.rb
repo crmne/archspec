@@ -371,6 +371,7 @@ class CLITest < ArchSpecTest
       write "#{root}/app/controllers/users_controller.rb", "class UsersController; User; end\n"
       Dir.chdir(root) { ArchSpec::CLI.run(['check', '--update-todo'], output: StringIO.new, error: StringIO.new) }
       write "#{root}/app/models/user.rb", "class User; end\n"
+      File.write("#{root}/archspec_todo.yml", File.read("#{root}/archspec_todo.yml") + "- deadbeefdeadbeefdeadbeef\n")
 
       scoped = StringIO.new
       scoped_status = Dir.chdir(root) do
@@ -382,7 +383,8 @@ class CLITest < ArchSpecTest
       whole = StringIO.new
       whole_status = Dir.chdir(root) { ArchSpec::CLI.run(['check', '--check-todo'], output: whole, error: StringIO.new) }
       assert_equal 1, whole_status
-      assert_match(/1 obsolete todo entry/, whole.string)
+      assert_match(/2 obsolete todo entries/, whole.string)
+      assert_match(/deadbeefdeadbeefdeadbeef/, whole.string)
     end
   end
 

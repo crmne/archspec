@@ -246,7 +246,7 @@ module ArchSpec
       return entries if paths.empty?
 
       expanded = paths.map { |path| File.expand_path(path, root) }
-      entries.select { |entry| entry['path'].nil? || within?(File.expand_path(entry['path'], root), expanded) }
+      entries.select { |entry| entry['path'] && within?(File.expand_path(entry['path'], root), expanded) }
     end
 
     def within?(path, scopes)
