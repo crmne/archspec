@@ -425,6 +425,29 @@ class CLITest < ArchSpecTest
     end
   end
 
+  def test_check_todo_treats_a_listed_parse_error_as_obsolete
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        todo "archspec_todo.yml"
+      RUBY
+      write "#{root}/app/models/user.rb", "class User\n  def call\n"
+
+      json = StringIO.new
+      Dir.chdir(root) { ArchSpec::CLI.run(['check', '--format', 'json'], output: json, error: StringIO.new) }
+      parse_error = JSON.parse(json.string)['violations'].first
+      assert_equal 'parser.syntax', parse_error['rule']
+      write "#{root}/archspec_todo.yml", "violations:\n- #{parse_error['id']}\n"
+
+      output = StringIO.new
+      status = Dir.chdir(root) { ArchSpec::CLI.run(['check', '--check-todo'], output: output, error: StringIO.new) }
+
+      assert_equal 1, status
+      assert_match(/1 obsolete todo entry/, output.string)
+      assert_match(/#{parse_error['id']}/, output.string)
+    end
+  end
+
   def test_check_todo_rejects_update_todo_and_requires_a_configured_todo
     with_project do |root|
       write "#{root}/Archspec.rb", "component :models, in: \"app/models/**/*.rb\"\n"

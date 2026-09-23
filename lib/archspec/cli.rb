@@ -143,11 +143,11 @@ module ArchSpec
 
       graph = Analyzer.analyze(definition, root: root)
       candidates = Evaluator.unsuppressed(definition, graph)
+      # Syntax errors are never an accepted baseline; they must be fixed.
+      acceptable = candidates.reject { |diagnostic| diagnostic.rule == 'parser.syntax' }
 
       if options[:update_todo]
-        # Syntax errors are never an accepted baseline; they must be fixed.
-        accepted = candidates.reject { |diagnostic| diagnostic.rule == 'parser.syntax' }
-        count = Todo.write(todo_path, accepted, root: root)
+        count = Todo.write(todo_path, acceptable, root: root)
         label = count == 1 ? 'violation' : 'violations'
         output.puts "Updated #{Pathname(todo_path).relative_path_from(Pathname(root))} with #{count} #{label}."
         return 0
@@ -156,7 +156,7 @@ module ArchSpec
       todo = Todo.load(todo_path, root: root)
       diagnostics = candidates.reject { |diagnostic| todo.include?(diagnostic) }
       diagnostics = scope_to_paths(diagnostics, argv, root)
-      obsolete = scope_entries_to_paths(todo.unmatched_by(candidates), argv, root) if options[:check_todo]
+      obsolete = scope_entries_to_paths(todo.unmatched_by(acceptable), argv, root) if options[:check_todo]
 
       formatter.print(output, graph: graph, diagnostics: diagnostics, obsolete_todo: obsolete)
       diagnostics.empty? && (obsolete.nil? || obsolete.empty?) ? 0 : 1
