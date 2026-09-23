@@ -48,4 +48,8 @@ This analysis does not execute callbacks. Conditional mixins and method
 definitions inside callbacks remain analysis gaps; it does not choose a runtime
 branch or infer methods from arbitrary callback execution.
 
+Concern modeling and external reflection contribute to the same analysis graph.
+The [framework integration guide]({% link _guides/framework-integrations.md %})
+explains why concerns use static modeling and what runtime facts can add.
+
 The `:rails_strict` and `:vanilla_rails` architectures apply this to `app/**/concerns/**/*.rb`. Override the glob with `concerns:`, or pass `concerns: false` to skip it.

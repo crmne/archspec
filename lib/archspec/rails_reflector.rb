@@ -31,9 +31,7 @@ module ArchSpec
 
     def capture(graph, models:, environment:, facts_path: 'archspec_facts')
       sites = association_sites(graph).group_by { |site| [site.macro, site.name] }
-      references = []
-      methods = []
-      gaps = []
+      facts = Facts::Builder.new(graph, producer: 'active_record')
       reflections = models.flat_map(&:reflect_on_all_associations)
                           .uniq { |reflection| [reflection.active_record.name, reflection.name] }
       reflections.sort_by { |reflection| [reflection.active_record.name.to_s, reflection.name.to_s] }.each do |reflection|
@@ -46,40 +44,31 @@ module ArchSpec
         next unless source
 
         if candidates.size != 1
-          gaps << entry_for(graph, source, source.location).merge('source' => model.name,
-            'message' => "association #{model.name}.#{reflection.name}: no unique literal declaration")
+          facts.gap(source: source, location: source.location,
+            message: "association #{model.name}.#{reflection.name}: no unique literal declaration")
           next
         end
         site = candidates.first
-        entry = entry_for(graph, source, site.location)
         generated = model.generated_association_methods.instance_methods(false).map(&:to_s)
         names = [reflection.name.to_s, "#{reflection.name}="] & generated
         unless names.empty?
-          methods << entry.merge('owner' => model.name, 'scope' => 'instance', 'names' => names.sort)
+          facts.methods(owner: source, location: site.location, names: names.sort)
         end
         if reflection.polymorphic?
-          gaps << entry.merge('source' => model.name, 'message' => "polymorphic association #{model.name}.#{reflection.name}")
+          facts.gap(source: source, location: site.location, message: "polymorphic association #{model.name}.#{reflection.name}")
           next
         end
         begin
           target = reflection.klass.name
           raise Error, 'association target is anonymous' if target.nil? || target.empty?
 
-          references << entry.merge('source' => model.name, 'target' => target)
+          facts.reference(source: source, target: target, location: site.location)
         rescue NameError, ArgumentError, ActiveRecord::ActiveRecordError, Error => error
-          gaps << entry.merge('source' => model.name,
-            'message' => "unresolved association #{model.name}.#{reflection.name}: #{error.message.lines.first.strip}")
+          facts.gap(source: source, location: site.location,
+            message: "unresolved association #{model.name}.#{reflection.name}: #{error.message.lines.first.strip}")
         end
       end
-      {
-        'version' => Facts::VERSION,
-        'producer' => 'active_record',
-        'environment' => environment,
-        'snapshot' => Facts.snapshot(graph, excluding: facts_path),
-        'references' => references,
-        'methods' => methods,
-        'gaps' => gaps
-      }
+      facts.to_document(environment: environment, facts_path: facts_path)
     end
 
     private
@@ -91,17 +80,6 @@ module ArchSpec
 
       location = Object.const_source_location(model.name)
       nodes.find { |node| location && node.path == File.expand_path(location.first) } || nodes.find { |node| !node.namespace_only }
-    end
-
-    def entry_for(graph, source, location)
-      {
-        'source_path' => Pathname(source.path).relative_path_from(Pathname(graph.root)).to_s,
-        'path' => location.relative_path(graph.root),
-        'line' => location.line,
-        'column' => location.column,
-        'end_line' => location.end_line,
-        'end_column' => location.end_column
-      }
     end
 
     def association_sites(graph)

@@ -74,53 +74,9 @@ the previous file, which must still pass the staleness check before use.
 
 ## Custom facts producers
 
-Other macro libraries can produce their own `.yml` file in the configured
-directory. The version 1 document contains a producer name, an input snapshot,
-and lists of references, generated methods, and optional analysis gaps. No Ruby
-objects or YAML aliases are accepted.
-
-A producer can build a graph without importing its previous snapshots and use the
-shared writer:
-
-```ruby
-graph = ArchSpec::Analyzer.analyze(definition, root: root, include_facts: false)
-
-ArchSpec::Facts.write(File.join(root, "archspec_facts/custom.yml"), {
-  "version" => ArchSpec::Facts::VERSION,
-  "producer" => "my_library",
-  "snapshot" => ArchSpec::Facts.snapshot(graph, excluding: "archspec_facts"),
-  "references" => [{
-    "source" => "Invoice",
-    "target" => "Customer",
-    "path" => "app/models/invoice.rb",
-    "line" => 3
-  }],
-  "methods" => [{
-    "owner" => "Invoice",
-    "scope" => "instance",
-    "names" => ["customer", "customer="],
-    "path" => "app/models/invoice.rb",
-    "line" => 3
-  }],
-  "gaps" => []
-})
-```
-
-Only emit relationships established by the producer's runtime or authoritative
-metadata. ArchSpec validates the envelope and source locations; it does not
-independently prove an external producer's claims.
-
-All paths are relative to the project root and must identify analyzed files.
-`source` and `owner` must identify a constant defined in `source_path`, which
-defaults to `path`. Use a separate `source_path` when a macro's evidence is in a
-concern but its owner is a model defined elsewhere. Targets may be external
-constants; those stay unresolved until their declarations are analyzed.
-
-Locations require `path` and a positive `line`. Optional `column`, `end_line`,
-and `end_column` use the same one-based byte coordinates as ArchSpec diagnostics;
-by default they identify a point at column 1. Method scope is `instance` or
-`class`. A gap uses `source`, `message`, and the same location fields. It appears
-in analysis-gap output without inventing a dependency edge.
-
-The optional `environment` string identifies a Rails environment. Output ordering
-should be deterministic, and each producer should refresh only its own file.
+The facts format also accepts output from other frameworks and macro libraries.
+See [Framework integrations]({% link _guides/framework-integrations.md %}) for a
+producer example, the versioned contract, and the relationship between static
+concern modeling and runtime reflection. The built-in Rails producer currently
+captures associations; it does not capture validators or arbitrary callback
+effects.
