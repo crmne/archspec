@@ -26,5 +26,12 @@ these directories to stay empty:
 - `app/presenters`
 - `app/components`
 
+It also defines a `views` component for `app/views/**/*.erb` and forbids views
+from depending on models. Direct model references such as `<%= User.count %>`
+are flagged; calls on controller-provided objects such as `<%= @user.name %>`
+are allowed because their receiver types are not inferred.
+The `components:` option replaces the default component map, so you can
+override the view paths or omit `views` to omit its rule.
+
 See the [Vanilla Rails guide]({% link _guides/vanilla-rails.md %}) for the
 reasoning and for project-specific rules you can add on top.

@@ -24,6 +24,68 @@ class ArchitecturesTest < ArchSpecTest
     end
   end
 
+  def test_strict_and_vanilla_rails_forbid_views_from_referencing_models
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/app/views/users/index.html.erb", "<h1>Users</h1>\n<%= User.count %>\n"
+
+      %i[rails_strict vanilla_rails].each do |preset|
+        definition = ArchSpec.define { architecture preset }
+        diagnostics = diagnostics_for(definition, root)
+
+        assert_equal ['dependencies.forbid'], diagnostics.map(&:rule), preset.to_s
+        assert_equal 'views must not depend on models', diagnostics.first.message
+        assert_equal "#{root}/app/views/users/index.html.erb", diagnostics.first.location.path
+        assert_equal 2, diagnostics.first.location.line
+      end
+
+      definition = ArchSpec.define do
+        architecture :rails
+        component :views, in: 'app/views/**/*.erb'
+      end
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_strict_and_vanilla_rails_allow_views_to_use_assigned_objects_and_helpers
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/app/helpers/users_helper.rb", "module UsersHelper; end\n"
+      write "#{root}/app/views/users/show.html.erb", "<%= @user.name %>\n<%= UsersHelper.display(@user) %>\n"
+
+      %i[rails_strict vanilla_rails].each do |preset|
+        definition = ArchSpec.define { architecture preset }
+        assert_empty diagnostics_for(definition, root), preset.to_s
+      end
+    end
+  end
+
+  def test_strict_and_vanilla_rails_respect_custom_view_components
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/templates/users.erb", '<%= User.count %>'
+      write "#{root}/app/views/users/index.html.erb", '<%= User.count %>'
+
+      %i[rails_strict vanilla_rails].each do |preset|
+        components = {
+          'controllers' => 'app/controllers/**/*.rb',
+          'models' => 'app/models/**/*.rb',
+          'views' => { in: 'templates/**/*.erb' }
+        }
+        definition = ArchSpec.define { architecture preset, components: components }
+        diagnostics = diagnostics_for(definition, root)
+
+        assert_equal ['dependencies.forbid'], diagnostics.map(&:rule), preset.to_s
+        assert_equal "#{root}/templates/users.erb", diagnostics.first.location.path
+
+        components.delete('views')
+        definition = ArchSpec.define { architecture preset, components: components }
+        refute definition.component_specs.key?(:views)
+        assert_empty diagnostics_for(definition, root)
+      end
+    end
+  end
+
   def test_rails_strict_flags_concern_referencing_its_includer
     with_project do |root|
       write "#{root}/app/models/concerns/chargeable.rb", <<~RUBY

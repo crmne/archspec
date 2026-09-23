@@ -40,6 +40,13 @@ architecture :rails, controller_api: %i[render redirect_to session cookies flash
 ## Strict
 
 `rails_strict` adds a cycle check across the Rails components and a concern independence check on `app/**/concerns/**/*.rb`.
+It also defines `views` from `app/views/**/*.erb` and forbids views from
+depending on models. Direct model references such as `<%= User.count %>` are
+flagged; calls on controller-provided objects such as `<%= @user.name %>` are
+allowed because their receiver types are not inferred.
+
+Override view paths through `components:`. As with other components, this
+option replaces the default component map; omitting `views` omits its rule.
 
 ```ruby
 architecture :rails_strict
