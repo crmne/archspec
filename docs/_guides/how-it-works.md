@@ -1,7 +1,7 @@
 ---
 title: How It Works
 nav_order: 5
-description: Learn how ArchSpec indexes Ruby files with Rubydex and Prism, builds its model, evaluates rules, and reports architecture diagnostics.
+description: Learn how ArchSpec analyzes Ruby and ERB files with Rubydex, Prism, and Herb, builds its model, evaluates rules, and reports architecture diagnostics.
 ---
 
 # How It Works
@@ -16,8 +16,9 @@ After reading this guide, you will know:
 
 `archspec check` never loads or executes your application. [Rubydex](https://github.com/Shopify/rubydex)
 builds a resolved semantic index, while [Prism](https://github.com/ruby/prism)
-records the few facts whose exact syntax matters. Everything downstream is
-plain data:
+records the few facts whose exact syntax matters. Rubydex can't index ERB files so for them we rely 
+purely on direct parsing. Herb extracts embedded Ruby from ERB templates for Prism to parse. 
+Everything downstream is plain data:
 
 ```text
 glob files -> parse syntax -> resolve semantics -> merge facts -> assign components -> evaluate rules
@@ -28,14 +29,22 @@ boots Rails separately to record resolved association facts. Checks consume
 those snapshots as data and reject them when their source inputs change.
 
 1. **Collect.** The patterns from `source` (defaulting to `app/**/*.rb`,
-   `lib/**/*.rb`, and pack/engine paths) are globbed from the project
-   directory, minus `ignore` patterns. (`Analyzer.source_files`)
-2. **Parse syntax.** Each file goes through `Prism.parse_file`. Syntax errors
-   become `parser.syntax` diagnostics instead of crashes, and
-   `archspec:disable` comments are collected as suppressions.
-3. **Resolve semantics.** Rubydex indexes exactly those files and resolves
-   declarations, constants, ancestors, methods, and aliases.
-   (`RubydexIndex`)
+   `lib/**/*.rb`, and pack/engine paths) and component file patterns are globbed
+   from the project directory, keeping `.rb`, `.rake`, and `.erb` files and
+   excluding `ignore` matches. ERB templates need an explicit source or component
+   pattern, such as `component :views, in: "app/views/**/*.erb"`.
+   (`Analyzer.source_files`)
+2. **Parse syntax.** Ruby and Rake files go through `Prism.parse_file`. For ERB,
+   `Herb.extract_ruby` uses a lexer to extract the embedded Ruby while preserving
+   its original locations, then `Prism.parse` parses that Ruby once with the
+   template's path. Ruby syntax errors become `parser.syntax` diagnostics at
+   the original source locations; HTML structure is not validated.
+   `archspec:disable` comments are collected as suppressions from Prism's
+   comments and, for ERB, from `<%# ... %>` comments extracted with `Herb.lex`.
+3. **Resolve semantics.** Rubydex indexes the collected `.rb` and `.rake` files
+   and resolves declarations, constants, ancestors, methods, and aliases.
+   ERB files are not sent to Rubydex's file index; their Ruby facts come from
+   the Prism syntax overlay. (`RubydexIndex`)
 4. **Merge facts.** The Prism overlay adds literal `require` calls, dynamic
    syntax, framework macros, and other source-shape facts Rubydex does not
    expose. (`Analyzer::SyntaxOverlay`)
