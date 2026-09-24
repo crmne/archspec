@@ -56,7 +56,11 @@ module ArchSpec
     end
 
     def install_consumers
-      events = graph.edges.select { |edge| MIXINS.key?(edge.type) }.group_by { |edge| [edge.from_constant, edge.from_path] }
+      mixin_edges = graph.edges.select { |edge| MIXINS.key?(edge.type) }
+      @installed_mixins = mixin_edges.to_set do |edge|
+        [edge.from_constant, edge.from_path, edge.type, graph.resolve_edge_constant(edge)]
+      end
+      events = mixin_edges.group_by { |edge| [edge.from_constant, edge.from_path] }
       events.each do |(name, path), edges|
         next if @concerns.include?(name)
         next unless edges.any? do |edge|
@@ -80,7 +84,16 @@ module ArchSpec
       end
     end
 
+    # Each block only touches edges that its concern owns, so the edges are
+    # indexed by owner once. Removed edges are compacted at the end, which
+    # keeps the surviving edges in their original order.
     def normalize_blocks
+      @concern_edges = Hash.new { |hash, key| hash[key] = [] }
+      graph.edges.each_with_index do |edge, index|
+        @concern_edges[edge.from_constant] << index if @concerns.include?(edge.from_constant)
+      end
+      @removed_edges = Set.new
+
       @modules.each do |mod|
         next unless @concerns.include?(mod.name)
 
@@ -98,6 +111,14 @@ module ArchSpec
           end
         end
       end
+      graph.edges.replace(graph.edges.reject.with_index { |_, index| @removed_edges.include?(index) })
+    end
+
+    def owned_edges(name)
+      @concern_edges[name].filter_map do |index|
+        edge = graph.edges[index]
+        [index, edge] if edge.from_constant == name && !@removed_edges.include?(index)
+      end
     end
 
     def normalize_class_methods(mod, location)
@@ -105,20 +126,23 @@ module ArchSpec
       target = graph.add_constant(name: name, kind: :module, path: mod.path,
                                  location: location, nesting: [mod.name])
       extract_methods(mod, location).each { |method| install_method(target, method) }
-      graph.edges.map! do |edge|
-        next edge unless edge.from_constant == mod.name && within?(location, edge.location)
+      owned_edges(mod.name).each do |index, edge|
+        next unless within?(location, edge.location)
 
-        edge.with(from_constant: name,
-                  resolved_receiver: edge.resolved_receiver == mod.name ? name : edge.resolved_receiver)
+        graph.edges[index] = edge.with(from_constant: name,
+                                       resolved_receiver: edge.resolved_receiver == mod.name ? name : edge.resolved_receiver)
       end
     end
 
     def defer_callback(mod, node, location)
       methods = extract_methods(mod, location)
-      mixins = graph.edges.select do |edge|
-        edge.from_constant == mod.name && MIXINS.key?(edge.type) && within?(location, edge.location)
+      owned = owned_edges(mod.name)
+      mixins = owned.filter_map do |index, edge|
+        next unless MIXINS.key?(edge.type) && within?(location, edge.location)
+
+        @removed_edges.add(index)
+        edge
       end
-      graph.edges.reject! { |edge| mixins.include?(edge) }
       statements = node.block.body.is_a?(Prism::StatementsNode) ? node.block.body.body : []
       direct = statements.select do |statement|
         statement.is_a?(Prism::DefNode) ||
@@ -128,9 +152,9 @@ module ArchSpec
                          .map { |statement| SourceLocation.from_prism(mod.path, statement.location) }
       certain_methods = methods.select { |method| direct.any? { |span| within?(span, method.location) } }
       certain_mixins = mixins.select { |edge| direct.any? { |span| within?(span, edge.location) } }
-      calls = graph.edges.select do |edge|
-        edge.type == :calls_named_method && edge.receiver == :none && edge.from_constant == mod.name &&
-          (direct.include?(edge.location) || certain_methods.any? { |method| within?(method.location, edge.location) })
+      calls = owned.filter_map do |_, edge|
+        edge if edge.type == :calls_named_method && edge.receiver == :none &&
+                (direct.include?(edge.location) || certain_methods.any? { |method| within?(method.location, edge.location) })
       end
       @callbacks[mod.name] << Callback.new(node.name, certain_methods, certain_mixins, calls)
       return if methods == certain_methods && mixins == certain_mixins
@@ -229,10 +253,7 @@ module ArchSpec
     def add_mixin(consumer, kind, target, origin)
       consumer.add_mixin(kind, target)
       type = kind == :singleton_prepend ? :extends : MIXINS.key(kind)
-      return if graph.edges.any? do |edge|
-        edge.from_constant == consumer.name && edge.from_path == consumer.path &&
-          edge.type == type && graph.resolve_edge_constant(edge) == target
-      end
+      return unless @installed_mixins.add?([consumer.name, consumer.path, type, target])
 
       graph.add_edge(type: type, from_constant: consumer.name, from_path: consumer.path,
                      to: target, resolved_to: target, location: origin.location)

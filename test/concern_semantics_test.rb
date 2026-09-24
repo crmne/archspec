@@ -171,6 +171,54 @@ class ConcernSemanticsTest < ArchSpecTest
     end
   end
 
+  def test_blocks_after_a_conditional_callback_keep_their_own_edges
+    with_project do |root|
+      write "#{root}/lib/mixed.rb", <<~RUBY
+        module Mixed
+          extend ActiveSupport::Concern
+          module Certain
+            def certain = true
+          end
+          module Optional
+            def optional = true
+          end
+          included do
+            include Certain
+            if ENV['OPTIONAL']
+              include Optional
+            end
+          end
+          class_methods do
+            def build = Factory
+            def build_all = build
+          end
+          def label = Label
+        end
+        class Record
+          include Mixed::Certain
+          include Mixed
+        end
+      RUBY
+      definition = ArchSpec.define do
+        component :library, in: 'lib/**/*.rb'
+        library.cannot_call :build, receiver: :none
+      end
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      assert_empty ArchSpec::Evaluator.evaluate(definition, graph)
+      assert_empty graph.edges.select { |edge| edge.from_constant == 'Mixed' && edge.type == :includes }
+      assert_equal 1, graph.edges.count { |edge| edge.type == :dynamic_feature && edge.from_constant == 'Mixed' }
+      assert_includes graph.ancestor_names('Record').first, 'Mixed::Certain'
+      refute_includes graph.ancestor_names('Record').first, 'Mixed::Optional'
+      record_includes = graph.edges.select { |edge| edge.from_constant == 'Record' && edge.type == :includes }
+      assert_equal %w[Mixed Mixed::Certain], record_includes.map { |edge| graph.resolve_edge_constant(edge) }.sort
+      assert_equal ['Mixed::ClassMethods'], graph.edges.select { |edge| edge.to == 'Factory' }.map(&:from_constant)
+      assert_equal ['Mixed'], graph.edges.select { |edge| edge.to == 'Label' }.map(&:from_constant)
+      call = graph.edges.find { |edge| edge.type == :calls_named_method && edge.to == 'build' }
+      assert_equal ['Mixed::ClassMethods', 'Mixed::ClassMethods'], [call.from_constant, call.resolved_receiver]
+      assert_includes graph.effective_class_methods('Record').first, :build
+    end
+  end
+
   def test_method_precedence_matches_active_support
     with_project do |root|
       path = "#{root}/lib/precedence.rb"
