@@ -5,6 +5,10 @@ module ArchSpec
     extend self
 
     def evaluate(definition, graph, todo: Todo.empty)
+      unsuppressed(definition, graph).reject { |diagnostic| todo.include?(diagnostic) }
+    end
+
+    def unsuppressed(definition, graph)
       diagnostics = parser_diagnostics(graph) + definition.rules.flat_map { |rule| rule.evaluate(graph) }
 
       # Deduplicate before rejecting. One statement can raise several diagnostics
@@ -15,7 +19,7 @@ module ArchSpec
       diagnostics
         .sort_by { |d| [d.location.path, d.location.line, d.rule, d.message, d.evidence] }
         .uniq { |d| [d.rule, d.message, d.location.path, d.location.line] }
-        .reject { |diagnostic| graph.suppressed?(diagnostic) || todo.include?(diagnostic) }
+        .reject { |diagnostic| graph.suppressed?(diagnostic) }
     end
 
     private

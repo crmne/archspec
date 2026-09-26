@@ -244,6 +244,13 @@ todo "archspec_todo.yml"
 bundle exec archspec check --update-todo
 ```
 
+In CI, add `--check-todo` so a fixed violation that is still listed fails the
+build instead of rotting in the file:
+
+```sh
+bundle exec archspec check --check-todo
+```
+
 Use local suppressions for deliberate exceptions:
 
 ```ruby
