@@ -17,10 +17,18 @@ todo "archspec_todo.yml"
 ```
 {: data-title="Archspec.rb"}
 
-ArchSpec analyzes `.rb` and `.rake` files matched by source or component
+ArchSpec analyzes `.rb`, `.rake`, and `.erb` files matched by source or component
 patterns. The default source patterns select `.rb` files; opt into Rake tasks
-with `source "app/**/*.rb", "lib/**/*.{rb,rake}"` or a component such as
-`component :tasks, in: "lib/tasks/**/*.rake"`. Ignore patterns apply to both.
+and ERB templates with source patterns such as
+`source "app/**/*.{rb,erb}", "lib/**/*.{rb,rake}"` or components such as
+`component :tasks, in: "lib/tasks/**/*.rake"` and
+`component :views, in: "app/views/**/*.erb"`. Ignore patterns apply to all three
+file types.
+
+For ERB templates, Herb extracts the embedded Ruby while preserving its
+locations, then Prism parses it so diagnostics point to the original template.
+ArchSpec checks the Ruby code, not the HTML structure. See
+[How It Works]({% link _guides/how-it-works.md %}) for the parsing pipeline.
 
 Todo ids are computed from the rule, path, message, and evidence, not the line number, so entries survive edits that shift code.
 
@@ -35,6 +43,7 @@ check. See [Association reflection]({% link _guides/association-reflection.md %}
 ```ruby
 component :controllers, in: "app/controllers/**/*.rb"
 component :models,      in: "app/models/**/*.rb"
+component :views,       in: "app/views/**/*.erb"
 component :billing,     namespace: "Billing"
 component :records,     descendants_of: "ApplicationRecord"
 component :workflows,
@@ -152,3 +161,10 @@ archspec:enable RULE
 ```
 
 Omit `RULE` to suppress all ArchSpec rules on that line or block.
+
+In ERB templates, use ERB comments for suppressions:
+
+```erb
+<%# archspec:disable-next-line dependencies.forbid -- legacy export %>
+<%= Admin::UsersController.name %>
+```

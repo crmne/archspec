@@ -14,10 +14,11 @@ module ArchSpec
   # - +:rails+: conventional MVC that keeps controller APIs out of models and
   #   services. Options +components:+, +controller_api:+, +share_helpers:+.
   # - +:rails_strict+: +:rails+ plus a cycle check and a concern independence
-  #   check. Adds option +concerns:+.
+  #   check, plus views that cannot depend on models. Adds option +concerns:+.
   # - +:vanilla_rails+: +:rails+ plus empty-directory rules for the 37signals
   #   style (forbidding +app/services+, +app/forms+, +app/policies+, and more)
-  #   and the concern independence check. Options +components:+, +empty:+,
+  #   and the concern independence check, plus views that cannot depend on
+  #   models. Options +components:+, +empty:+,
   #   +controller_api:+, +share_helpers:+, +concerns:+.
   # - +:layered+: ordered layers that may only depend inward, with a cycle
   #   check. Option +layers:+ (order matters).
@@ -55,6 +56,8 @@ module ArchSpec
       jobs: 'app/jobs/**/*.rb',
       services: 'app/services/**/*.rb'
     }.freeze
+
+    DEFAULT_RAILS_WITH_ERB_VIEWS = DEFAULT_RAILS_MVC.merge(views: 'app/views/**/*.erb').freeze
 
     DEFAULT_HEXAGONAL = {
       application: %w[app/services/**/*.rb app/use_cases/**/*.rb],
@@ -114,13 +117,13 @@ module ArchSpec
         share_helpers: false
       },
       rails_strict: {
-        components: DEFAULT_RAILS_MVC,
+        components: DEFAULT_RAILS_WITH_ERB_VIEWS,
         controller_api: CONTROLLER_METHODS,
         share_helpers: false,
         concerns: DEFAULT_CONCERNS
       },
       vanilla_rails: {
-        components: DEFAULT_RAILS_MVC,
+        components: DEFAULT_RAILS_WITH_ERB_VIEWS,
         empty: VANILLA_RAILS_EMPTY,
         controller_api: CONTROLLER_METHODS,
         share_helpers: false,
@@ -169,12 +172,15 @@ module ArchSpec
     def rails_strict(dsl, components:, controller_api:, share_helpers:, concerns:)
       components = normalize_map(components)
       rails(dsl, components: components, controller_api: controller_api, share_helpers: share_helpers)
+      proxy_for(dsl, :views).cannot_use(:models) if components.key?(:views)
       dsl.no_cycles(among: components.keys)
       independent_concerns(dsl, concerns)
     end
 
     def vanilla_rails(dsl, components:, empty:, controller_api:, share_helpers:, concerns:)
+      components = normalize_map(components)
       rails(dsl, components: components, controller_api: controller_api, share_helpers: share_helpers)
+      proxy_for(dsl, :views).cannot_use(:models) if components.key?(:views)
 
       empty.each do |name, (pattern, reason)|
         dsl.component(name, in: pattern).must_be_empty(because: reason)

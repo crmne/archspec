@@ -29,6 +29,7 @@ Gem::Specification.new do |spec|
   spec.executables = ['archspec']
   spec.require_paths = ['lib']
 
+  spec.add_dependency 'herb', '>=0.10.4'
   spec.add_dependency 'prism', '>= 1.0'
   spec.add_dependency 'rubydex', '~> 0.4.0'
 

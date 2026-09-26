@@ -3,28 +3,40 @@
 require 'prism'
 require 'set'
 
+require_relative 'sources/ruby'
+require_relative 'sources/erb'
+
 module ArchSpec
   module Analyzer
     extend self
 
+    SOURCES = [Sources::Ruby, Sources::Erb].freeze
+
     def analyze(definition, root:, include_facts: true)
       root = File.expand_path(root)
       graph = Graph.new(root)
-      paths = ruby_files(definition, root)
       syntax = SyntaxOverlay.new
+      index_paths = []
 
-      paths.each do |path|
-        result = Prism.parse_file(path)
-        graph.add_file(
-          path: path,
-          parse_errors: parse_errors_for(path, result.errors),
-          suppressions: suppressions_for(result.comments)
-        )
-        syntax.scan(path, result.value) if result.value
+      all_extensions = SOURCES.flat_map(&:extensions)
+      paths = source_files(definition, root, all_extensions)
+      SOURCES.each do |source_class|
+        source_class_paths = paths.select { |path| path.end_with?(*source_class.extensions) }
+        index_paths.concat(source_class_paths) if source_class.rubydex_indexable?
+
+        source_class_paths.each do |path|
+          source = source_class.new(path)
+          graph.add_file(
+            path: source.path,
+            parse_errors: source.parse_errors,
+            suppressions: SuppressionParser.parse(source.comments)
+          )
+          syntax.scan(source.path, source.prism)
+        end
       end
 
       method_names = definition.rules.grep(Rules::CannotCallRule).flat_map(&:method_names)
-      index = RubydexIndex.new(paths, syntax: syntax, method_names: method_names)
+      index = RubydexIndex.new(index_paths, syntax: syntax, method_names: method_names)
       index.populate(graph)
       syntax.apply(graph, call_resolutions: index.call_resolutions)
       syntax.apply_concerns(graph)
@@ -35,13 +47,13 @@ module ArchSpec
 
     private
 
-    def ruby_files(definition, root)
+    def source_files(definition, root, extensions)
       ignored = ignored_files(definition, root)
 
       definition.analysis_patterns.flat_map do |pattern|
         Dir.glob(File.absolute_path(pattern, root))
       end.select do |path|
-        File.file?(path) && path.end_with?('.rb', '.rake')
+        File.file?(path)
       end.map do |path|
         File.expand_path(path)
       end.uniq.reject do |path|
@@ -55,16 +67,6 @@ module ArchSpec
       end.select { |path| File.file?(path) }.map { |path| File.expand_path(path) }.to_set
     end
 
-    def suppressions_for(comments)
-      SuppressionParser.parse(comments)
-    end
-
-    def parse_errors_for(path, errors)
-      errors.map do |error|
-        ParseError.new(error.message, SourceLocation.from_prism(path, error.location))
-      end
-    end
-
     module SuppressionParser
       extend self
 
@@ -76,8 +78,8 @@ module ArchSpec
         active = Hash.new { |hash, key| hash[key] = [] }
 
         sorted_comments(comments).each do |comment|
-          text = comment.slice.sub(/\A#\s?/, '').strip
-          line = comment.location.start_line
+          text = comment.text.sub(/\A#\s?/, '').strip
+          line = comment.line
 
           if (match = text.match(DISABLE_PATTERN))
             mode, rule, reason = match.captures
@@ -112,7 +114,7 @@ module ArchSpec
       private
 
       def sorted_comments(comments)
-        comments.sort_by { |comment| [comment.location.start_line, comment.location.start_column] }
+        comments.sort_by { |comment| [comment.line, comment.column] }
       end
 
       def normalize_rule(rule)
