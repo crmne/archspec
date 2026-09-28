@@ -327,6 +327,26 @@ class AnalyzerTest < ArchSpecTest
     end
   end
 
+  def test_component_exclusions_subtract_from_descendants
+    with_project do |root|
+      write "#{root}/app/jobs/application_job.rb", "class ApplicationJob; end\n"
+      write "#{root}/app/jobs/queue_base.rb", "class QueueBase < ApplicationJob; end\n"
+      write "#{root}/app/jobs/queue_fifo.rb", "class QueueFifo < QueueBase; end\n"
+      write "#{root}/app/jobs/send_email_job.rb", "class SendEmailJob < ApplicationJob; end\n"
+
+      definition = ArchSpec.define do
+        component :handwritten_jobs, descendants_of: 'ApplicationJob', except: 'app/jobs/queue_*.rb'
+        component :queue_jobs, descendants_of: 'ApplicationJob', except: 'app/jobs/queue_*.rb', constants: 'QueueFifo'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal %w[SendEmailJob], graph.components.fetch(:handwritten_jobs).constants.to_a
+      refute_includes graph.components.fetch(:handwritten_jobs).files, "#{root}/app/jobs/queue_base.rb"
+      assert_equal %w[QueueFifo SendEmailJob], graph.components.fetch(:queue_jobs).constants.to_a.sort
+    end
+  end
+
   def test_components_can_select_transitive_descendants
     with_project do |root|
       write "#{root}/app/models/application_record.rb", "class ApplicationRecord; end\n"

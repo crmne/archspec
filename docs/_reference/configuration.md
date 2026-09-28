@@ -42,8 +42,8 @@ component :workflows,
   except: "app/models/**/*_workflow.rb"
 ```
 
-`except:` subtracts only from the `in:` patterns. Explicit `namespace:`,
-`constants:`, and `descendants_of:` selectors remain explicit. The same hash
+`except:` subtracts from the `in:` patterns and from `descendants_of:`.
+Explicit `namespace:` and `constants:` selectors remain explicit. The same hash
 form works inside architecture options such as `layers:` and `components:`.
 
 Declare one component per subdirectory with `each_directory`, which is handy for engines and packs:

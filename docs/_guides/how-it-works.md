@@ -41,7 +41,7 @@ those snapshots as data and reject them when their source inputs change.
    expose. (`Analyzer::SyntaxOverlay`)
 5. **Assign components.** Each `component` declaration claims files by glob,
    constants by namespace/name, or classes by ancestry. `except:` subtracts
-   from file globs. A file can belong to several components; the `explain`
+   from file globs and ancestry. A file can belong to several components; the `explain`
    command shows why. (`Graph.assign_components`)
 6. **Evaluate.** Every rule reads the graph and emits diagnostics, which are
    then filtered through suppressions and the todo file, sorted, and printed.
