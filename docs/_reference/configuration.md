@@ -12,7 +12,7 @@ description: Complete reference for the Archspec.rb DSL, including sources, comp
 
 ```ruby
 source "app/**/*.rb", "lib/**/*.rb"
-ignore "tmp/**/*", "vendor/**/*"
+ignore "app/legacy/**/*.rb"
 todo "archspec_todo.yml"
 ```
 {: data-title="Archspec.rb"}
@@ -45,6 +45,16 @@ component :workflows,
 `except:` subtracts from the `in:` patterns and from `descendants_of:`.
 Explicit `namespace:` and `constants:` selectors remain explicit. The same hash
 form works inside architecture options such as `layers:` and `components:`.
+
+Files matched by `in:` patterns are always analyzed, even when `source` does not
+cover them. ArchSpec ignores `.git`, `.bundle`, `node_modules`, `tmp`, and
+`vendor` by default, and those defaults step aside for an `in:` pattern whose
+literal leading directories, before the first `*`, `?`, `[`, or `{`, sit inside
+one of them. `in: "vendor/engines/*/**/*.rb"` analyzes the engines under
+`vendor/engines`, minus any `except:` matches. A broad pattern such as
+`in: "**/*.rb"` does not reach into `vendor`, `tmp`, or `node_modules`. Patterns
+you pass to `ignore` always win, including one that restates a default such as
+`ignore "vendor/**/*"`.
 
 Declare one component per subdirectory with `each_directory`, which is handy for engines and packs:
 

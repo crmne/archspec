@@ -555,6 +555,25 @@ class CLITest < ArchSpecTest
     end
   end
 
+  def test_explain_file_claimed_by_a_component_inside_a_default_ignore
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :billing, in: "vendor/engines/billing/**/*.rb"
+      RUBY
+
+      write "#{root}/vendor/engines/billing/app/models/invoice.rb", "class Invoice; end\n"
+
+      output = StringIO.new
+      status = Dir.chdir(root) do
+        ArchSpec::CLI.run(['explain', 'vendor/engines/billing/app/models/invoice.rb'], output: output, error: StringIO.new)
+      end
+
+      assert_equal 0, status
+      assert_match(/defined constants: Invoice/, output.string)
+      assert_match(%r{billing: matched file pattern vendor/engines/billing/\*\*/\*\.rb}, output.string)
+    end
+  end
+
   def test_explain_file_includes_suppressions
     with_project do |root|
       write "#{root}/Archspec.rb", <<~RUBY

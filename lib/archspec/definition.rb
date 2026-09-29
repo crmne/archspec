@@ -22,7 +22,7 @@ module ArchSpec
     ].freeze
 
     attr_accessor :name, :root_path, :todo_path, :facts_path, :base_dir
-    attr_reader :source_patterns, :ignore_patterns, :component_specs, :rules
+    attr_reader :source_patterns, :ignore_patterns, :user_ignore_patterns, :component_specs, :rules
 
     def initialize(name = nil)
       @name = name
@@ -32,6 +32,7 @@ module ArchSpec
       @base_dir = nil
       @source_patterns = []
       @ignore_patterns = DEFAULT_IGNORE_PATTERNS.dup
+      @user_ignore_patterns = []
       @component_specs = {}
       @rules = []
     end
@@ -41,7 +42,9 @@ module ArchSpec
     end
 
     def add_ignore_patterns(patterns)
-      @ignore_patterns |= Array(patterns).flatten.compact.map(&:to_s)
+      patterns = Array(patterns).flatten.compact.map(&:to_s)
+      @user_ignore_patterns |= patterns
+      @ignore_patterns |= patterns
     end
 
     def add_component(spec)
@@ -70,6 +73,18 @@ module ArchSpec
     def analysis_patterns
       patterns = source_patterns.empty? ? DEFAULT_SOURCE_PATTERNS.dup : source_patterns.dup
       patterns | component_specs.values.flat_map(&:file_patterns)
+    end
+
+    # Whether a component file pattern explicitly reaches into a directory that
+    # only a default ignore excludes: its literal leading directories, before
+    # any glob character, sit inside that ignore. +vendor/engines/*/**/*.rb+
+    # does; a broad +**/*.rb+ does not. Ignores the user declared always win.
+    def claims_default_ignored?(pattern)
+      directory = pattern.sub(%r{\A\./}, '')[/\A[^*?\[{]*/].sub(%r{[^/]*\z}, '')
+
+      (DEFAULT_IGNORE_PATTERNS - user_ignore_patterns).any? do |ignore|
+        File.fnmatch?(ignore, "#{directory}_", File::FNM_PATHNAME | File::FNM_DOTMATCH)
+      end
     end
   end
 end

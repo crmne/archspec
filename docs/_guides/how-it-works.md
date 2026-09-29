@@ -41,8 +41,11 @@ those snapshots as data and reject them when their source inputs change.
    expose. (`Analyzer::SyntaxOverlay`)
 5. **Assign components.** Each `component` declaration claims files by glob,
    constants by namespace/name, or classes by ancestry. `except:` subtracts
-   from file globs and ancestry. A file can belong to several components; the `explain`
-   command shows why. (`Graph.assign_components`)
+   from file globs and ancestry. A glob whose literal leading directories sit
+   inside a default ignore, such as `vendor/engines/*/**/*.rb`, is collected
+   despite it; your own `ignore` patterns still apply. A file can belong to
+   several components; the `explain` command shows why.
+   (`Graph.assign_components`)
 6. **Evaluate.** Every rule reads the graph and emits diagnostics, which are
    then filtered through suppressions and the todo file, sorted, and printed.
    (`Evaluator.evaluate`)
