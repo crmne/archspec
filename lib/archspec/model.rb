@@ -325,7 +325,7 @@ module ArchSpec
         constants.each do |constant|
           matched_file = files_matched_by_pattern.include?(constant.path) && !defers_to_real_definition?(constant)
           matched_constant = spec.matches_constant?(constant.name)
-          matched_ancestor = spec.matching_ancestor(constant.name, self)
+          matched_ancestor = !excluded_files.include?(constant.path) && spec.matching_ancestor(constant.name, self)
           next unless matched_file || matched_constant || matched_ancestor
 
           component.add_file(constant.path, reason: "defines #{constant.name}") if matched_constant || matched_ancestor
