@@ -24,15 +24,18 @@ module ArchSpec
 
       module_function
 
-      def print(output = $stdout, graph:, diagnostics:)
+      def print(output = $stdout, graph:, diagnostics:, obsolete_todo: nil)
+        style = Style.new(output)
+        print_obsolete_todo(output, style, obsolete_todo) if obsolete_todo&.any?
+
         if diagnostics.empty?
-          output.puts "ArchSpec passed: #{graph.files.size} files, #{graph.constants.size} constants, " \
+          verdict = obsolete_todo&.any? ? 'ArchSpec found no violations' : 'ArchSpec passed'
+          output.puts "#{verdict}: #{graph.files.size} files, #{graph.constants.size} constants, " \
                       "#{graph.edges.size} facts checked."
           print_census(output, graph)
           return
         end
 
-        style = Style.new(output)
         sources = Hash.new { |hash, path| hash[path] = read_lines(path) }
 
         diagnostics.each do |diagnostic|
@@ -42,6 +45,22 @@ module ArchSpec
         label = diagnostics.size == 1 ? 'architecture violation' : 'architecture violations'
         output.puts style.bold("#{diagnostics.size} #{label} found.")
         print_census(output, graph)
+      end
+
+      def print_obsolete_todo(output, style, entries)
+        label = entries.size == 1 ? 'obsolete todo entry matches' : 'obsolete todo entries match'
+        output.puts "#{style.severity('[error]')} #{style.bold("#{entries.size} #{label} no current violation")}"
+        output.puts
+        entries.each do |entry|
+          detail = [entry['path'], entry['message']].compact.join(': ')
+          detail = entry['id'] if detail.empty?
+          rule = entry['rule'] ? " #{style.faint("[#{entry['rule']}]")}" : ''
+          output.puts "  #{detail}#{rule}"
+          output.puts "    #{style.faint(entry['evidence'])}" if entry['evidence']
+        end
+        output.puts
+        output.puts "  #{style.note('note:')} fixed or suppressed locally; run `archspec check --update-todo` to drop them"
+        output.puts
       end
 
       def print_diagnostic(output, style, graph, diagnostic, sources)

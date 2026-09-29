@@ -61,7 +61,8 @@ module ArchSpec
       #
       #   todo "archspec_todo.yml"
       #
-      # Write or refresh it with <tt>archspec check --update-todo</tt>.
+      # Write or refresh it with <tt>archspec check --update-todo</tt>; flag
+      # entries that no longer match with <tt>archspec check --check-todo</tt>.
       def todo(path = 'archspec_todo.yml')
         self.todo_path = path.to_s
       end
