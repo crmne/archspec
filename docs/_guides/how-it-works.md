@@ -24,8 +24,9 @@ glob files -> parse syntax -> resolve semantics -> merge facts -> assign compone
 ```
 
 The optional [`archspec reflect` command]({% link _guides/association-reflection.md %})
-boots Rails separately to record resolved association facts. Checks consume
-those snapshots as data and reject them when their source inputs change.
+boots your application separately to record what Rails or another framework
+resolved at runtime. Checks consume those facts as data and report them as
+stale when the files they depend on change.
 
 1. **Collect.** The patterns from `source` (defaulting to `app/**/*.rb`,
    `lib/**/*.rb`, and pack/engine paths) are globbed from the project
@@ -38,7 +39,10 @@ those snapshots as data and reject them when their source inputs change.
    (`RubydexIndex`)
 4. **Merge facts.** The Prism overlay adds literal `require` calls, dynamic
    syntax, framework macros, and other source-shape facts Rubydex does not
-   expose. (`Analyzer::SyntaxOverlay`)
+   expose. Static concern modeling then assigns callback methods, mixins, and
+   call receivers to their consumers. Finally, fresh facts from
+   `archspec reflect` are validated and imported, and stale ones are reported. (`Analyzer::SyntaxOverlay`, `ConcernSemantics`,
+   `Facts.load_into`)
 5. **Assign components.** Each `component` declaration claims files by glob,
    constants by namespace/name, or classes by ancestry. `except:` subtracts
    from file globs and ancestry. A glob whose literal leading directories sit
@@ -87,6 +91,11 @@ app/models/user.rb
   outgoing facts:
     2:22 │ references UsersController
 ```
+
+Facts captured at runtime are marked with their producer, such as
+`references Customer (from rails facts)`. See
+[Framework integrations]({% link _guides/framework-integrations.md %}) to write
+a producer for another framework.
 
 ## A Violation, Traced
 

@@ -122,7 +122,7 @@ architecture :cqrs,
 ## What It Checks
 
 - **Dependencies:** allowed and forbidden references between components, in both directions
-- **Rails associations:** opt-in runtime reflection supplies resolved references for subsequent static checks
+- **Rails reflection:** opt-in runtime capture of association targets, custom validators, and conditional concern effects, enforced by later static checks
 - **Privacy:** other components must go through a component's public API
 - **Concerns:** a concern must not depend on the classes that include it
 - **Layers:** dependency direction and cycles
@@ -178,12 +178,16 @@ bundle exec archspec check --update-todo
 bundle exec archspec explain app/models/user.rb
 ```
 
-To check dependencies expressed through Rails associations, add
-`facts "archspec_facts"` to `Archspec.rb`, then run
-`bundle exec archspec reflect --environment test`. This command explicitly boots
-Rails and captures its resolved associations. Ordinary checks read the snapshot
-without booting the app, and reject stale snapshots after source or configuration
-changes. See the [association reflection guide](https://archspecrb.dev/association-reflection/).
+To check dependencies Rails resolves at runtime, such as association targets
+and custom validators, add `reflect :rails` to `Archspec.rb` and run
+`bundle exec archspec reflect --environment test`. It boots the app once, in a
+separate process, and saves what Rails resolved. Checks read those facts
+without booting anything, and fail with `facts.stale` for files edited since.
+See the [Rails reflection guide](https://archspecrb.dev/association-reflection/).
+
+Other frameworks and macro libraries can supply facts with a small producer
+that the same command runs. See the
+[framework integration guide](https://archspecrb.dev/framework-integrations/).
 
 `explain` shows why a file or constant belongs to a component, its resolved
 ancestry, outgoing facts, incoming dependencies, and anything the analysis

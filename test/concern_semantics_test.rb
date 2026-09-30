@@ -359,6 +359,27 @@ class ConcernSemanticsTest < ArchSpecTest
     end
   end
 
+  def test_concerns_outside_the_project_root_are_modeled
+    with_project do |dir|
+      root = "#{dir}/app"
+      write "#{dir}/shared/taggable.rb", <<~RUBY
+        module Taggable
+          extend ActiveSupport::Concern
+          included do
+            def tag = nil
+          end
+        end
+      RUBY
+      write "#{root}/app/models/post.rb", "class Post\n  include Taggable\nend\n"
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :shared, in: '../shared/**/*.rb'
+      end
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      assert_includes graph.effective_instance_methods('Post').first, :tag
+    end
+  end
+
   private
 
 

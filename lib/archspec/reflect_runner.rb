@@ -1,24 +1,26 @@
 # frozen_string_literal: true
 
-# Executed only by the explicit `archspec reflect` Rails runner subprocess.
+# Executed only by `archspec reflect`, once per producer, in its own process.
 require_relative '../archspec'
 
 begin
-  unless defined?(Rails.application) && Rails.application && defined?(ActiveRecord::Base)
-    raise ArchSpec::Error, 'Rails reflection requires a loaded Rails application with Active Record'
-  end
-  Rails.application.eager_load!
-  definition, root = ArchSpec::CLI.send(:load_definition, ENV.fetch('ARCHSPEC_REFLECTION_CONFIG'))
-  graph = ArchSpec::Analyzer.analyze(definition, root: root, include_facts: false)
-  if graph.files.values.any? { |file| file.parse_errors.any? }
-    raise ArchSpec::Error, 'cannot reflect source with syntax errors'
-  end
-  document = ArchSpec::RailsReflector.capture(graph, models: ActiveRecord::Base.descendants,
-    environment: Rails.env.to_s, facts_path: definition.facts_path)
-  output = ENV.fetch('ARCHSPEC_REFLECTION_OUTPUT')
+  started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  definition, root = ArchSpec::CLI.load_definition(ENV.fetch('ARCHSPEC_REFLECTION_CONFIG'))
+  producer = ArchSpec::Producer.load(ENV.fetch('ARCHSPEC_PRODUCER'), definition)
+  document = producer.run(definition, root)
+  output = File.join(File.expand_path(definition.facts_path, root), "#{producer.name}.yml")
   ArchSpec::Facts.write(output, document)
-  puts "Updated #{Pathname(output).relative_path_from(Pathname(root))} with #{document['references'].size} association references."
-  document['gaps'].each { |gap| puts "Analysis gap: #{gap['message']}" }
+  labels = { 'references' => 'reference', 'methods' => 'method', 'mixins' => 'mixin', 'gaps' => 'gap',
+             'resolves' => 'resolved gap' }
+  counts = labels.filter_map do |key, label|
+    size = key == 'methods' ? document[key].sum { |entry| entry['names'].size } : document[key].size
+    "#{size} #{label}#{'s' unless size == 1}" if size.positive?
+  end
+  elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+  summary = counts.empty? ? 'no facts' : counts.join(', ')
+  puts format('Updated %<path>s: %<summary>s (%<seconds>.1fs)',
+    path: Pathname(output).relative_path_from(Pathname(root)), summary: summary, seconds: elapsed)
+  document['gaps'].each { |gap| puts "  gap: #{gap['path']}:#{gap['line']} #{gap['message']}" }
 rescue ArchSpec::Error => error
   warn error.message
   exit 1

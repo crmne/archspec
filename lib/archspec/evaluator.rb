@@ -9,7 +9,7 @@ module ArchSpec
     end
 
     def unsuppressed(definition, graph)
-      diagnostics = parser_diagnostics(graph) + definition.rules.flat_map { |rule| rule.evaluate(graph) }
+      diagnostics = parser_diagnostics(graph) + graph.fact_diagnostics + definition.rules.flat_map { |rule| rule.evaluate(graph) }
 
       # Deduplicate before rejecting. One statement can raise several diagnostics
       # that differ only in evidence, because `include Foo` is both an includes
