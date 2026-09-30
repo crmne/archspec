@@ -131,7 +131,9 @@ module ArchSpec
             next unless syntax.constant_name_at(path, location)
 
             target, resolved = reference_target(reference, path)
-            constant.add_mixin(kind, resolved || target)
+            # A resolved name is absolute; resolving it again from the includer's
+            # scope could pick a nested constant with the same name.
+            constant.add_mixin(kind, resolved ? "::#{resolved}" : target)
             add_ancestry_edge(graph, :"#{kind}s", name, definition, reference, target, resolved)
           end
         end

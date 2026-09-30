@@ -78,7 +78,7 @@ module ArchSpec
           if kind != :extend && @concerns.include?(target)
             install_concern(consumer, target, kind, edge, visited)
           else
-            consumer.add_mixin(kind, target)
+            consumer.add_mixin(kind, "::#{target}")
           end
         end
       end
@@ -193,7 +193,7 @@ module ArchSpec
 
         constant.mixins.each_value(&:clear)
         mixins.fetch([constant.name, constant.path], []).each do |edge|
-          constant.add_mixin(MIXINS.fetch(edge.type), graph.resolve_edge_constant(edge))
+          constant.add_mixin(MIXINS.fetch(edge.type), "::#{graph.resolve_edge_constant(edge)}")
         end
       end
     end
@@ -251,7 +251,7 @@ module ArchSpec
     end
 
     def add_mixin(consumer, kind, target, origin)
-      consumer.add_mixin(kind, target)
+      consumer.add_mixin(kind, "::#{target}")
       type = kind == :singleton_prepend ? :extends : MIXINS.key(kind)
       return unless @installed_mixins.add?([consumer.name, consumer.path, type, target])
 

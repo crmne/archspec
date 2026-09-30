@@ -326,6 +326,39 @@ class ConcernSemanticsTest < ArchSpecTest
     end
   end
 
+  def test_resolved_mixins_are_not_reresolved_against_nested_constants
+    with_project do |root|
+      write "#{root}/lib/eventable.rb", <<~RUBY
+        module Eventable
+          extend ActiveSupport::Concern
+          def track_event = nil
+        end
+        module Logging
+          def log = nil
+        end
+      RUBY
+      write "#{root}/lib/card.rb", <<~RUBY
+        class Card
+          include Eventable
+          include ::Logging
+        end
+        module Card::Eventable
+          extend ActiveSupport::Concern
+          include ::Eventable
+        end
+        module Card::Logging; end
+      RUBY
+      graph = analyze_library(root)
+      ancestors, = graph.ancestor_names('Card')
+      assert_includes ancestors, 'Eventable'
+      assert_includes ancestors, 'Card::Eventable'
+      assert_includes ancestors, 'Logging'
+      refute_includes ancestors, 'Card::Logging'
+      assert_includes graph.effective_instance_methods('Card').first, :track_event
+      assert_includes graph.effective_instance_methods('Card').first, :log
+    end
+  end
+
   private
 
 
