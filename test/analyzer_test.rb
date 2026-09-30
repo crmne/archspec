@@ -308,6 +308,71 @@ class AnalyzerTest < ArchSpecTest
     end
   end
 
+  def test_component_patterns_inside_default_ignores_are_analyzed
+    with_project do |root|
+      write "#{root}/vendor/engines/billing/app/models/billing/invoice.rb",
+        "module Billing\n  class Invoice\n    def total = Catalog::Product.count\n  end\nend\n"
+      write "#{root}/vendor/engines/billing/spec/invoice_spec.rb", "Billing::Invoice\n"
+      write "#{root}/vendor/engines/catalog/app/models/catalog/product.rb", "module Catalog\n  class Product; end\nend\n"
+      write "#{root}/vendor/bundle/gems/rack/lib/rack.rb", "module Rack; end\n"
+
+      definition = ArchSpec.define do
+        self.base_dir = root
+        each_directory 'vendor/engines/*' do |name, path|
+          component name, in: "#{path}/**/*.rb", except: "#{path}/spec/**/*.rb"
+        end
+        billing.cannot_use :catalog
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      diagnostics = ArchSpec::Evaluator.evaluate(definition, graph)
+
+      assert_equal %w[
+        vendor/engines/billing/app/models/billing/invoice.rb
+        vendor/engines/catalog/app/models/catalog/product.rb
+      ], graph.files.values.map(&:relative_path).sort
+      assert_equal ['dependencies.forbid'], diagnostics.map(&:rule)
+      assert_equal 'Billing::Invoice references Catalog::Product', diagnostics.first.evidence
+    end
+  end
+
+  def test_broad_component_patterns_do_not_reach_into_default_ignores
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/vendor/engines/billing/app/models/invoice.rb", "class Invoice; end\n"
+      write "#{root}/tmp/cache/generated.rb", "class Generated; end\n"
+      write "#{root}/node_modules/pkg/tool.rb", "class Tool; end\n"
+
+      definition = ArchSpec.define do
+        component :everything, in: '**/*.rb'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal ['app/models/user.rb'], graph.files.values.map(&:relative_path)
+    end
+  end
+
+  def test_user_ignores_win_over_component_patterns_inside_default_ignores
+    with_project do |root|
+      write "#{root}/vendor/engines/billing/app/models/invoice.rb", "class Invoice; end\n"
+      write "#{root}/vendor/engines/legacy/app/models/ledger.rb", "class Ledger; end\n"
+
+      narrowed = ArchSpec.define do
+        component :engines, in: 'vendor/engines/**/*.rb'
+        ignore 'vendor/engines/legacy/**/*'
+      end
+      redeclared = ArchSpec.define do
+        component :engines, in: 'vendor/engines/**/*.rb'
+        ignore 'vendor/**/*'
+      end
+
+      assert_equal ['vendor/engines/billing/app/models/invoice.rb'],
+        ArchSpec::Analyzer.analyze(narrowed, root: root).files.values.map(&:relative_path)
+      assert_empty ArchSpec::Analyzer.analyze(redeclared, root: root).files
+    end
+  end
+
   def test_component_exclusions_subtract_only_from_file_patterns
     with_project do |root|
       write "#{root}/app/models/user.rb", "class User; end\n"

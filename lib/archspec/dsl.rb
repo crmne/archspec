@@ -50,7 +50,10 @@ module ArchSpec
       end
 
       # Adds glob patterns for files to skip. Combines with the built-in
-      # ignores for +.git+, +tmp+, +vendor+, and +node_modules+.
+      # ignores for +.git+, +.bundle+, +tmp+, +vendor+, and +node_modules+.
+      # A built-in ignore steps aside for a component pattern whose literal
+      # leading directories sit inside it, such as
+      # <tt>vendor/engines/*/**/*.rb</tt>; patterns declared here always win.
       def ignore(*patterns)
         add_ignore_patterns(patterns)
       end

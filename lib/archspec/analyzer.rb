@@ -50,7 +50,24 @@ module ArchSpec
     end
 
     def ignored_files(definition, root)
-      definition.ignore_patterns.flat_map do |pattern|
+      glob_files(definition.ignore_patterns, root) - claimed_files(definition, root)
+    end
+
+    # Files a component pattern explicitly claims inside a default-ignored
+    # directory, minus its +except:+ matches and anything the user ignored.
+    def claimed_files(definition, root)
+      claimed = definition.component_specs.values.flat_map do |spec|
+        patterns = spec.file_patterns.select { |pattern| definition.claims_default_ignored?(pattern) }
+        next [] if patterns.empty?
+
+        (glob_files(patterns, root) - glob_files(spec.exclude_patterns, root)).to_a
+      end.to_set
+
+      claimed.empty? ? claimed : claimed - glob_files(definition.user_ignore_patterns, root)
+    end
+
+    def glob_files(patterns, root)
+      patterns.flat_map do |pattern|
         Dir.glob(File.absolute_path(pattern, root))
       end.select { |path| File.file?(path) }.map { |path| File.expand_path(path) }.to_set
     end
