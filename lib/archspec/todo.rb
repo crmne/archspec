@@ -8,6 +8,10 @@ module ArchSpec
   # in an existing app and burn the list down over time. Matched by
   # ArchSpec::Diagnostic#fingerprint, so entries survive edits that shift lines.
   class Todo
+    # The keys an entry keeps. Anything else in the file, such as the line an
+    # older format recorded, is dropped so reports have one fixed shape.
+    FIELDS = %w[id rule path message evidence].freeze
+
     def self.empty(root: nil)
       new({}, root: root)
     end
@@ -26,7 +30,8 @@ module ArchSpec
           raise Error, "invalid todo file #{path}: violation #{index + 1} has no id"
         end
 
-        [id, entry.is_a?(Hash) ? entry : { 'id' => id }]
+        fields = entry.is_a?(Hash) ? entry : {}
+        [id, FIELDS.to_h { |key| [key, fields[key]] }.merge('id' => id)]
       end
 
       new(entries, root: root)

@@ -279,7 +279,7 @@ class CLITest < ArchSpecTest
       status = Dir.chdir(root) { ArchSpec::CLI.run(['check', '--update-todo'], output: output, error: StringIO.new) }
 
       assert_equal 0, status
-      assert_match(/Updated archspec_todo\.yml with 1 violation\./, output.string)
+      assert_match(/Updated archspec_todo\.yml with 1 entry\./, output.string)
       assert_path_exists "#{root}/archspec_todo.yml"
 
       recheck = StringIO.new
@@ -358,6 +358,36 @@ class CLITest < ArchSpecTest
     end
   end
 
+  def test_check_todo_json_gives_obsolete_entries_a_fixed_shape
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :models, in: "app/models/**/*.rb"
+        todo "archspec_todo.yml"
+      RUBY
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/archspec_todo.yml", <<~YAML
+        violations:
+        - id: 0123456789abcdef01234567
+          rule: dependencies.forbid
+          path: app/models/user.rb
+          line: 3
+          owner: someone
+        - deadbeefdeadbeefdeadbeef
+      YAML
+
+      output = StringIO.new
+      Dir.chdir(root) do
+        ArchSpec::CLI.run(['check', '--check-todo', '--format', 'json'], output: output, error: StringIO.new)
+      end
+      old_format, bare = JSON.parse(output.string)['obsolete_todo']
+
+      assert_equal({ 'id' => '0123456789abcdef01234567', 'rule' => 'dependencies.forbid',
+                     'path' => 'app/models/user.rb', 'message' => nil, 'evidence' => nil }, old_format)
+      assert_equal({ 'id' => 'deadbeefdeadbeefdeadbeef', 'rule' => nil, 'path' => nil, 'message' => nil,
+                     'evidence' => nil }, bare)
+    end
+  end
+
   def test_check_todo_scopes_obsolete_entries_to_path_arguments
     with_project do |root|
       write "#{root}/Archspec.rb", <<~RUBY
@@ -421,7 +451,7 @@ class CLITest < ArchSpecTest
       output = StringIO.new
       Dir.chdir(root) { ArchSpec::CLI.run(['check', '--update-todo'], output: output, error: StringIO.new) }
 
-      assert_match(/with 1 violation\./, output.string)
+      assert_match(/with 1 entry\./, output.string)
     end
   end
 
@@ -479,7 +509,7 @@ class CLITest < ArchSpecTest
       status = Dir.chdir(root) { ArchSpec::CLI.run(['check', '--update-todo'], output: output, error: StringIO.new) }
 
       assert_equal 0, status
-      assert_match(/with 0 violations/, output.string)
+      assert_match(/with 0 entries/, output.string)
 
       recheck = StringIO.new
       recheck_status = Dir.chdir(root) { ArchSpec::CLI.run(['check'], output: recheck, error: StringIO.new) }

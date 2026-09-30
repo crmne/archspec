@@ -154,7 +154,8 @@ class TodoTest < ArchSpecTest
       todo = ArchSpec::Todo.load(todo_path, root: root)
 
       assert_empty ArchSpec::Evaluator.evaluate(definition, graph, todo: todo)
-      assert_equal [{ 'id' => 'deadbeefdeadbeefdeadbeef' }],
+      assert_equal [{ 'id' => 'deadbeefdeadbeefdeadbeef', 'rule' => nil, 'path' => nil, 'message' => nil,
+                     'evidence' => nil }],
                    todo.unmatched_by(ArchSpec::Evaluator.unsuppressed(definition, graph))
     end
   end

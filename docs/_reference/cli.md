@@ -72,7 +72,7 @@ This is the fast loop after an agent or a person edits a few files. It cannot be
 bundle exec archspec check --update-todo
 ```
 
-Writes the current violations to the configured todo file. Use this for existing apps, not for accepting new regressions. Parse errors are never written to the todo; a file that does not parse has to be fixed.
+Writes the current violations to the configured todo file. One entry covers every occurrence with the same id (fingerprint), so the count it reports can be lower than the number of violations. Use this for existing apps, not for accepting new regressions. Parse errors are never written to the todo; a file that does not parse has to be fixed.
 
 Each entry records the violation's stable id and the fields the id is built from: rule, path, message, and evidence. Line numbers are left out on purpose. They are not part of the id, so an edit that only shifts code leaves the file byte-identical, and entries sort by those same fields rather than by location.
 

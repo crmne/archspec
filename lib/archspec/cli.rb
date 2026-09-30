@@ -148,7 +148,7 @@ module ArchSpec
 
       if options[:update_todo]
         count = Todo.write(todo_path, acceptable, root: root)
-        label = count == 1 ? 'violation' : 'violations'
+        label = count == 1 ? 'entry' : 'entries'
         output.puts "Updated #{Pathname(todo_path).relative_path_from(Pathname(root))} with #{count} #{label}."
         return 0
       end
