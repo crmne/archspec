@@ -5,6 +5,8 @@ require_relative 'base'
 
 module ArchSpec
   module Sources
+    # Parses Ruby and Rake files with Prism and exposes their program and
+    # comments. These sources also support semantic indexing with Rubydex.
     class Ruby < Base
       def self.extensions
         %w[.rb .rake]

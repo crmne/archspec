@@ -39,8 +39,9 @@ those snapshots as data and reject them when their source inputs change.
    loads the document's serialized Prism program, retaining complete Ruby
    control flow and shared locals. Ruby syntax errors become `parser.syntax` diagnostics at
    the original source locations; HTML structure is not validated.
-   `archspec:disable` comments are collected as suppressions from Prism's
-   comments and, for ERB, from `<%# ... %>` comments extracted with `Herb.lex`.
+   `archspec:disable` comments are collected as suppressions both 
+   from embedded Ruby comments, extracted by Prism and from 
+   ERBComments (e.g. `<%# ... %>`) collected from the `Herb.parse` AST.
    Layout `yield` expressions are accepted, and their arguments are analyzed.
 3. **Resolve semantics.** Rubydex indexes the collected `.rb` and `.rake` files
    and resolves declarations, constants, ancestors, methods, and aliases.

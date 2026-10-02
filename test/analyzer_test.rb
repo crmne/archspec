@@ -116,7 +116,7 @@ class AnalyzerTest < ArchSpecTest
     end
   end
 
-  def test_erb_same_line_suppressions_and_ruby_comment_extraction_limits
+  def test_erb_same_line_suppressions
     with_project do |root|
       write "#{root}/app/models/user.rb", "class User; end\n"
       path = "#{root}/app/views/index.html.erb"
@@ -138,15 +138,54 @@ class AnalyzerTest < ArchSpecTest
       graph = ArchSpec::Analyzer.analyze(definition, root: root)
       diagnostics = ArchSpec::Evaluator.evaluate(definition, graph)
 
-      assert_equal [3, 4, 7], diagnostics.map { |diagnostic| diagnostic.location.line }
-      # Herb omits the single-line Ruby comments but retains the adjacent expressions.
+      assert_equal [7], diagnostics.map { |diagnostic| diagnostic.location.line }
       assert_equal [1, 2, 3, 4, 5, 7],
                    graph.edges.select { |edge| edge.to == 'User' }.map { |edge| edge.location.line }
       assert_equal [
         ArchSpec::Suppression.new('dependencies.forbid', 1, 1, 'before'),
         ArchSpec::Suppression.new('dependencies.forbid', 2, 2, 'after'),
+        ArchSpec::Suppression.new('dependencies.forbid', 3, 3, nil),
+        ArchSpec::Suppression.new('dependencies.forbid', 4, 4, nil),
         ArchSpec::Suppression.new('dependencies.forbid', 5, 5, nil)
       ], graph.files.fetch(path).suppressions
+    end
+  end
+
+  def test_erb_inline_suppressions_and_enable_restore_diagnostics
+    with_project do |root|
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      path = "#{root}/app/views/index.html.erb"
+      definition = ArchSpec.define do
+        component :views, in: 'app/views/**/*.erb'
+        component :models, in: 'app/models/**/*.rb'
+        views.cannot_use :models
+      end
+
+      ['', ' *', ' dependencies.forbid'].each do |rule|
+        write path, <<~ERB
+          <%= User.count # archspec:disable-line#{rule} %><b>trailing HTML</b>
+          <%= User.count # archspec:disable-line#{rule} -- accepted -%>
+          <%- # archspec:disable-next-line#{rule} -%>
+          <%= User.count %>
+          <% x = 1 # archspec:disable#{rule} -- block %>
+          <%= User.count %>
+          <% x = 1 # archspec:enable#{rule} -%>
+          <%= User.count %>
+          <% # archspec:disable#{rule} %>
+          <%= User.count %>
+          <%- # archspec:enable#{rule} -%>
+          <%= User.count %>
+          <% x = 1 # archspec:disable-next-line#{rule} %>
+          <%= User.count %>
+          <%= User.count %>
+        ERB
+        graph = ArchSpec::Analyzer.analyze(definition, root: root)
+        diagnostics = ArchSpec::Evaluator.evaluate(definition, graph)
+
+        assert_equal [8, 12, 15], diagnostics.map { |diagnostic| diagnostic.location.line }, rule
+        assert_equal [nil, 'accepted', nil, 'block', nil, nil],
+                     graph.files.fetch(path).suppressions.map(&:reason)
+      end
     end
   end
 
@@ -287,10 +326,13 @@ class AnalyzerTest < ArchSpecTest
       write "#{root}/lib/tasks/cleanup.rake", "task :cleanup do\n  User.delete_all\nend\n"
       write "#{root}/lib/tasks/ignored.rake", "User.delete_all\n"
       write "#{root}/lib/tasks/template.erb", '<%= User.count %>'
+      write "#{root}/lib/tasks/ignored.erb", '<%= User.count %>'
+      write "#{root}/lib/tasks/notes.txt", 'User.count'
 
       definition = ArchSpec.define do
         source 'app/**/*.rb', 'lib/tasks/**/*'
         ignore 'lib/tasks/ignored.rake'
+        ignore 'lib/tasks/ignored.erb'
         component :models, in: 'app/models/**/*.rb'
         component :tasks, in: 'lib/tasks/**/*.rake'
         tasks.cannot_use :models

@@ -53,7 +53,7 @@ module ArchSpec
       definition.analysis_patterns.flat_map do |pattern|
         Dir.glob(File.absolute_path(pattern, root))
       end.select do |path|
-        File.file?(path)
+        File.file?(path) && path.end_with?(*extensions)
       end.map do |path|
         File.expand_path(path)
       end.uniq.reject do |path|

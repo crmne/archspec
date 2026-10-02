@@ -25,6 +25,9 @@ and ERB templates with source patterns such as
 `component :views, in: "app/views/**/*.erb"`. Ignore patterns apply to all three
 file types.
 
+Note that broad source or component patterns, such as `lib/tasks/**/*`,  include 
+all supported formats: `.rb`, `.rake` and `.erb` files.
+
 For ERB templates, Herb provides a complete Prism program with template source
 locations, which ArchSpec analyzes so diagnostics point to the original template.
 ArchSpec checks the Ruby code, not the HTML structure. See
@@ -172,9 +175,21 @@ archspec:enable RULE
 
 Omit `RULE` to suppress all ArchSpec rules on that line or block.
 
-In ERB templates, use ERB comments for suppressions:
+In ERB templates, suppressions work in ERB comments, comment-only Ruby tags
+(`<% # ... %>` or `<%- # ... -%>`), and inline Ruby comments:
 
 ```erb
 <%# archspec:disable-next-line dependencies.forbid -- legacy export %>
 <%= Admin::UsersController.name %>
+
+<%= User.count # archspec:disable-line dependencies.forbid %>
+
+<% # archspec:disable dependencies.forbid %>
+<%= User.count %>
+<% x = 1 # archspec:enable dependencies.forbid %>
+<%= User.count %>
 ```
+
+The final expression is checked again after `enable`. Suppressions use physical
+template lines, and inline comments end at their ERB closing tag. Escaped tags
+such as `<%% # archspec:disable %>` are literal text and do not suppress checks.

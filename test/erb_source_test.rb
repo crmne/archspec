@@ -178,6 +178,7 @@ class ErbSourceTest < ArchSpecTest
       assert_equal [
         ['note', 1, 5],
         ['archspec:disable *', 2, 0],
+        ['# archspec:enable *', 3, 5],
         ['# archspec:disable-next-line', 4, 11],
         ['# archspec:disable-line *', 5, 2]
       ], source.comments.sort_by { |comment| [comment.line, comment.column] }
@@ -193,7 +194,7 @@ class ErbSourceTest < ArchSpecTest
       source = ArchSpec::Sources::Erb.new(path)
 
       assert_empty source.prism.statements.body
-      assert_equal ['User.count', 'ordinary prose'],
+      assert_equal ['User.count', '# Ruby comment', 'ordinary prose'],
                    source.comments.map { |comment| comment.text.strip }
     end
   end
@@ -281,6 +282,35 @@ class ErbSourceTest < ArchSpecTest
       source = ArchSpec::Sources::Erb.new(path)
       assert_empty source.parse_errors
       assert_equal ['user.name'], source.prism.statements.body.map(&:slice)
+    end
+  end
+
+  def test_inline_comments_stop_at_tag_boundaries
+    with_project do |root|
+      path = "#{root}/source.erb"
+      template = "é<%= First.count # archspec:disable-line -%><b>after</b><%= Second.count %>\r\n" \
+                 "<% if true # archspec:disable * %>\r\n<%= Third.count %>\r\n<% end %>\r\n"
+      write path, template
+      source = ArchSpec::Sources::Erb.new(path)
+
+      assert_equal [
+        ['# archspec:disable-line', 1, template.b.index('#')],
+        ['# archspec:disable *', 2, 11]
+      ], source.comments.map { |comment| [comment.text.strip, comment.line, comment.column] }
+      assert_empty source.parse_errors
+      assert_equal 'First.count', source.prism.statements.body.first.slice
+    end
+  end
+
+  def test_comment_only_tags_preserve_positions_and_skip_escapes
+    with_project do |root|
+      path = "#{root}/source.erb"
+      write path, "é<% # first %><%- # second -%>\r\n<%% # archspec:disable %>\r\n"
+      source = ArchSpec::Sources::Erb.new(path)
+
+      assert_equal [['# first', 1, 5], ['# second', 1, 19]],
+                   source.comments.map { |comment| [comment.text.strip, comment.line, comment.column] }
+      assert_empty source.prism.statements.body
     end
   end
 

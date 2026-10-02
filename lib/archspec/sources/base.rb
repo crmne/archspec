@@ -4,6 +4,9 @@ require_relative 'comment'
 
 module ArchSpec
   module Sources
+    # Shared interface for source adapters. Normalizes the file path, parses
+    # eagerly, and converts parser errors to ArchSpec source locations.
+    # Subclasses provide supported extensions, a Prism program, and comments.
     class Base
       def self.extensions
         raise NotImplementedError
