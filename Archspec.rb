@@ -8,12 +8,14 @@ component :cli, in: 'lib/archspec/cli.rb'
 component :analysis, in: %w[
   lib/archspec/analyzer.rb
   lib/archspec/concern_semantics.rb
+  lib/archspec/producer.rb
   lib/archspec/rails_reflector.rb
   lib/archspec/evaluator.rb
 ]
 component :domain, in: %w[
   lib/archspec/todo.rb
   lib/archspec/facts.rb
+  lib/archspec/facts/**/*.rb
   lib/archspec/component_spec.rb
   lib/archspec/definition.rb
   lib/archspec/diagnostic.rb

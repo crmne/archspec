@@ -1,23 +1,24 @@
 ---
-title: Association reflection
+title: Rails reflection
 nav_order: 7
-description: Capture resolved Active Record associations as versioned facts, then enforce their dependencies with static ArchSpec checks.
+description: Capture what Rails resolved at runtime (association targets, custom validators, and conditional concern effects) as facts that static ArchSpec checks enforce.
 ---
 
-# Association reflection
+# Rails reflection
 
-An association such as `belongs_to :customer` refers to a class without naming a
-Ruby constant in the source. ArchSpec can capture that dependency using your
-application's real Active Record reflections, including its inflectors,
-namespace lookup, `class_name`, and `through` associations.
+Some dependencies are not spelled out in the source. `belongs_to :customer`
+names a class through Rails conventions, `validates :email, email: true` names
+`EmailValidator` the same way, and a concern can decide at runtime what it
+mixes into a model. ArchSpec can ask your booted application what Rails
+actually resolved, save that as facts, and check it statically from then on.
 
-## Capture associations
+## Capture facts
 
-Add a facts directory to `Archspec.rb`:
+Add one line to `Archspec.rb`:
 
 ```ruby
 architecture :rails
-facts "archspec_facts"
+reflect :rails
 ```
 
 Then run:
@@ -27,100 +28,99 @@ bundle exec archspec reflect --environment test
 bundle exec archspec check
 ```
 
-`reflect` explicitly starts `bin/rails runner`, eager loads the application, and
-asks Active Record for its resolved associations. It writes
-`archspec_facts/rails.yml` atomically. Your application must be able to boot in the
-chosen environment; any normal boot requirements still apply. ArchSpec does not
-run migrations or query association records.
+`reflect` starts a separate process, loads `config/environment.rb`, eager loads
+the application, and writes `archspec_facts/rails.yml`. Your application must be
+able to boot in the chosen environment; the usual boot requirements still
+apply. ArchSpec does not run migrations, connect to the database, or query
+records.
 
-`check` and `explain` only read the facts files. They do not require Active Record
-or load the application. Captured references participate in dependency, privacy,
-and cycle rules, with diagnostics pointing at the association declaration.
-Generated association readers and writers also contribute method facts.
+`check` and `explain` only read the facts. They never load the application or
+Rails. `facts "archspec_facts"` without `reflect` also selects the Rails
+producer; use it to keep the facts in another directory.
 
-The reflector records inherited associations once, on their declaring model. It
-can locate declarations in ordinary model bodies and included concerns. An
-association needs one matching literal declaration to produce a source-backed
-reference. Dynamic names and ambiguous redeclarations are reported as gaps.
-Polymorphic associations have no single target class and remain gaps too; their
-confirmed generated readers and writers can still be recorded.
+## What the Rails producer records
 
-## Keep snapshots current
+**Associations.** Each association's resolved target, using the application's
+real inflections, namespace lookup, `class_name`, and `through` options, becomes
+a reference located at its declaration. Generated readers and writers become
+methods on the model. Inherited associations are recorded once, on the model
+that declares them; associations declared in concerns belong to each model that
+includes the concern, with the location in the concern.
 
-Each facts file records content hashes for every analyzed source file, plus Rails
-configuration files under `config/`, the root Gemfile, lockfile, gemspecs, and Ruby
-version file when present. Configured facts directories are excluded from these
-hashes. A changed, added, or deleted input invalidates the snapshot. Missing or
-stale configured facts fail the check with a regeneration message.
+**Custom validators.** `validates :email, email: true` and namespaced keys such
+as `"billing/iban": true` become references from the model to the validator
+class Rails resolved, at the `validates` call. Validators passed to
+`validates_with` are already visible in the source. Active Model and Active
+Record's own validators are skipped.
 
-Run reflection after code, dependency, or configuration changes, before checking:
+**Conditional concern callbacks.** Static analysis treats a mixin or method
+inside a conditional `included` or `prepended` block as a gap, because it
+cannot know which branch runs. The producer inspects every consumer: a module
+the consumer really received, or a method whose definition is really that
+callback's, is recorded on that consumer, located at the declaration. When
+every consumer could be inspected and every observed effect had exactly one
+possible declaration, the gap is resolved and disappears from the analysis
+gaps. Otherwise it stays.
+
+Diagnostics point at the declaration, so suppressions and todo entries work as
+they do for source facts. `archspec explain` marks these facts with
+`(from rails facts)`.
+
+The producer never guesses. Dynamic association names, ambiguous redeclarations,
+polymorphic targets, unresolvable classes, and validators with no literal
+declaration are reported as analysis gaps. Polymorphic associations still get
+their confirmed readers and writers.
+
+## Keep facts current
+
+Facts describe the source they were captured from. When it changes, `check`
+reports a `facts.stale` violation and stops using the affected facts:
+
+- **An edited model or concern.** The facts recorded from that file go stale.
+  The Rails producer covers `app/models/**/*.rb` (including engines under
+  `*/app/models/`) and every file its facts cite, so adding a model file also
+  reports it. Edits anywhere else, such as a controller or a service, do not
+  touch the facts. A fact that depends on another file only indirectly, such
+  as a `through` association whose intermediate model changed, is caught
+  through that model's own stale report.
+- **A new includer of a settled concern.** A conditional callback resolved from
+  the captured consumers is reported as stale for any class that includes the
+  concern later.
+- **A deleted file.** Its facts are dropped with it.
+- **Configuration or dependencies.** A change to anything under `config/`, the
+  `Gemfile` or `Gemfile.lock`, a gemspec, or `.ruby-version` invalidates the
+  whole file.
+- **A different environment.** The producer records `RAILS_ENV`. When a check
+  runs with a different `RAILS_ENV`, the facts are stale.
+
+```text
+[error] rails facts are out of date for this file; run `archspec reflect` [facts.stale]
+
+app/models/invoice.rb:1:1
+```
+
+A stale fact never passes silently: the check fails until you regenerate.
+`--update-todo` refuses to run while facts are stale, and stale violations are
+never written to the todo. When you check specific paths, a stale file outside
+them is not reported, but stale configuration always is.
+
+Run reflection after changing models or configuration:
 
 ```sh
-bundle exec archspec reflect --environment test
-bundle exec archspec check --format json
+bundle exec archspec reflect --environment test && bundle exec archspec check
 ```
 
-Capture a consistent environment. The snapshot records its Rails environment;
-when `RAILS_ENV` is set during a check, it must match. Environment variables,
-external services, database-driven configuration, and local path dependencies
-outside the analyzed project are not fingerprinted. Regenerate when those change
-as well. A snapshot describes the runtime that produced it, not every possible
-runtime configuration.
+Environment variables other than `RAILS_ENV`, external services, database-driven
+configuration, and path dependencies outside the project are not fingerprinted.
+Regenerate when those change too. Facts describe the runtime that produced them,
+not every possible configuration.
 
-You can commit snapshots to make static checks independent of Rails booting, or
-regenerate them in a CI setup step that has the application's dependencies.
-Remove the `facts` declaration to opt out entirely. A failed reflection run keeps
-the previous file, which must still pass the staleness check before use.
+Commit `archspec_facts/` to keep checks independent of booting Rails, or
+regenerate it in a CI step that has the application's dependencies. A failed
+reflection keeps the previous file.
 
-## Custom facts producers
+## Other frameworks
 
-Other macro libraries can produce their own `.yml` file in the configured
-directory. The version 1 document contains a producer name, an input snapshot,
-and lists of references, generated methods, and optional analysis gaps. No Ruby
-objects or YAML aliases are accepted.
-
-A producer can build a graph without importing its previous snapshots and use the
-shared writer:
-
-```ruby
-graph = ArchSpec::Analyzer.analyze(definition, root: root, include_facts: false)
-
-ArchSpec::Facts.write(File.join(root, "archspec_facts/custom.yml"), {
-  "version" => ArchSpec::Facts::VERSION,
-  "producer" => "my_library",
-  "snapshot" => ArchSpec::Facts.snapshot(graph, excluding: "archspec_facts"),
-  "references" => [{
-    "source" => "Invoice",
-    "target" => "Customer",
-    "path" => "app/models/invoice.rb",
-    "line" => 3
-  }],
-  "methods" => [{
-    "owner" => "Invoice",
-    "scope" => "instance",
-    "names" => ["customer", "customer="],
-    "path" => "app/models/invoice.rb",
-    "line" => 3
-  }],
-  "gaps" => []
-})
-```
-
-Only emit relationships established by the producer's runtime or authoritative
-metadata. ArchSpec validates the envelope and source locations; it does not
-independently prove an external producer's claims.
-
-All paths are relative to the project root and must identify analyzed files.
-`source` and `owner` must identify a constant defined in `source_path`, which
-defaults to `path`. Use a separate `source_path` when a macro's evidence is in a
-concern but its owner is a model defined elsewhere. Targets may be external
-constants; those stay unresolved until their declarations are analyzed.
-
-Locations require `path` and a positive `line`. Optional `column`, `end_line`,
-and `end_column` use the same one-based byte coordinates as ArchSpec diagnostics;
-by default they identify a point at column 1. Method scope is `instance` or
-`class`. A gap uses `source`, `message`, and the same location fields. It appears
-in analysis-gap output without inventing a dependency edge.
-
-The optional `environment` string identifies a Rails environment. Output ordering
-should be deterministic, and each producer should refresh only its own file.
+Any library can supply facts through its own producer, run by the same
+`archspec reflect` command. See
+[Framework integrations]({% link _guides/framework-integrations.md %}).

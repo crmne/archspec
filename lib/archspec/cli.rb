@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require 'open3'
 require 'optparse'
+require 'rbconfig'
 
 module ArchSpec
   # The <tt>archspec</tt> command line. Backs the +exe/archspec+ executable and
@@ -143,10 +145,14 @@ module ArchSpec
 
       graph = Analyzer.analyze(definition, root: root)
       candidates = Evaluator.unsuppressed(definition, graph)
-      # Syntax errors are never an accepted baseline; they must be fixed.
-      acceptable = candidates.reject { |diagnostic| diagnostic.rule == 'parser.syntax' }
+      # Syntax errors and stale facts are never an accepted baseline; they must be fixed.
+      acceptable = candidates.reject { |diagnostic| ['parser.syntax', Facts::STALE_RULE].include?(diagnostic.rule) }
 
       if options[:update_todo]
+        if candidates.any? { |diagnostic| diagnostic.rule == Facts::STALE_RULE }
+          raise Error, 'facts are out of date; run `archspec reflect` before updating the todo'
+        end
+
         count = Todo.write(todo_path, acceptable, root: root)
         label = count == 1 ? 'entry' : 'entries'
         output.puts "Updated #{Pathname(todo_path).relative_path_from(Pathname(root))} with #{count} #{label}."
@@ -155,7 +161,7 @@ module ArchSpec
 
       todo = Todo.load(todo_path, root: root)
       diagnostics = candidates.reject { |diagnostic| todo.include?(diagnostic) }
-      diagnostics = scope_to_paths(diagnostics, argv, root)
+      diagnostics = scope_to_paths(diagnostics, argv, root, graph)
       obsolete = scope_entries_to_paths(todo.unmatched_by(acceptable), argv, root) if options[:check_todo]
 
       formatter.print(output, graph: graph, diagnostics: diagnostics, obsolete_todo: obsolete)
@@ -186,6 +192,9 @@ module ArchSpec
       0
     end
 
+    public
+
+    # Evaluates an +Archspec.rb+ file and returns the definition and its root.
     def load_definition(config_path)
       raise Error, "no #{config_path} found; run `archspec init` first" unless File.exist?(config_path)
 
@@ -208,12 +217,14 @@ module ArchSpec
       raise Error, "could not load #{config_path}: #{detail}"
     end
 
+    private
+
     def reflect(argv, output)
-      options = { config: CONFIG_FILE, environment: ENV.fetch('RAILS_ENV', 'development'), help: false }
+      options = { config: CONFIG_FILE, environment: nil, help: false }
       parser = OptionParser.new do |opts|
         opts.banner = usage('reflect')
         opts.on('--config PATH', 'Use a different architecture file') { |value| options[:config] = value }
-        opts.on('--environment NAME', 'Rails environment to boot (default: RAILS_ENV or development)') do |value|
+        opts.on('--environment NAME', 'Set RAILS_ENV for the producers (default: RAILS_ENV or development)') do |value|
           options[:environment] = value
         end
         opts.on('-h', '--help', 'Show this help') { options[:help] = true }
@@ -223,23 +234,46 @@ module ArchSpec
         output.puts parser
         return 0
       end
-      raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
 
       definition, root = load_definition(options[:config])
       unless definition.facts_path
-        raise Error, "no facts configured; add `facts \"archspec_facts\"` to #{options[:config]}"
+        raise Error, "no facts configured; add `reflect :rails` or `facts \"archspec_facts\"` to #{options[:config]}"
       end
-      output.print RailsReflector.run(config_path: options[:config], root: root,
-        output_path: File.join(File.expand_path(definition.facts_path, root), 'rails.yml'),
-        environment: options[:environment])
-      0
+      names = argv.empty? ? definition.producers.keys : argv
+      undeclared = names - definition.producers.keys
+      raise UsageError, "undeclared producer: #{undeclared.first}" if undeclared.any?
+
+      environment = { 'ARCHSPEC_REFLECTION_CONFIG' => File.expand_path(options[:config]) }
+      environment['RAILS_ENV'] = options[:environment] if options[:environment]
+      runner = File.expand_path('reflect_runner.rb', __dir__)
+      results = names.map do |name|
+        Thread.new do
+          Open3.capture3(environment.merge('ARCHSPEC_PRODUCER' => name), RbConfig.ruby, runner, chdir: root)
+        rescue SystemCallError => e
+          ['', e.message, nil]
+        end
+      end.map(&:value)
+
+      failures = names.zip(results).reject do |_, (stdout, _, status)|
+        output.print stdout
+        status&.success?
+      end
+      return 0 if failures.empty?
+
+      raise Error, failures.map { |name, (_, stderr, status)|
+        "#{name} producer failed#{" (exit #{status.exitstatus})" if status&.exitstatus}: #{stderr.strip}"
+      }.join("\n")
     end
 
-    def scope_to_paths(diagnostics, paths, root)
+    # A stale facts document affects every path, so it is always reported.
+    def scope_to_paths(diagnostics, paths, root, graph)
       return diagnostics if paths.empty?
 
       expanded = paths.map { |path| File.expand_path(path, root) }
-      diagnostics.select { |diagnostic| within?(diagnostic.location.path, expanded) }
+      diagnostics.select do |diagnostic|
+        within?(diagnostic.location.path, expanded) ||
+          (diagnostic.rule == Facts::STALE_RULE && !graph.files.key?(diagnostic.location.path))
+      end
     end
 
     def scope_entries_to_paths(entries, paths, root)
@@ -279,7 +313,7 @@ module ArchSpec
       when 'explain'
         'Usage: archspec explain PATH_OR_CONSTANT [--config PATH]'
       when 'reflect'
-        'Usage: archspec reflect [--config PATH] [--environment NAME]'
+        'Usage: archspec reflect [PRODUCERS...] [--config PATH] [--environment NAME]'
       when 'version'
         'Usage: archspec version'
       when ''
@@ -288,7 +322,7 @@ module ArchSpec
             archspec init [PATH] [--force]
             archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo|--check-todo]
             archspec explain PATH_OR_CONSTANT [--config PATH]
-            archspec reflect [--config PATH] [--environment NAME]
+            archspec reflect [PRODUCERS...] [--config PATH] [--environment NAME]
             archspec version
             archspec help [COMMAND]
         TEXT

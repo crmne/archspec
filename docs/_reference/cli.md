@@ -86,19 +86,22 @@ Runs the normal check and additionally fails when the todo lists an entry that n
 
 ```sh
 bundle exec archspec reflect --environment test
-bundle exec archspec reflect --config config/architecture.rb --environment test
+bundle exec archspec reflect widgets
+bundle exec archspec reflect --config config/architecture.rb
 ```
 
-Requires `facts "archspec_facts"` in the architecture configuration. This is an
-explicit runtime command: it runs `bin/rails runner`, eager loads the application,
-and writes resolved Active Record associations to `archspec_facts/rails.yml`.
-The default environment is `RAILS_ENV`, or `development` when unset.
+Runs the producers declared with `reflect` in `Archspec.rb` (the Rails producer
+when only `facts` is declared), each in its own process and all in parallel.
+Each one boots its framework and writes `<facts directory>/<name>.yml`. Pass
+producer names to run only those. `--environment` sets `RAILS_ENV` for the
+producers; otherwise it stays as it is, and the Rails producer defaults to
+`development`.
 
-Regenerate after source, configuration, or dependency changes. Failed reflection
-preserves the previous snapshot. Polymorphic, unresolved, and ambiguous
-associations are reported as analysis gaps. See
-[Association reflection]({% link _guides/association-reflection.md %}) for the
-format, staleness contract, and custom producers.
+Regenerate after changing the files a producer covers, configuration, or
+dependencies; `check` reports stale facts as `facts.stale` violations. A failed
+producer keeps its previous file and makes the command exit 1. See
+[Rails reflection]({% link _guides/association-reflection.md %}) and
+[Framework integrations]({% link _guides/framework-integrations.md %}).
 
 ## explain
 

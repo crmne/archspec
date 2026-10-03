@@ -27,8 +27,7 @@ class RailsReflectorTest < ArchSpecTest
       RUBY
       load path
       graph = analyze(root)
-      document = ArchSpec::RailsReflector.capture(graph,
-        models: [ReflectionFixture::Invoice, ReflectionFixture::SpecialInvoice], environment: 'test')
+      document = reflect(graph, [ReflectionFixture::Invoice, ReflectionFixture::SpecialInvoice])
       assert_equal [['ReflectionFixture::Invoice', 'ReflectionFixture::Customer']],
                    document['references'].map { |entry| entry.values_at('source', 'target') }
       assert_equal 5, document['references'].first['line']
@@ -69,7 +68,7 @@ class RailsReflectorTest < ArchSpecTest
       RUBY
       load "#{root}/app/models/concerns/owned.rb"
       load "#{root}/app/models/records.rb"
-      document = ArchSpec::RailsReflector.capture(analyze(root), models: [ReflectionFixture::Invoice], environment: 'test')
+      document = reflect(analyze(root), [ReflectionFixture::Invoice])
       assert_empty document['gaps']
       assert_equal 'ReflectionFixture::Invoice', document['references'].first['source']
       assert_equal 5, document['references'].first['line']
@@ -101,7 +100,7 @@ class RailsReflectorTest < ArchSpecTest
         end
       RUBY
       capture_io { load path }
-      document = ArchSpec::RailsReflector.capture(analyze(root), models: [ReflectionFixture::Invoice], environment: 'test')
+      document = reflect(analyze(root), [ReflectionFixture::Invoice])
       assert_empty document['references']
       assert_equal 2, document['gaps'].size
       assert document['gaps'].all? { |gap| gap['message'].include?('no unique literal declaration') }
@@ -124,7 +123,7 @@ class RailsReflectorTest < ArchSpecTest
         end
       RUBY
       load path
-      document = ArchSpec::RailsReflector.capture(analyze(root), models: [ReflectionFixture::Account], environment: 'test')
+      document = reflect(analyze(root), [ReflectionFixture::Account])
       assert_empty document['gaps']
       assert_equal %w[ReflectionFixture::Customer ReflectionFixture::Membership], document['references'].map { |entry| entry['target'] }
     end
@@ -141,28 +140,27 @@ class RailsReflectorTest < ArchSpecTest
           end
         end
       RUBY
-      # A small runner harness isolates the process boundary while using real
-      # Active Record models and the packaged reflection entrypoint.
-      write "#{root}/bin/rails", <<~RUBY
+      # A minimal Rails stand-in keeps the process boundary real: the
+      # producer boots it, then reflects on real Active Record models.
+      write "#{root}/config/environment.rb", <<~RUBY
         require 'active_record'
-        abort 'wrong runner arguments' unless ARGV.take(3) == ['runner', '-e', 'test']
+        abort 'wrong environment' unless ENV['RAILS_ENV'] == 'test'
         module Rails
-          def self.env = 'test'
+          def self.env = ENV.fetch('RAILS_ENV')
           def self.application = self
           def self.eager_load!
             Dir['app/models/**/*.rb'].sort.each { |path| load path }
           end
         end
-        load ARGV.last
       RUBY
       output = StringIO.new
       error = StringIO.new
       argv = ['reflect', '--config', "#{root}/Archspec.rb", '--environment', 'test']
       assert_equal 0, ArchSpec::CLI.run(argv, output: output, error: error), error.string
-      assert_match(/1 association references/, output.string)
+      assert_match(%r{Updated archspec_facts/rails\.yml: 1 reference, 2 methods}, output.string)
       path = "#{root}/archspec_facts/rails.yml"
       previous = File.read(path)
-      write "#{root}/bin/rails", "warn 'boot failed'; exit 1\n"
+      write "#{root}/config/environment.rb", "warn 'boot failed'; exit 1\n"
       assert_equal 1, ArchSpec::CLI.run(argv, output: StringIO.new, error: error)
       assert_match(/boot failed/, error.string)
       assert_equal previous, File.read(path)
@@ -180,14 +178,202 @@ class RailsReflectorTest < ArchSpecTest
         end
       RUBY
       load path
-      document = ArchSpec::RailsReflector.capture(analyze(root), models: [ReflectionFixture::Invoice], environment: 'test')
+      document = reflect(analyze(root), [ReflectionFixture::Invoice])
       assert_empty document['references']
       assert_equal 1, document['gaps'].size
       assert_match(/unresolved association/, document['gaps'].first['message'])
     end
   end
 
+  def test_custom_validators_become_references_at_their_declaration
+    with_project do |root|
+      write "#{root}/app/validators/email_validator.rb", <<~RUBY
+        module ReflectionFixture
+          class EmailValidator < ActiveModel::EachValidator
+            def validate_each(record, attribute, value) = nil
+          end
+        end
+      RUBY
+      write "#{root}/app/models/records.rb", <<~RUBY
+        module ReflectionFixture
+          class Customer < ActiveRecord::Base
+            validates :email, 'reflection_fixture/email': true, presence: true
+          end
+          class Supplier < ActiveRecord::Base
+            validates_with EmailValidator, attributes: [:email]
+          end
+          class VipCustomer < Customer; end
+        end
+      RUBY
+      load "#{root}/app/validators/email_validator.rb"
+      load "#{root}/app/models/records.rb"
+      definition = ArchSpec.define do
+        component :models, in: 'app/models/**/*.rb'
+        component :validators, in: 'app/validators/**/*.rb'
+        models.cannot_use :validators
+        facts
+      end
+      graph = ArchSpec::Analyzer.analyze(definition, root: root, include_facts: false)
+      models = [ReflectionFixture::Customer, ReflectionFixture::Supplier, ReflectionFixture::VipCustomer]
+      facts = ArchSpec::Facts::Builder.new(graph, producer: 'rails')
+      ArchSpec::RailsReflector.capture(facts, models: models, validated: models)
+      document = facts.to_document
+      assert_equal [['ReflectionFixture::Customer', 'ReflectionFixture::EmailValidator', 3]],
+                   document['references'].map { |entry| entry.values_at('source', 'target', 'line') }
+      assert_empty document['gaps']
+
+      ArchSpec::Facts.write("#{root}/archspec_facts/rails.yml", document)
+      diagnostics = diagnostics_for(definition, root)
+      assert_equal [3, 6], diagnostics.map { |diagnostic| diagnostic.location.line }
+      assert_equal ['dependencies.forbid'], diagnostics.map(&:rule).uniq
+    end
+  end
+
+  def test_observed_conditional_concern_effects_settle_the_static_gap
+    with_project do |root|
+      write "#{root}/app/models/concerns/tracked.rb", <<~RUBY
+        module ReflectionFixture
+          module Audited
+            def audit = nil
+          end
+          module Tracked
+            extend ActiveSupport::Concern
+            included do
+              include Audited if name.end_with?('Order')
+              if name.end_with?('Order')
+                def tracked? = true
+              end
+            end
+          end
+        end
+      RUBY
+      write "#{root}/app/models/records.rb", <<~RUBY
+        module ReflectionFixture
+          class Order
+            include Tracked
+          end
+          class Draft
+            include Tracked
+          end
+        end
+      RUBY
+      load "#{root}/app/models/concerns/tracked.rb"
+      load "#{root}/app/models/records.rb"
+      definition = ArchSpec.define do
+        component :orders, constants: 'ReflectionFixture::Order'
+        component :drafts, constants: 'ReflectionFixture::Draft'
+        component :audits, constants: 'ReflectionFixture::Audited'
+        orders.cannot_use :audits
+        drafts.cannot_use :audits
+        orders.must_implement :tracked?
+        drafts.must_implement :tracked?
+        facts
+      end
+      graph = ArchSpec::Analyzer.analyze(definition, root: root, include_facts: false)
+      assert_equal 1, graph.analysis_census[:dynamic_features]
+      facts = ArchSpec::Facts::Builder.new(graph, producer: 'rails')
+      ArchSpec::RailsReflector.concerns(facts)
+      ArchSpec::Facts.write("#{root}/archspec_facts/rails.yml", facts.to_document)
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      assert_equal 0, graph.analysis_census[:dynamic_features]
+      diagnostics = ArchSpec::Evaluator.evaluate(definition, graph)
+      assert_equal [['dependencies.forbid', 'ReflectionFixture::Order includes ReflectionFixture::Audited'],
+                    ['protocol.must_implement', nil]],
+                   diagnostics.map { |diagnostic| [diagnostic.rule, (diagnostic.evidence if diagnostic.rule.start_with?('dep'))] }
+      assert_match(/Draft/, diagnostics.last.message)
+      assert_equal 8, diagnostics.first.location.line
+    end
+  end
+
+  def test_unattributable_conditional_effects_keep_the_gap
+    with_project do |root|
+      write "#{root}/app/models/concerns/tracked.rb", <<~RUBY
+        module ReflectionFixture
+          module Audited; end
+          module Tracked
+            extend ActiveSupport::Concern
+            included do
+              include Audited if name.end_with?('Order')
+            end
+          end
+          module Logged
+            extend ActiveSupport::Concern
+            included do
+              include Audited if name.end_with?('Order')
+            end
+          end
+        end
+      RUBY
+      write "#{root}/app/models/records.rb", <<~RUBY
+        module ReflectionFixture
+          class Order
+            include Tracked
+            include Logged
+          end
+        end
+      RUBY
+      load "#{root}/app/models/concerns/tracked.rb"
+      load "#{root}/app/models/records.rb"
+      definition = ArchSpec.define { component :models, in: 'app/models/**/*.rb' }
+      graph = ArchSpec::Analyzer.analyze(definition, root: root, include_facts: false)
+      facts = ArchSpec::Facts::Builder.new(graph, producer: 'rails')
+      ArchSpec::RailsReflector.concerns(facts)
+      document = facts.to_document
+      assert_empty document['mixins']
+      assert_empty document['resolves']
+    end
+  end
+
+  def test_a_settled_conditional_callback_reports_consumers_added_later
+    with_project do |root|
+      write "#{root}/app/controllers/concerns/tracked.rb", <<~RUBY
+        module ReflectionFixture
+          module Audited; end
+          module Tracked
+            extend ActiveSupport::Concern
+            included do
+              include Audited if name.end_with?('Order')
+            end
+          end
+        end
+      RUBY
+      write "#{root}/app/controllers/orders.rb", "module ReflectionFixture\n  class Order\n    include Tracked\n  end\nend\n"
+      load "#{root}/app/controllers/concerns/tracked.rb"
+      load "#{root}/app/controllers/orders.rb"
+      definition = ArchSpec.define do
+        component :controllers, in: 'app/controllers/**/*.rb'
+        facts
+      end
+      graph = ArchSpec::Analyzer.analyze(definition, root: root, include_facts: false)
+      facts = ArchSpec::Facts::Builder.new(graph, producer: 'rails')
+      ArchSpec::RailsReflector.concerns(facts)
+      ArchSpec::Facts.write("#{root}/archspec_facts/rails.yml", facts.to_document(sources: ['app/models/**/*.rb']))
+      assert_empty diagnostics_for(definition, root)
+
+      write "#{root}/app/controllers/back_order.rb", "module ReflectionFixture\n  class BackOrder\n    include Tracked\n  end\nend\n"
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      stale = ArchSpec::Evaluator.evaluate(definition, graph)
+      assert_equal [['facts.stale', "#{root}/app/controllers/back_order.rb"]],
+                   stale.map { |diagnostic| [diagnostic.rule, diagnostic.location.path] }
+      assert_match(/have not observed this consumer of ReflectionFixture::Tracked/, stale.first.message)
+      assert_equal 1, graph.analysis_census[:dynamic_features]
+
+      File.delete("#{root}/app/controllers/back_order.rb")
+      write "#{root}/app/controllers/orders.rb", "module ReflectionFixture\n  class Order\n    include Tracked\n    # edited\n  end\nend\n"
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+      assert_equal ['facts.stale'], ArchSpec::Evaluator.evaluate(definition, graph).map(&:rule)
+      assert_equal 1, graph.analysis_census[:dynamic_features]
+    end
+  end
+
   private
+
+  def reflect(graph, models)
+    facts = ArchSpec::Facts::Builder.new(graph, producer: 'rails')
+    ArchSpec::RailsReflector.capture(facts, models: models, validated: [])
+    facts.to_document(env: { 'RAILS_ENV' => 'test' })
+  end
 
   def analyze(root)
     definition = ArchSpec.define { component :models, in: 'app/models/**/*.rb' }

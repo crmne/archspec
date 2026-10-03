@@ -35,6 +35,18 @@ module ArchSpec
       @user_ignore_patterns = []
       @component_specs = {}
       @rules = []
+      @producers = {}
+    end
+
+    # Producer names mapped to the file that registers them, or nil for a
+    # built-in producer. Declaring facts without producers selects Rails.
+    def producers
+      @producers.empty? ? { 'rails' => nil } : @producers
+    end
+
+    def add_producer(name, require: nil)
+      @producers[name.to_s] = require&.to_s
+      @facts_path ||= 'archspec_facts'
     end
 
     def add_source_patterns(patterns)

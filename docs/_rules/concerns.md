@@ -48,4 +48,9 @@ This analysis does not execute callbacks. Conditional mixins and method
 definitions inside callbacks remain analysis gaps; it does not choose a runtime
 branch or infer methods from arbitrary callback execution.
 
+[Rails reflection]({% link _guides/association-reflection.md %}) fills those
+gaps from the booted application: it records the modules and methods each
+consumer actually received from a conditional callback and resolves the gap
+when every effect can be attributed to one declaration.
+
 The `:rails_strict` and `:vanilla_rails` architectures apply this to `app/**/concerns/**/*.rb`. Override the glob with `concerns:`, or pass `concerns: false` to skip it.

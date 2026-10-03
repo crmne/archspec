@@ -24,7 +24,7 @@ class FactsTest < ArchSpecTest
     end
   end
 
-  def test_missing_and_stale_facts_are_errors_instead_of_silent_passes
+  def test_missing_facts_are_errors_and_stale_facts_fail_the_check
     with_project do |root|
       write "#{root}/app/models/invoice.rb", "class Invoice; end\n"
       definition = definition_for_facts
@@ -33,8 +33,10 @@ class FactsTest < ArchSpecTest
       path = "#{root}/archspec_facts/custom.yml"
       ArchSpec::Facts.write(path, document_for(graph))
       write "#{root}/app/models/new_model.rb", "class NewModel; end\n"
-      error = assert_raises(ArchSpec::Error) { ArchSpec::Analyzer.analyze(definition, root: root) }
-      assert_match(/stale facts/, error.message)
+      stale = stale_diagnostics(definition, root)
+      assert_equal [path], stale.map { |diagnostic| diagnostic.location.path }
+      assert_match(/custom facts are out of date: source or configuration changed; run `archspec reflect`/,
+                   stale.first.message)
     end
   end
 
@@ -47,8 +49,7 @@ class FactsTest < ArchSpecTest
         document = document_for(graph)
         ArchSpec::Facts.write("#{root}/archspec_facts/custom.yml", document)
         write "#{root}/#{relative}", "# changed\n"
-        error = assert_raises(ArchSpec::Error) { ArchSpec::Analyzer.analyze(definition, root: root) }
-        assert_match(/stale facts/, error.message)
+        assert_equal ['facts.stale'], stale_diagnostics(definition, root).map(&:rule)
       end
     end
   end
@@ -105,6 +106,11 @@ class FactsTest < ArchSpecTest
   end
 
   private
+
+  def stale_diagnostics(definition, root)
+    graph = ArchSpec::Analyzer.analyze(definition, root: root)
+    ArchSpec::Evaluator.evaluate(definition, graph).select { |diagnostic| diagnostic.rule == 'facts.stale' }
+  end
 
   def definition_for_facts
     ArchSpec.define do

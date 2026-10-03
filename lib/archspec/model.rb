@@ -49,6 +49,12 @@ module ArchSpec
   end
   MethodDefinition = Data.define(:owner, :name, :scope, :location, :visibility, :signatures, :alias_target)
 
+  # A concern callback whose effects depend on control flow. The static pass
+  # records it as a gap; a runtime producer can observe which of these
+  # candidate mixins and methods a consumer actually received.
+  ConditionalCallback = Data.define(:concern, :path, :kind, :location, :mixins, :methods)
+  ConditionalMixin = Data.define(:kind, :target, :location)
+
   Suppression = Data.define(:rule, :start_line, :end_line, :reason) do
     def matches?(diagnostic)
       (rule.nil? || rule == diagnostic.rule) &&
@@ -139,7 +145,8 @@ module ArchSpec
     :resolved_to,
     :resolved_receiver,
     :receiver_scope,
-    :resolved_method
+    :resolved_method,
+    :producer
   ) do
     VERBS = {
       references_constant: 'references',
@@ -201,7 +208,8 @@ module ArchSpec
 
     RESOLVED_ROOTS = %w[Object BasicObject].freeze
 
-    attr_reader :root, :files, :constants, :edges, :components, :analysis_diagnostics
+    attr_reader :root, :files, :constants, :edges, :components, :analysis_diagnostics, :conditional_callbacks,
+                :fact_diagnostics
 
     def initialize(root)
       @root = File.expand_path(root)
@@ -211,6 +219,8 @@ module ArchSpec
       @edges = []
       @components = {}
       @analysis_diagnostics = []
+      @conditional_callbacks = []
+      @fact_diagnostics = []
       @effective_definition_cache = {}
       @effective_method_cache = {}
       @method_exposures = {}
@@ -242,7 +252,7 @@ module ArchSpec
 
     def add_edge(type:, from_path:, from_constant:, to:, location:, confidence: :high, receiver: nil,
                  lexical_nesting: nil, resolved_to: nil, resolved_receiver: nil, receiver_scope: nil,
-                 resolved_method: nil)
+                 resolved_method: nil, producer: nil)
       nesting = lexical_nesting&.map { |name| normalize_constant(name) }&.freeze
       edges << Edge.new(
         type,
@@ -256,7 +266,8 @@ module ArchSpec
         resolved_to,
         resolved_receiver,
         receiver_scope,
-        resolved_method
+        resolved_method,
+        producer
       )
     end
 
@@ -273,6 +284,14 @@ module ArchSpec
 
     def constants_named(name)
       @constants_by_name[normalize_constant(name)]
+    end
+
+    # Classes and modules that include or prepend the named module.
+    def consumers_of(name)
+      absolute = "::#{normalize_constant(name)}"
+      constants.select do |constant|
+        !constant.namespace_only && constant.mixins.values_at(:include, :prepend).any? { |names| names.include?(absolute) }
+      end
     end
 
     def constants_for_path(path)
@@ -296,6 +315,10 @@ module ArchSpec
     # actual instance methods remain available for ordinary Ruby lookup.
     def expose_instance_methods(name, as_owner:, scope:)
       @method_exposures[name] = [as_owner, scope]
+    end
+
+    def method_exposure(name)
+      @method_exposures[name]
     end
 
     def clear_method_caches
