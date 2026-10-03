@@ -17,10 +17,21 @@ todo "archspec_todo.yml"
 ```
 {: data-title="Archspec.rb"}
 
-ArchSpec analyzes `.rb` and `.rake` files matched by source or component
+ArchSpec analyzes `.rb`, `.rake`, and `.erb` files matched by source or component
 patterns. The default source patterns select `.rb` files; opt into Rake tasks
-with `source "app/**/*.rb", "lib/**/*.{rb,rake}"` or a component such as
-`component :tasks, in: "lib/tasks/**/*.rake"`. Ignore patterns apply to both.
+and ERB templates with source patterns such as
+`source "app/**/*.{rb,erb}", "lib/**/*.{rb,rake}"` or components such as
+`component :tasks, in: "lib/tasks/**/*.rake"` and
+`component :views, in: "app/views/**/*.erb"`. Ignore patterns apply to all three
+file types.
+
+Note that broad source or component patterns, such as `lib/tasks/**/*`,  include 
+all supported formats: `.rb`, `.rake` and `.erb` files.
+
+For ERB templates, Herb provides a complete Prism program with template source
+locations, which ArchSpec analyzes so diagnostics point to the original template.
+ArchSpec checks the Ruby code, not the HTML structure. See
+[How It Works]({% link _guides/how-it-works.md %}) for the parsing pipeline.
 
 Todo ids are computed from the rule, path, message, and evidence, not the line number, so entries survive edits that shift code.
 
@@ -35,6 +46,7 @@ check. See [Association reflection]({% link _guides/association-reflection.md %}
 ```ruby
 component :controllers, in: "app/controllers/**/*.rb"
 component :models,      in: "app/models/**/*.rb"
+component :views,       in: "app/views/**/*.erb"
 component :billing,     namespace: "Billing"
 component :records,     descendants_of: "ApplicationRecord"
 component :workflows,
@@ -162,3 +174,22 @@ archspec:enable RULE
 ```
 
 Omit `RULE` to suppress all ArchSpec rules on that line or block.
+
+In ERB templates, suppressions work in ERB comments, comment-only Ruby tags
+(`<% # ... %>` or `<%- # ... -%>`), and inline Ruby comments:
+
+```erb
+<%# archspec:disable-next-line dependencies.forbid -- legacy export %>
+<%= Admin::UsersController.name %>
+
+<%= User.count # archspec:disable-line dependencies.forbid %>
+
+<% # archspec:disable dependencies.forbid %>
+<%= User.count %>
+<% x = 1 # archspec:enable dependencies.forbid %>
+<%= User.count %>
+```
+
+The final expression is checked again after `enable`. Suppressions use physical
+template lines, and inline comments end at their ERB closing tag. Escaped tags
+such as `<%% # archspec:disable %>` are literal text and do not suppress checks.
