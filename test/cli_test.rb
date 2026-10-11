@@ -152,6 +152,77 @@ class CLITest < ArchSpecTest
     end
   end
 
+  def test_check_reports_model_dependencies_from_erb_components
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :views, in: 'app/views/**/*.erb'
+        component :models, in: 'app/models/**/*.rb'
+        views.cannot_use :models
+      RUBY
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/app/views/users/index.html.erb", <<~ERB
+        <h1>Users</h1>
+        <%= User.count %>
+      ERB
+
+      output = StringIO.new
+      error = StringIO.new
+      status = Dir.chdir(root) do
+        ArchSpec::CLI.run(['check', '--format', 'json'], output: output, error: error)
+      end
+
+      violations = JSON.parse(output.string).fetch('violations')
+      assert_equal ['dependencies.forbid'], violations.map { |violation| violation.fetch('rule') }
+      assert_equal 1, status, error.string
+      violation = violations.first
+      assert_equal 'views must not depend on models', violation.fetch('message')
+      assert_equal 'app/views/users/index.html.erb', violation.fetch('path')
+      assert_equal 2, violation.fetch('line')
+    end
+  end
+
+  def test_check_respects_suppression_comments_in_erb_components
+    with_project do |root|
+      write "#{root}/Archspec.rb", <<~RUBY
+        component :views, in: 'app/views/**/*.erb'
+        component :models, in: 'app/models/**/*.rb'
+        views.cannot_use :models
+      RUBY
+      write "#{root}/app/models/user.rb", "class User; end\n"
+      write "#{root}/app/views/users/erb_comment.html.erb", <<~ERB
+        <%# archspec:disable-next-line dependencies.forbid -- accepted boundary %>
+        <%= User.count %>
+        <%= User.count %>
+      ERB
+      write "#{root}/app/views/users/ruby_comment.html.erb", <<~ERB
+        <%
+          # archspec:disable-next-line dependencies.forbid -- accepted boundary
+          User.count
+        %>
+        <%= User.count %>
+      ERB
+
+      output = StringIO.new
+      error = StringIO.new
+      status = Dir.chdir(root) do
+        ArchSpec::CLI.run(['check', '--format', 'json'], output: output, error: error)
+      end
+
+      assert_equal 1, status, error.string
+      assert_empty error.string
+      violations = JSON.parse(output.string).fetch('violations')
+      assert_equal 2, violations.size
+      violations.each do |violation|
+        assert_equal 'dependencies.forbid', violation.fetch('rule')
+        assert_equal 'views must not depend on models', violation.fetch('message')
+      end
+      assert_equal [
+        ['app/views/users/erb_comment.html.erb', 3],
+        ['app/views/users/ruby_comment.html.erb', 5]
+      ], violations.map { |violation| [violation.fetch('path'), violation.fetch('line')] }.sort
+    end
+  end
+
   def test_check_rejects_wrapped_definitions
     with_project do |root|
       write "#{root}/Archspec.rb", <<~RUBY
