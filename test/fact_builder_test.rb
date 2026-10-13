@@ -212,6 +212,17 @@ class FactBuilderTest < ArchSpecTest
     end
   end
 
+  def test_version_two_documents_require_a_snapshot
+    with_project do |root|
+      write "#{root}/lib/record.rb", "class Record; end\n"
+      graph = analyze(root)
+      document = builder_for(graph).to_document.except('snapshot', 'inputs', 'sources')
+      ArchSpec::Facts.write("#{root}/archspec_facts/framework.yml", document)
+      error = assert_raises(ArchSpec::Error) { ArchSpec::Facts.load_into(graph, 'archspec_facts') }
+      assert_match(/version 2 facts require a snapshot/, error.message)
+    end
+  end
+
   def test_conflicting_exposures_are_rejected_before_application
     with_project do |root|
       write "#{root}/lib/api.rb", "module API; def fetch = nil; end\nclass First; end\nclass Second; end\n"

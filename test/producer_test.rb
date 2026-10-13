@@ -48,11 +48,35 @@ class ProducerTest < ArchSpecTest
     end
   end
 
+  def test_a_declared_producer_without_facts_fails_the_check
+    with_project do |root|
+      write_widget_project(root)
+      cli(root, 'reflect', 'widgets')
+
+      _, error, status = cli(root, 'check')
+      refute_equal 0, status
+      assert_match(/no facts from audit in archspec_facts; run `archspec reflect`/, error)
+    end
+  end
+
+  def test_producer_load_errors_are_reported_with_their_project_frame
+    with_project do |root|
+      { 'syntax' => "ArchSpec.producer(:broken) {\n", 'runtime' => "raise 'registry unavailable'\n" }.each do |kind, source|
+        write "#{root}/lib/#{kind}_facts.rb", source
+        definition = ArchSpec.define { reflect :broken, require: "./lib/#{kind}_facts" }
+        definition.base_dir = root
+        error = assert_raises(ArchSpec::Error) { ArchSpec::Producer.load(:broken, definition) }
+        assert_match(%r{\Acould not load producer broken: .*lib/#{kind}_facts\.rb:1\b}m, error.message)
+        refute_match(/bundled_gems/, error.message)
+      end
+    end
+  end
+
   def test_only_the_edited_file_goes_stale
     with_project do |root|
       write_widget_project(root)
       write "#{root}/app/services/audit_service.rb", "class AuditService; end\n"
-      cli(root, 'reflect', 'widgets')
+      cli(root, 'reflect')
 
       write "#{root}/app/services/audit_service.rb", "class AuditService\n  def call = nil\nend\n"
       output, _, status = cli(root, 'check', '--format', 'json')
@@ -77,7 +101,7 @@ class ProducerTest < ArchSpecTest
   def test_global_inputs_and_environment_invalidate_the_whole_document
     with_project do |root|
       write_widget_project(root)
-      cli(root, 'reflect', 'widgets')
+      cli(root, 'reflect')
 
       write "#{root}/config/widgets.yml", "billing: ledger\n"
       output, _, status = cli(root, 'check', 'app/services')
@@ -88,7 +112,7 @@ class ProducerTest < ArchSpecTest
       assert_equal 1, status
       assert_match(/facts are out of date; run `archspec reflect` before updating the todo/, error)
 
-      cli(root, 'reflect', 'widgets')
+      cli(root, 'reflect')
       with_env('WIDGETS_MODE' => 'strict') do
         output, _, status = cli(root, 'check')
         assert_equal 1, status

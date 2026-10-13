@@ -26,6 +26,7 @@ module ArchSpec
       # describes the source. Stale files are reported and their facts skipped.
       def compile_fresh(excluding:)
         validate_envelope
+        invalid('version 2 facts require a snapshot') if @document['version'] != 1 && @document['snapshot'].nil?
         reason = @document['version'] == 1 ? legacy_staleness(excluding) : staleness(excluding)
         if reason
           stale_diagnostic(@label, "#{producer} facts are out of date: #{reason}; run `archspec reflect`")
@@ -116,10 +117,10 @@ module ArchSpec
       def decode_resolves(entry)
         validate_entry(entry, %w[source message consumers])
         source = source_for(entry, 'source')
-        return [] if new_consumers?(source, entry['consumers'])
-
         location = location_for(entry)
         message = entry['message'].nil? ? nil : string(entry['message'], 'gap message')
+        return [] if new_consumers?(source, entry['consumers'])
+
         unless @graph.edges.any? do |edge|
           edge.type == :dynamic_feature && edge.from_constant == source.name && edge.from_path == source.path &&
             edge.location == location && (message.nil? || edge.to == message)

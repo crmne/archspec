@@ -274,7 +274,8 @@ module ArchSpec
     end
 
     def validation_keys(arguments)
-      arguments.grep(Prism::KeywordHashNode).flat_map(&:elements).filter_map do |element|
+      options = arguments.select { |argument| argument.is_a?(Prism::KeywordHashNode) || argument.is_a?(Prism::HashNode) }
+      options.flat_map(&:elements).filter_map do |element|
         key = element.key if element.is_a?(Prism::AssocNode)
         key.unescaped if key.is_a?(Prism::SymbolNode) || key.is_a?(Prism::StringNode)
       end

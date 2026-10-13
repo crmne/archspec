@@ -44,6 +44,11 @@ module ArchSpec
       @producers.empty? ? { 'rails' => nil } : @producers
     end
 
+    # Producers named by +reflect+, whose documents a check requires.
+    def declared_producers
+      @producers.keys
+    end
+
     def add_producer(name, require: nil)
       @producers[name.to_s] = require&.to_s
       @facts_path ||= 'archspec_facts'

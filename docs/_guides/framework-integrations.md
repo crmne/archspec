@@ -194,15 +194,17 @@ source or owner when that differs from `path`. Lists are `references`,
 `methods`, `mixins`, `receivers`, `exposures`, `gaps`, and `resolves`. Unknown
 fields, Ruby objects, and YAML aliases are rejected. A method signature has
 `required` and `optional` counts, `keywords` and `optional_keywords` lists, and
-`rest`, `keyword_rest`, `block`, and `forward` flags.
+`rest`, `keyword_rest`, `block`, and `forward` flags. A version 2 document
+without a `snapshot` is rejected, since nothing could tell when it went stale.
 
 Version 1 files, written by ArchSpec 1.1, are still read. They carry
 `references`, `methods`, and `gaps`, and go stale as a whole when any analyzed
 file or input changes, or when `RAILS_ENV` differs from their `environment`.
 
-Every `*.yml` file in the facts directory is loaded, in file name order. A file
-written without `archspec reflect`, for example by a script in CI, works the
-same way:
+Every `*.yml` file in the facts directory is loaded, in file name order. Each
+producer named by `reflect` must have written its `<name>.yml`, so a check
+fails until a newly declared producer has run successfully. A file written
+without `archspec reflect`, for example by a script in CI, works the same way:
 
 ```ruby
 facts = ArchSpec::Facts::Builder.new(graph, producer: "script")

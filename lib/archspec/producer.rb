@@ -45,8 +45,20 @@ module ArchSpec
         registry.fetch(name.to_s) do
           raise Error, "no producer named #{name} is registered#{" by #{path}" if path}"
         end
-      rescue LoadError => error
-        raise Error, "could not load producer #{name}: #{error.message}"
+      rescue Error
+        raise
+      rescue StandardError, ScriptError => error
+        # A syntax error's message already names the file and line.
+        frame = origin(error, definition.base_dir || Dir.pwd) unless error.is_a?(SyntaxError)
+        raise Error, "could not load producer #{name}: #{error.message.strip} (#{error.class})#{frame}"
+      end
+
+      # The first backtrace frame in the project, which is usually where the
+      # fix belongs.
+      def origin(error, root)
+        frames = Array(error.backtrace)
+        frame = frames.find { |line| line.start_with?("#{root}/") && !line.include?('/vendor/') } || frames.first
+        frame ? "\n  at #{frame.delete_prefix("#{root}/")}" : ''
       end
     end
 
@@ -113,12 +125,8 @@ module ArchSpec
 
     private
 
-    # The first backtrace frame in the project, which is usually where the
-    # fix belongs.
     def origin(error, root)
-      frames = Array(error.backtrace)
-      frame = frames.find { |line| line.start_with?("#{root}/") && !line.include?('/vendor/') } || frames.first
-      frame ? "\n  at #{frame.delete_prefix("#{root}/")}" : ''
+      self.class.origin(error, root)
     end
   end
 

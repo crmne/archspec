@@ -199,6 +199,9 @@ class RailsReflectorTest < ArchSpecTest
           class Customer < ActiveRecord::Base
             validates :email, 'reflection_fixture/email': true, presence: true
           end
+          class Vendor < ActiveRecord::Base
+            validates :email, { 'reflection_fixture/email': true }
+          end
           class Supplier < ActiveRecord::Base
             validates_with EmailValidator, attributes: [:email]
           end
@@ -214,17 +217,19 @@ class RailsReflectorTest < ArchSpecTest
         facts
       end
       graph = ArchSpec::Analyzer.analyze(definition, root: root, include_facts: false)
-      models = [ReflectionFixture::Customer, ReflectionFixture::Supplier, ReflectionFixture::VipCustomer]
+      models = [ReflectionFixture::Customer, ReflectionFixture::Vendor, ReflectionFixture::Supplier,
+                ReflectionFixture::VipCustomer]
       facts = ArchSpec::Facts::Builder.new(graph, producer: 'rails')
       ArchSpec::RailsReflector.capture(facts, models: models, validated: models)
       document = facts.to_document
-      assert_equal [['ReflectionFixture::Customer', 'ReflectionFixture::EmailValidator', 3]],
+      assert_equal [['ReflectionFixture::Customer', 'ReflectionFixture::EmailValidator', 3],
+                    ['ReflectionFixture::Vendor', 'ReflectionFixture::EmailValidator', 6]],
                    document['references'].map { |entry| entry.values_at('source', 'target', 'line') }
       assert_empty document['gaps']
 
       ArchSpec::Facts.write("#{root}/archspec_facts/rails.yml", document)
       diagnostics = diagnostics_for(definition, root)
-      assert_equal [3, 6], diagnostics.map { |diagnostic| diagnostic.location.line }
+      assert_equal [3, 6, 9], diagnostics.map { |diagnostic| diagnostic.location.line }
       assert_equal ['dependencies.forbid'], diagnostics.map(&:rule).uniq
     end
   end
@@ -358,6 +363,14 @@ class RailsReflectorTest < ArchSpecTest
                    stale.map { |diagnostic| [diagnostic.rule, diagnostic.location.path] }
       assert_match(/have not observed this consumer of ReflectionFixture::Tracked/, stale.first.message)
       assert_equal 1, graph.analysis_census[:dynamic_features]
+
+      document = YAML.safe_load_file("#{root}/archspec_facts/rails.yml")
+      [{ 'message' => 1 }, { 'line' => 99 }].each do |corruption|
+        resolves = document['resolves'].map { |entry| entry.merge(corruption) }
+        ArchSpec::Facts.write("#{root}/archspec_facts/invalid.yml", document.merge('resolves' => resolves))
+        assert_raises(ArchSpec::Error, corruption.inspect) { ArchSpec::Analyzer.analyze(definition, root: root) }
+      end
+      File.delete("#{root}/archspec_facts/invalid.yml")
 
       File.delete("#{root}/app/controllers/back_order.rb")
       write "#{root}/app/controllers/orders.rb", "module ReflectionFixture\n  class Order\n    include Tracked\n    # edited\n  end\nend\n"

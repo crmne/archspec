@@ -55,10 +55,17 @@ module ArchSpec
 
     # Loads every document in the directory. Stale documents and the facts of
     # stale files are skipped and reported as diagnostics; everything else is
-    # validated before any of it is applied.
-    def load_into(graph, directory)
+    # validated before any of it is applied. Every named +producers+ must
+    # have written its document, so a producer that never succeeded cannot
+    # pass unnoticed.
+    def load_into(graph, directory, producers: [])
       paths = Dir.glob(File.join(File.expand_path(directory, graph.root), '*.yml')).sort
       raise Error, "no facts found in #{directory}; run `archspec reflect` or your facts producer" if paths.empty?
+
+      missing = producers.map(&:to_s) - paths.map { |path| File.basename(path, '.yml') }
+      unless missing.empty?
+        raise Error, "no facts from #{missing.join(', ')} in #{directory}; run `archspec reflect`"
+      end
 
       batches = paths.filter_map do |path|
         document = Document.new(graph, YAML.safe_load_file(path, permitted_classes: [], aliases: false), path)
