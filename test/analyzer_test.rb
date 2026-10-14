@@ -1025,7 +1025,7 @@ class AnalyzerTest < ArchSpecTest
 
       currency = graph.constants_named('Billing::Currency').first
       assert_equal :class, currency.kind
-      assert_equal 'Struct.new', currency.superclass
+      assert_equal 'Struct', currency.superclass
       assert_equal %i[call], currency.instance_methods.to_a
 
       fallback = graph.constants_named('Billing::Fallback').first
