@@ -752,6 +752,39 @@ class AnalyzerTest < ArchSpecTest
     end
   end
 
+  def test_components_select_descendants_of_data_and_struct_builders
+    with_project do |root|
+      write "#{root}/app/models/point.rb", <<~RUBY
+        Point = Data.define(:x, :y) do
+          def norm = Math.sqrt(x * x + y * y)
+        end
+      RUBY
+      write "#{root}/app/models/size.rb", "Size = Data.define(:width, :height)\n"
+      write "#{root}/app/models/pair.rb", "Pair = ::Struct.new(:left, :right)\n"
+      write "#{root}/app/models/geo.rb", <<~RUBY
+        module Geo
+          class Data; end
+          Point = Data.define(:lat)
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :values, descendants_of: 'Data'
+        component :records, descendants_of: 'Struct'
+        component :geo_values, descendants_of: 'Geo::Data'
+      end
+
+      graph = ArchSpec::Analyzer.analyze(definition, root: root)
+
+      assert_equal %w[Point Size], graph.components.fetch(:values).constants.to_a.sort
+      assert_equal %w[Pair], graph.components.fetch(:records).constants.to_a
+      assert_equal %w[Geo::Point], graph.components.fetch(:geo_values).constants.to_a
+      assert_equal ['descends from Data'],
+        graph.component_assignment_reasons_for_constant('Point').fetch(:values)
+      refute graph.edges.any? { |edge| edge.type == :inherits_from && edge.from_constant == 'Point' }
+    end
+  end
+
   def test_records_require_and_dynamic_feature_facts
     with_project do |root|
       write "#{root}/lib/loader.rb", <<~RUBY
@@ -992,7 +1025,7 @@ class AnalyzerTest < ArchSpecTest
 
       currency = graph.constants_named('Billing::Currency').first
       assert_equal :class, currency.kind
-      assert_equal 'Struct.new', currency.superclass
+      assert_equal 'Struct', currency.superclass
       assert_equal %i[call], currency.instance_methods.to_a
 
       fallback = graph.constants_named('Billing::Fallback').first

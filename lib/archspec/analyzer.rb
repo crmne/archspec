@@ -474,8 +474,8 @@ module ArchSpec
         if kind == :class
           if static_superclass
             @superclass_fallbacks[[normalize(name), path]] = superclass
-          else
-            record_builder_superclass(name, path, node.value)
+          elsif superclass
+            @superclass_overrides[[normalize(name), path]] = superclass
           end
         end
 
@@ -698,22 +698,12 @@ module ArchSpec
         node.superclass.slice
       end
 
-      def record_builder_superclass(name, path, value)
-        argument = value.arguments&.arguments&.first
-        return if argument && constant_node?(argument)
-
-        receiver = constant_reference_name(value.receiver)&.sub(/\A::/, '')
-        return if receiver == 'Class'
-
-        @superclass_overrides[[normalize(name), path]] = "#{constant_reference_name(value.receiver)}.#{value.message}"
-      end
-
       def builder_superclass(value)
         argument = value.arguments&.arguments&.first
         return constant_reference_name(argument) if argument && constant_node?(argument)
 
         receiver = constant_reference_name(value.receiver)&.sub(/\A::/, '')
-        "#{constant_reference_name(value.receiver)}.#{value.message}" unless receiver == 'Class'
+        constant_reference_name(value.receiver) unless receiver == 'Class'
       end
 
       def singleton_target(expression, current_constant)

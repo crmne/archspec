@@ -83,7 +83,9 @@ A definition is a `class` or `module` keyword, or a constant assignment.
 `MAX_RETRIES = 3` defines a plain constant; assigning `Class.new`,
 `Struct.new`, or `Data.define` defines a class whose block is its body, and
 `Module.new` defines a module. All of them belong to components and resolve
-as reference targets like any other constant.
+as reference targets like any other constant. A class from `Struct.new` or
+`Data.define` has `Struct` or `Data` as its superclass, so
+`descendants_of: "Data"` selects it.
 
 Run `archspec explain app/models/user.rb` to see the facts for one file.
 It prints the defined constants, component assignments with reasons, and
