@@ -40,7 +40,7 @@ module ArchSpec
       index.populate(graph)
       syntax.apply(graph, call_resolutions: index.call_resolutions)
       syntax.apply_concerns(graph)
-      Facts.load_into(graph, definition.facts_path) if include_facts && definition.facts_path
+      Facts.load_into(graph, definition.facts_path, producers: definition.declared_producers) if include_facts && definition.facts_path
       graph.assign_components(definition.component_specs.values)
       graph
     end

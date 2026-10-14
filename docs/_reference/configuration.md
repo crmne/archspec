@@ -35,11 +35,29 @@ ArchSpec checks the Ruby code, not the HTML structure. See
 
 Todo ids are computed from the rule, path, message, and evidence, not the line number, so entries survive edits that shift code.
 
-Opt into externally produced association or generated-method facts with
-`facts "archspec_facts"`. `check` and `explain` read the directory's `.yml`
-snapshots without running the application. `archspec reflect` explicitly boots
-Rails to produce `rails.yml`. Missing or stale configured snapshots fail the
-check. See [Association reflection]({% link _guides/association-reflection.md %}).
+Opt into runtime facts with `reflect`, which names the producers
+`archspec reflect` runs:
+
+```ruby
+reflect :rails
+reflect :widgets, require: "./lib/archspec/widgets_facts"
+facts "config/archspec_facts" # optional; the default directory is archspec_facts
+```
+
+Add `auto: true` to let `check` and `explain` run that producer themselves
+when its facts are missing or stale, as `archspec check --reflect` does for
+every producer. That boots the application during a check, so leave it off
+where checks must not boot anything:
+
+```ruby
+reflect :rails, auto: true
+```
+
+Otherwise, `check` and `explain` read the directory's `.yml` files without
+running the application. A missing directory is an error, and stale facts fail the check as
+`facts.stale` violations. `facts` alone selects the Rails producer. See
+[Rails reflection]({% link _guides/association-reflection.md %}) and
+[Framework integrations]({% link _guides/framework-integrations.md %}).
 
 ## Components
 

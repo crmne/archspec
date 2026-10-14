@@ -82,23 +82,33 @@ bundle exec archspec check --check-todo
 
 Runs the normal check and additionally fails when the todo lists an entry that no current violation matches, because the violation was fixed or is now suppressed locally. These are exactly the entries `--update-todo` would drop, so a fixed violation cannot linger in the burn-down list. Obsolete entries are printed before the verdict; with `--format json` they appear under `obsolete_todo`. With path arguments, only entries under those paths are reported; entries that record no path, such as bare ids, are reported only by an unscoped run. The configured todo file has to exist. Use this in CI instead of regenerating the file and diffing it. It cannot be combined with `--update-todo`.
 
+```sh
+bundle exec archspec check --reflect
+```
+
+Before checking, runs the declared producers whose facts are missing or stale, the same way `archspec reflect` does, then checks against the fresh facts. Producers whose facts are current are not run, so an unchanged project boots nothing. Their progress goes to standard error, so `--format json` output stays parseable. This boots the application, so keep it to local runs; in CI, commit the facts or run `archspec reflect` as its own step. Producers declared with `auto: true` behave this way without the flag. `explain` accepts `--reflect` too.
+
 ## reflect
 
 ```sh
 bundle exec archspec reflect --environment test
-bundle exec archspec reflect --config config/architecture.rb --environment test
+bundle exec archspec reflect widgets
+bundle exec archspec reflect --config config/architecture.rb
 ```
 
-Requires `facts "archspec_facts"` in the architecture configuration. This is an
-explicit runtime command: it runs `bin/rails runner`, eager loads the application,
-and writes resolved Active Record associations to `archspec_facts/rails.yml`.
-The default environment is `RAILS_ENV`, or `development` when unset.
+Runs the producers declared with `reflect` in `Archspec.rb` (the Rails producer
+when only `facts` is declared), each in its own process and all in parallel.
+Each one boots its framework and writes `<facts directory>/<name>.yml`. Pass
+producer names to run only those. `--environment` sets `RAILS_ENV` for the
+producers; otherwise it stays as it is, and the Rails producer defaults to
+`development`.
 
-Regenerate after source, configuration, or dependency changes. Failed reflection
-preserves the previous snapshot. Polymorphic, unresolved, and ambiguous
-associations are reported as analysis gaps. See
-[Association reflection]({% link _guides/association-reflection.md %}) for the
-format, staleness contract, and custom producers.
+Regenerate after changing the files a producer covers, configuration, or
+dependencies; `check` reports stale facts as `facts.stale` violations, unless
+it runs with `--reflect` or the producer is declared with `auto: true`. A failed
+producer keeps its previous file and makes the command exit 1. See
+[Rails reflection]({% link _guides/association-reflection.md %}) and
+[Framework integrations]({% link _guides/framework-integrations.md %}).
 
 ## explain
 

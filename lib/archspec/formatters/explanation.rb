@@ -114,7 +114,8 @@ module ArchSpec
         locations = facts.map { |edge| "#{edge.location.line}:#{edge.location.column}" }
         in_gutters(locations) do |gutter, index|
           edge = facts[index]
-          output.puts "    #{style.faint(gutter)} #{edge.verb} #{edge.to}"
+          source = edge.producer ? style.note(" (from #{edge.producer} facts)") : ''
+          output.puts "    #{style.faint(gutter)} #{edge.verb} #{edge.to}#{source}"
         end
       end
 

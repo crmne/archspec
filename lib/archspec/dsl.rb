@@ -70,11 +70,28 @@ module ArchSpec
         self.todo_path = path.to_s
       end
 
-      # Loads versioned reference and generated-method facts from this
-      # directory. Producing Rails facts is an explicit runtime operation:
-      # <tt>archspec reflect</tt>. Normal checks only read the snapshots.
+      # Loads the facts that <tt>archspec reflect</tt> captured from this
+      # directory. Checks only read these files; they never boot the app.
       def facts(path = 'archspec_facts')
         self.facts_path = path.to_s
+      end
+
+      # Chooses the producers <tt>archspec reflect</tt> runs, and turns on
+      # facts in +archspec_facts+ unless #facts names another directory.
+      # Without it, a facts directory is filled by the built-in +:rails+
+      # producer. Load your own producer from a gem or a project file:
+      #
+      #   reflect :rails
+      #   reflect :widgets, require: "widgets/archspec"
+      #   reflect :billing, require: "./lib/archspec/billing_facts"
+      #
+      # With <tt>auto: true</tt>, +check+ and +explain+ run the producer
+      # themselves when its facts are missing or stale, which boots the app.
+      # Leave it off where checks must not boot anything, such as CI.
+      def reflect(*names, require: nil, auto: false)
+        raise Error, 'reflect needs at least one producer name' if names.empty?
+
+        names.flatten.each { |name| add_producer(name, require: require, auto: auto) }
       end
 
       # Yields each subdirectory matching a glob, so you can declare one

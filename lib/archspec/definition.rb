@@ -35,6 +35,29 @@ module ArchSpec
       @user_ignore_patterns = []
       @component_specs = {}
       @rules = []
+      @producers = {}
+      @auto_producers = []
+    end
+
+    # Producer names mapped to the file that registers them, or nil for a
+    # built-in producer. Declaring facts without producers selects Rails.
+    def producers
+      @producers.empty? ? { 'rails' => nil } : @producers
+    end
+
+    # Producers named by +reflect+, whose documents a check requires.
+    def declared_producers
+      @producers.keys
+    end
+
+    # Producers whose facts a check refreshes on its own when they are
+    # missing or stale.
+    attr_reader :auto_producers
+
+    def add_producer(name, require: nil, auto: false)
+      @producers[name.to_s] = require&.to_s
+      @auto_producers |= [name.to_s] if auto
+      @facts_path ||= 'archspec_facts'
     end
 
     def add_source_patterns(patterns)

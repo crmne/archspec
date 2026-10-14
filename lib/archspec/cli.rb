@@ -1,14 +1,16 @@
 # frozen_string_literal: true
 
+require 'open3'
 require 'optparse'
+require 'rbconfig'
 
 module ArchSpec
   # The <tt>archspec</tt> command line. Backs the +exe/archspec+ executable and
   # dispatches the +init+, +check+, +explain+, +reflect+, and +version+ subcommands.
   #
   #   archspec init
-  #   archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo|--check-todo]
-  #   archspec explain PATH_OR_CONSTANT
+  #   archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo|--check-todo] [--reflect]
+  #   archspec explain PATH_OR_CONSTANT [--reflect]
   #
   # #run returns the process exit status: 0 when clean, 1 when violations are
   # found (or, with <tt>--check-todo</tt>, when the todo lists violations that
@@ -22,6 +24,8 @@ module ArchSpec
       architecture :rails
     RUBY
 
+    REFLECT_HELP = 'Run producers whose facts are missing or stale first (boots the app)'
+
     class UsageError < Error; end
 
     def run(argv, output: $stdout, error: $stderr)
@@ -34,9 +38,9 @@ module ArchSpec
       when 'init'
         init(argv, output)
       when 'check'
-        check(argv, output)
+        check(argv, output, error)
       when 'explain'
-        explain(argv, output)
+        explain(argv, output, error)
       when 'reflect'
         reflect(argv, output)
       when 'version', '--version', '-v'
@@ -98,12 +102,13 @@ module ArchSpec
       raise Error, "could not create #{path}: #{e.message}"
     end
 
-    def check(argv, output)
+    def check(argv, output, error)
       options = {
         config: CONFIG_FILE,
         format: 'text',
         update_todo: false,
         check_todo: false,
+        reflect: false,
         help: false
       }
 
@@ -117,6 +122,7 @@ module ArchSpec
         opts.on('--check-todo', 'Also fail when the configured todo lists violations that no longer occur') do
           options[:check_todo] = true
         end
+        opts.on('--reflect', REFLECT_HELP) { options[:reflect] = true }
         opts.on('-h', '--help', 'Show this help') { options[:help] = true }
       end
       parser.parse!(argv)
@@ -141,12 +147,16 @@ module ArchSpec
                      'run `archspec check --update-todo` to create it'
       end
 
-      graph = Analyzer.analyze(definition, root: root)
+      graph = analyze_with_facts(definition, root, options, error)
       candidates = Evaluator.unsuppressed(definition, graph)
-      # Syntax errors are never an accepted baseline; they must be fixed.
-      acceptable = candidates.reject { |diagnostic| diagnostic.rule == 'parser.syntax' }
+      # Syntax errors and stale facts are never an accepted baseline; they must be fixed.
+      acceptable = candidates.reject { |diagnostic| ['parser.syntax', Facts::STALE_RULE].include?(diagnostic.rule) }
 
       if options[:update_todo]
+        if candidates.any? { |diagnostic| diagnostic.rule == Facts::STALE_RULE }
+          raise Error, 'facts are out of date; run `archspec reflect` before updating the todo'
+        end
+
         count = Todo.write(todo_path, acceptable, root: root)
         label = count == 1 ? 'entry' : 'entries'
         output.puts "Updated #{Pathname(todo_path).relative_path_from(Pathname(root))} with #{count} #{label}."
@@ -155,18 +165,19 @@ module ArchSpec
 
       todo = Todo.load(todo_path, root: root)
       diagnostics = candidates.reject { |diagnostic| todo.include?(diagnostic) }
-      diagnostics = scope_to_paths(diagnostics, argv, root)
+      diagnostics = scope_to_paths(diagnostics, argv, root, graph)
       obsolete = scope_entries_to_paths(todo.unmatched_by(acceptable), argv, root) if options[:check_todo]
 
       formatter.print(output, graph: graph, diagnostics: diagnostics, obsolete_todo: obsolete)
       diagnostics.empty? && (obsolete.nil? || obsolete.empty?) ? 0 : 1
     end
 
-    def explain(argv, output)
-      options = { config: CONFIG_FILE, help: false }
+    def explain(argv, output, error)
+      options = { config: CONFIG_FILE, reflect: false, help: false }
       parser = OptionParser.new do |opts|
         opts.banner = usage('explain').strip
         opts.on('--config PATH', 'Use a different architecture file') { |value| options[:config] = value }
+        opts.on('--reflect', REFLECT_HELP) { options[:reflect] = true }
         opts.on('-h', '--help', 'Show this help') { options[:help] = true }
       end
       parser.parse!(argv)
@@ -181,11 +192,14 @@ module ArchSpec
       raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
 
       definition, root = load_definition(options[:config])
-      graph = Analyzer.analyze(definition, root: root)
+      graph = analyze_with_facts(definition, root, options, error)
       Formatters::Explanation.print(output, graph: graph, subject: subject)
       0
     end
 
+    public
+
+    # Evaluates an +Archspec.rb+ file and returns the definition and its root.
     def load_definition(config_path)
       raise Error, "no #{config_path} found; run `archspec init` first" unless File.exist?(config_path)
 
@@ -208,12 +222,14 @@ module ArchSpec
       raise Error, "could not load #{config_path}: #{detail}"
     end
 
+    private
+
     def reflect(argv, output)
-      options = { config: CONFIG_FILE, environment: ENV.fetch('RAILS_ENV', 'development'), help: false }
+      options = { config: CONFIG_FILE, environment: nil, help: false }
       parser = OptionParser.new do |opts|
         opts.banner = usage('reflect')
         opts.on('--config PATH', 'Use a different architecture file') { |value| options[:config] = value }
-        opts.on('--environment NAME', 'Rails environment to boot (default: RAILS_ENV or development)') do |value|
+        opts.on('--environment NAME', 'Set RAILS_ENV for the producers (default: RAILS_ENV or development)') do |value|
           options[:environment] = value
         end
         opts.on('-h', '--help', 'Show this help') { options[:help] = true }
@@ -223,23 +239,76 @@ module ArchSpec
         output.puts parser
         return 0
       end
-      raise UsageError, "unexpected argument: #{argv.first}" if argv.any?
 
       definition, root = load_definition(options[:config])
-      unless definition.facts_path
-        raise Error, "no facts configured; add `facts \"archspec_facts\"` to #{options[:config]}"
-      end
-      output.print RailsReflector.run(config_path: options[:config], root: root,
-        output_path: File.join(File.expand_path(definition.facts_path, root), 'rails.yml'),
-        environment: options[:environment])
-      0
+      require_facts(definition, options[:config])
+      names = argv.empty? ? definition.producers.keys : argv
+      undeclared = names - definition.producers.keys
+      raise UsageError, "undeclared producer: #{undeclared.first}" if undeclared.any?
+
+      run_producers(names, options[:config], root, output, environment: options[:environment])
     end
 
-    def scope_to_paths(diagnostics, paths, root)
+    # Analyzes with facts, first running the producers that --reflect or
+    # <tt>reflect auto: true</tt> select when their documents are missing,
+    # then again for any whose documents turn out stale.
+    def analyze_with_facts(definition, root, options, output)
+      require_facts(definition, options[:config]) if options[:reflect]
+      names = options[:reflect] ? definition.producers.keys : definition.auto_producers
+      return Analyzer.analyze(definition, root: root) if names.empty?
+
+      directory = File.expand_path(definition.facts_path, root)
+      missing = names.reject { |name| File.file?(File.join(directory, "#{name}.yml")) }
+      run_producers(missing, options[:config], root, output) if missing.any?
+      graph = Analyzer.analyze(definition, root: root)
+      stale = graph.fact_diagnostics.select { |diagnostic| diagnostic.rule == Facts::STALE_RULE }
+                   .map { |diagnostic| File.basename(diagnostic.evidence, '.yml') }.uniq & names
+      return graph if stale.empty?
+
+      run_producers(stale, options[:config], root, output)
+      Analyzer.analyze(definition, root: root)
+    end
+
+    def require_facts(definition, config_path)
+      return if definition.facts_path
+
+      raise Error, "no facts configured; add `reflect :rails` or `facts \"archspec_facts\"` to #{config_path}"
+    end
+
+    # Runs each producer in its own process, in parallel, and reports every
+    # failure after the others finish.
+    def run_producers(names, config_path, root, output, environment: nil)
+      env = { 'ARCHSPEC_REFLECTION_CONFIG' => File.expand_path(config_path) }
+      env['RAILS_ENV'] = environment if environment
+      runner = File.expand_path('reflect_runner.rb', __dir__)
+      results = names.map do |name|
+        Thread.new do
+          Open3.capture3(env.merge('ARCHSPEC_PRODUCER' => name), RbConfig.ruby, runner, chdir: root)
+        rescue SystemCallError => e
+          ['', e.message, nil]
+        end
+      end.map(&:value)
+
+      failures = names.zip(results).reject do |_, (stdout, _, status)|
+        output.print stdout
+        status&.success?
+      end
+      return 0 if failures.empty?
+
+      raise Error, failures.map { |name, (_, stderr, status)|
+        "#{name} producer failed#{" (exit #{status.exitstatus})" if status&.exitstatus}: #{stderr.strip}"
+      }.join("\n")
+    end
+
+    # A stale facts document affects every path, so it is always reported.
+    def scope_to_paths(diagnostics, paths, root, graph)
       return diagnostics if paths.empty?
 
       expanded = paths.map { |path| File.expand_path(path, root) }
-      diagnostics.select { |diagnostic| within?(diagnostic.location.path, expanded) }
+      diagnostics.select do |diagnostic|
+        within?(diagnostic.location.path, expanded) ||
+          (diagnostic.rule == Facts::STALE_RULE && !graph.files.key?(diagnostic.location.path))
+      end
     end
 
     def scope_entries_to_paths(entries, paths, root)
@@ -275,20 +344,20 @@ module ArchSpec
       when 'init'
         'Usage: archspec init [PATH] [--force]'
       when 'check'
-        'Usage: archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo|--check-todo]'
+        'Usage: archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo|--check-todo] [--reflect]'
       when 'explain'
-        'Usage: archspec explain PATH_OR_CONSTANT [--config PATH]'
+        'Usage: archspec explain PATH_OR_CONSTANT [--config PATH] [--reflect]'
       when 'reflect'
-        'Usage: archspec reflect [--config PATH] [--environment NAME]'
+        'Usage: archspec reflect [PRODUCERS...] [--config PATH] [--environment NAME]'
       when 'version'
         'Usage: archspec version'
       when ''
         <<~TEXT
           Usage:
             archspec init [PATH] [--force]
-            archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo|--check-todo]
-            archspec explain PATH_OR_CONSTANT [--config PATH]
-            archspec reflect [--config PATH] [--environment NAME]
+            archspec check [PATHS...] [--config PATH] [--format text|json] [--update-todo|--check-todo] [--reflect]
+            archspec explain PATH_OR_CONSTANT [--config PATH] [--reflect]
+            archspec reflect [PRODUCERS...] [--config PATH] [--environment NAME]
             archspec version
             archspec help [COMMAND]
         TEXT

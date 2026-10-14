@@ -9,6 +9,7 @@ require_relative 'archspec/model'
 require_relative 'archspec/definition'
 require_relative 'archspec/todo'
 require_relative 'archspec/facts'
+require_relative 'archspec/producer'
 require_relative 'archspec/dsl'
 require_relative 'archspec/rubydex_index'
 require_relative 'archspec/concern_semantics'
@@ -36,8 +37,10 @@ require_relative 'archspec/rails_reflector'
 # file written in the ArchSpec::DSL, then run <tt>archspec check</tt> to verify
 # every change. ArchSpec indexes Ruby source with Rubydex, uses Prism for a
 # handful of syntax-specific facts, and never boots the app during checks.
-# The opt-in <tt>archspec reflect</tt> command boots Rails separately to
-# capture resolved association facts for later static checks.
+# The opt-in <tt>archspec reflect</tt> command runs facts producers, such as
+# the built-in Rails producer, in separate processes to record what the booted
+# framework resolved; checks read those facts as data. See ArchSpec::Producer
+# and ArchSpec::Facts::Builder to integrate another framework.
 #
 # The DSL is the public API. An +Archspec.rb+ file is evaluated directly:
 #
