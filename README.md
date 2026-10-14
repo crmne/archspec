@@ -183,6 +183,7 @@ and custom validators, add `reflect :rails` to `Archspec.rb` and run
 `bundle exec archspec reflect --environment test`. It boots the app once, in a
 separate process, and saves what Rails resolved. Checks read those facts
 without booting anything, and fail with `facts.stale` for files edited since.
+Locally, `archspec check --reflect` refreshes stale facts before checking.
 See the [Rails reflection guide](https://archspecrb.dev/association-reflection/).
 
 Other frameworks and macro libraries can supply facts with a small producer

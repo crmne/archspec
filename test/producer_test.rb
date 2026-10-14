@@ -72,6 +72,52 @@ class ProducerTest < ArchSpecTest
     end
   end
 
+  def test_check_with_reflect_refreshes_missing_and_stale_facts_first
+    with_project do |root|
+      write_widget_project(root)
+
+      output, error, status = cli(root, 'check', '--reflect', '--format', 'json')
+      assert_equal 1, status, error
+      assert_equal ['dependencies.forbid'], JSON.parse(output).fetch('violations').map { |violation| violation['rule'] }
+      assert_match(%r{Updated archspec_facts/widgets\.yml}, error)
+      assert_match(%r{Updated archspec_facts/audit\.yml}, error)
+
+      write "#{root}/app/widgets/report.rb", "class Report\n  include Widgets\n  uses :billing\n  # edited\nend\n"
+      output, error, status = cli(root, 'check', '--reflect', '--format', 'json')
+      assert_equal 1, status
+      assert_equal ['dependencies.forbid'], JSON.parse(output).fetch('violations').map { |violation| violation['rule'] }
+      assert_match(%r{Updated archspec_facts/widgets\.yml}, error)
+      refute_match(/audit/, error)
+
+      _, error, status = cli(root, 'check', '--reflect')
+      assert_equal 1, status
+      assert_empty error
+
+      File.delete("#{root}/archspec_facts/audit.yml")
+      output, error, status = cli(root, 'explain', 'Report', '--reflect')
+      assert_equal 0, status
+      assert_match(/references BillingService \(from widgets facts\)/, output)
+      assert_match(%r{Updated archspec_facts/audit\.yml}, error)
+    end
+  end
+
+  def test_auto_producers_refresh_on_their_own_and_others_stay_stale
+    with_project do |root|
+      write_widget_project(root)
+      config = File.read("#{root}/Archspec.rb").sub("widgets_facts'", "widgets_facts', auto: true")
+      write "#{root}/Archspec.rb", config
+      cli(root, 'reflect')
+
+      write "#{root}/config/widgets.yml", "billing: ledger\n"
+      output, error, status = cli(root, 'check', '--format', 'json')
+      assert_equal 1, status
+      assert_match(%r{Updated archspec_facts/widgets\.yml}, error)
+      violations = JSON.parse(output).fetch('violations')
+      assert_equal [['facts.stale', 'archspec_facts/audit.yml']], violations.select { |violation| violation['rule'] == 'facts.stale' }
+                                                                            .map { |violation| violation.values_at('rule', 'evidence') }
+    end
+  end
+
   def test_only_the_edited_file_goes_stale
     with_project do |root|
       write_widget_project(root)

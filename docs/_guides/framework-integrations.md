@@ -52,7 +52,8 @@ reflect :widgets, require: "./lib/archspec/widgets_facts"
 
 A `require:` path that starts with a dot is relative to `Archspec.rb`; anything
 else is required from the load path, so a gem can ship its producer. The file
-is only loaded by `archspec reflect`, never by `check`.
+is only loaded by `archspec reflect`, and by `check --reflect` or an
+`auto: true` producer when its facts need refreshing.
 
 ```sh
 bundle exec archspec reflect

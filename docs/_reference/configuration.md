@@ -33,8 +33,17 @@ reflect :widgets, require: "./lib/archspec/widgets_facts"
 facts "config/archspec_facts" # optional; the default directory is archspec_facts
 ```
 
-`check` and `explain` read the directory's `.yml` files without running the
-application. A missing directory is an error, and stale facts fail the check as
+Add `auto: true` to let `check` and `explain` run that producer themselves
+when its facts are missing or stale, as `archspec check --reflect` does for
+every producer. That boots the application during a check, so leave it off
+where checks must not boot anything:
+
+```ruby
+reflect :rails, auto: true
+```
+
+Otherwise, `check` and `explain` read the directory's `.yml` files without
+running the application. A missing directory is an error, and stale facts fail the check as
 `facts.stale` violations. `facts` alone selects the Rails producer. See
 [Rails reflection]({% link _guides/association-reflection.md %}) and
 [Framework integrations]({% link _guides/framework-integrations.md %}).

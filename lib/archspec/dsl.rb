@@ -84,10 +84,14 @@ module ArchSpec
       #   reflect :rails
       #   reflect :widgets, require: "widgets/archspec"
       #   reflect :billing, require: "./lib/archspec/billing_facts"
-      def reflect(*names, require: nil)
+      #
+      # With <tt>auto: true</tt>, +check+ and +explain+ run the producer
+      # themselves when its facts are missing or stale, which boots the app.
+      # Leave it off where checks must not boot anything, such as CI.
+      def reflect(*names, require: nil, auto: false)
         raise Error, 'reflect needs at least one producer name' if names.empty?
 
-        names.flatten.each { |name| add_producer(name, require: require) }
+        names.flatten.each { |name| add_producer(name, require: require, auto: auto) }
       end
 
       # Yields each subdirectory matching a glob, so you can declare one

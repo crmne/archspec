@@ -36,6 +36,7 @@ module ArchSpec
       @component_specs = {}
       @rules = []
       @producers = {}
+      @auto_producers = []
     end
 
     # Producer names mapped to the file that registers them, or nil for a
@@ -49,8 +50,13 @@ module ArchSpec
       @producers.keys
     end
 
-    def add_producer(name, require: nil)
+    # Producers whose facts a check refreshes on its own when they are
+    # missing or stale.
+    attr_reader :auto_producers
+
+    def add_producer(name, require: nil, auto: false)
       @producers[name.to_s] = require&.to_s
+      @auto_producers |= [name.to_s] if auto
       @facts_path ||= 'archspec_facts'
     end
 

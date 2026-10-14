@@ -110,6 +110,11 @@ Run reflection after changing models or configuration:
 bundle exec archspec reflect --environment test && bundle exec archspec check
 ```
 
+Locally, `bundle exec archspec check --reflect` does both in one command and
+reruns the producer only when its facts are missing or stale. Declare
+`reflect :rails, auto: true` to make that the default for `check` and
+`explain`. Either way, the check boots the app whenever it refreshes facts.
+
 Environment variables other than `RAILS_ENV`, external services, database-driven
 configuration, and path dependencies outside the project are not fingerprinted.
 Regenerate when those change too. Facts describe the runtime that produced them,
