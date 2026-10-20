@@ -198,7 +198,7 @@ fields, Ruby objects, and YAML aliases are rejected. A method signature has
 `rest`, `keyword_rest`, `block`, and `forward` flags. A version 2 document
 without a `snapshot` is rejected, since nothing could tell when it went stale.
 
-Version 1 files, written by ArchSpec 1.1, are still read. They carry
+Version 1 files, written by development builds before 1.2, are still read. They carry
 `references`, `methods`, and `gaps`, and go stale as a whole when any analyzed
 file or input changes, or when `RAILS_ENV` differs from their `environment`.
 
