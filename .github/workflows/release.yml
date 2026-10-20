@@ -101,6 +101,20 @@ jobs:
             echo "version_changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Require committed release notes
+        if: steps.check_version.outputs.version_changed == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          NOTES="packaging/release-notes/v${VERSION}.md"
+          if [ ! -s "$NOTES" ]; then
+            echo "Missing $NOTES. Commit hand-written release notes before releasing $VERSION." >&2
+            exit 1
+          fi
+
       - name: Build gem package
         if: steps.check_version.outputs.version_changed == 'true'
         run: gem build archspec.gemspec
@@ -147,6 +161,18 @@ jobs:
           TAG="v${VERSION}"
           release_target="$GITHUB_SHA"
 
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub release $TAG already exists."
+            exit 0
+          fi
+
+          # Hand-written notes are required before any tag is created.
+          notes="packaging/release-notes/${TAG}.md"
+          if [ ! -s "$notes" ]; then
+            echo "Missing $notes. Commit hand-written release notes before releasing $TAG." >&2
+            exit 1
+          fi
+
           git fetch --tags --force
 
           if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
@@ -163,54 +189,12 @@ jobs:
             git push origin "$TAG"
           fi
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "GitHub release $TAG already exists."
-            exit 0
-          fi
-
           prerelease_args=()
-          is_prerelease=false
           if ruby -rrubygems/version -e 'exit Gem::Version.new(ARGV.fetch(0)).prerelease? ? 0 : 1' "$VERSION"; then
             prerelease_args=(--prerelease)
-            is_prerelease=true
           fi
-
-          previous_tag=""
-          while IFS= read -r candidate; do
-            if [ "$candidate" = "$TAG" ]; then
-              continue
-            fi
-
-            candidate_version="${candidate#v}"
-            if [ "$is_prerelease" = "false" ] && ruby -rrubygems/version -e 'exit Gem::Version.new(ARGV.fetch(0)).prerelease? ? 0 : 1' "$candidate_version"; then
-              continue
-            fi
-
-            previous_tag="$candidate"
-            break
-          done < <(git tag --sort=-v:refname --list 'v*')
-
-          if [ -n "$previous_tag" ]; then
-            commit_range="${previous_tag}..${release_target}"
-          else
-            commit_range="$release_target"
-          fi
-
-          commits=$(git log --reverse --format='* %H %s' "$commit_range" | grep -Ev '^\* [0-9a-f]+ (docs|test|chore):' || true)
-          if [ -z "$commits" ]; then
-            commits=$(git log --reverse --format='* %H %s' "$commit_range")
-          fi
-
-          {
-            echo "## Changelog"
-            echo "$commits"
-            if [ -n "$previous_tag" ]; then
-              echo
-              echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${previous_tag}...${TAG}"
-            fi
-          } > release-notes.md
 
           gh release create "$TAG" \
             --target "$release_target" \
-            --notes-file release-notes.md \
+            --notes-file "$notes" \
             "${prerelease_args[@]}"
