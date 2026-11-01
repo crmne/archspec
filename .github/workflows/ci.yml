@@ -62,8 +62,14 @@ jobs:
             --env BUNDLE_PATH=/tmp/bundle \
             --env BUNDLE_DISABLE_SHARED_GEMS=true \
             --env BUNDLE_FORCE_RUBY_PLATFORM=true \
+            --env RUSTFLAGS="-C target-feature=-crt-static" \
             ruby:3.4-alpine sh -elc '
-              apk add --no-cache build-base cargo clang-dev git
+              # Rubydex 0.4.4 needs a newer Rust than Alpine packages. Rustup
+              # links musl statically by default, which stops bindgen loading
+              # libclang, hence RUSTFLAGS above.
+              apk add --no-cache build-base clang-dev git rustup
+              rustup-init -y --profile minimal --default-toolchain stable
+              . "$HOME/.cargo/env"
               bundle install
               find lib test -name "*.rb" -print0 | xargs -0 -n1 ruby -c
               ruby -c exe/archspec
