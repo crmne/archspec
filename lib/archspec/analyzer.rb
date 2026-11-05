@@ -853,7 +853,7 @@ module ArchSpec
           nodes = graph.constants_named(owner)
           constant = nodes.find { |candidate| candidate.path == fallback.path } ||
                      (nodes.find { |candidate| !candidate.namespace_only } if fallback.receiver)
-          constant&.add_mixin(fallback.message, fallback.target)
+          constant&.add_mixin(fallback.message, mixin_target(graph, fallback))
           graph.add_edge(
             type: type,
             from_path: fallback.path,
@@ -869,6 +869,15 @@ module ArchSpec
         return fallback.owner unless fallback.receiver
 
         graph.resolve_constant_reference(fallback.receiver, fallback.owner, lexical_nesting: fallback.nesting)
+      end
+
+      # The receiver's own node resolves its mixins from its own scope, so a
+      # module named from another class's body is recorded by its full name.
+      def mixin_target(graph, fallback)
+        return fallback.target unless fallback.receiver
+
+        resolved = graph.resolve_constant_reference(fallback.target, fallback.owner, lexical_nesting: fallback.nesting)
+        graph.constants_named(resolved).any? ? "::#{resolved}" : fallback.target
       end
 
       def set_fallback_visibility(path, owner, names, scope, visibility)

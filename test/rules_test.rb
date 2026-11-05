@@ -1090,6 +1090,30 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_mixin_on_another_receiver_finds_the_module_from_where_the_call_is
+    with_project do |root|
+      write "#{root}/lib/worker.rb", "class Worker; end\n"
+      write "#{root}/lib/recycling.rb", <<~RUBY
+        class Recycling
+          module Poller
+            def poll; end
+          end
+
+          def self.install
+            Worker.prepend(Poller)
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :workers, in: 'lib/worker.rb'
+        workers.must_implement :poll
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
   def test_concern_independence_flags_reference_to_constants_owned_by_includer
     with_project do |root|
       write "#{root}/app/models/widget.rb", <<~RUBY
