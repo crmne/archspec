@@ -272,7 +272,7 @@ module ArchSpec
         apply_generated_methods(graph)
         @extra_edges.each { |edge| graph.add_edge(**edge) }
         call_sites.each do |site|
-          resolution = call_resolutions[site]
+          resolution = call_resolutions[site] || undeclared_receiver(graph, site)
           resolved_method = graph.resolve_method_alias(resolution.receiver, site.name, resolution.scope) if resolution
           graph.add_edge(
             type: :calls_named_method,
@@ -286,6 +286,18 @@ module ArchSpec
             resolved_method: resolved_method
           )
         end
+      end
+
+      # A constant the index can't resolve, such as a gem's, is still the
+      # receiver its name says: a nested constant of that name if the graph has
+      # one, otherwise the name as written.
+      def undeclared_receiver(graph, site)
+        return unless site.receiver_name
+
+        name = site.receiver_name
+        receiver = name.start_with?('::') ? name.delete_prefix('::') :
+                     graph.resolve_constant_reference(name, site.owner, lexical_nesting: site.nesting)
+        CallResolution.new(receiver, :class)
       end
 
       def declaration_kind(name, path)

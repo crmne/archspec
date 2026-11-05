@@ -313,7 +313,7 @@ class RulesTest < ArchSpecTest
         tools.cannot_call :connection, receiver: 'ActiveRecord::Base'
       end
 
-      assert_equal [9], diagnostics_for(definition, root).map { |diagnostic| diagnostic.location.line }
+      assert_equal [8], diagnostics_for(definition, root).map { |diagnostic| diagnostic.location.line }
     end
   end
 

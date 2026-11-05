@@ -263,9 +263,7 @@ module ArchSpec
 
         if site.receiver_name
           declaration = @index.resolve_constant(site.receiver_name, site.nesting)
-          # A constant the analyzed source doesn't declare, such as a gem's,
-          # is still the receiver its name says.
-          receiver = declaration ? semantic_name(declaration) : site.receiver_name.delete_prefix('::')
+          receiver = semantic_name(declaration) if declaration
           @call_resolutions[site] = syntax.class::CallResolution.new(receiver, :class) if receiver
         elsif site.receiver == :none && site.owner
           @call_resolutions[site] = syntax.class::CallResolution.new(site.owner, site.scope)
