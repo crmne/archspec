@@ -35,9 +35,7 @@ module ArchSpec
           next if consumers.empty?
 
           target = graph.resolve_edge_constant(edge)
-          owner = [edge.from_constant, *consumers]
-            .select { |namespace| within_namespace?(target, namespace) }
-            .max_by(&:length)
+          owner = definer(graph, target)
           next unless consumers.include?(owner)
 
           Diagnostic.new(
@@ -51,8 +49,16 @@ module ArchSpec
 
       private
 
-      def within_namespace?(constant, namespace)
-        constant == namespace || constant.start_with?("#{namespace}::")
+      # The class or module a reference reaches: the constant itself when it
+      # names one, or the namespace whose body defines a value constant.
+      # Chat::Interruptions::GRACE belongs to the concern Chat::Interruptions,
+      # and Chat::Closure is a class of its own, so neither names the includer
+      # Chat; Chat::LIMIT does.
+      def definer(graph, constant)
+        return constant if graph.constants_named(constant).any? { |node| node.class? || node.module? }
+
+        namespace, separator, = constant.rpartition('::')
+        separator.empty? ? constant : namespace
       end
 
       # Maps each mixed-in module to the set of constants that mix it in.

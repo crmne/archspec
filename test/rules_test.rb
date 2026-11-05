@@ -859,6 +859,111 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_concern_independence_allows_class_methods_reading_the_concerns_own_constants
+    with_project do |root|
+      write "#{root}/app/models/chat.rb", <<~RUBY
+        class Chat
+          include Interruptions
+        end
+      RUBY
+
+      write "#{root}/app/models/chat/interruptions.rb", <<~RUBY
+        module Chat::Interruptions
+          extend ActiveSupport::Concern
+
+          GRACE = 2
+
+          included do
+            before_save { GRACE }
+          end
+
+          class_methods do
+            def finish_interrupted_answers
+              GRACE
+            end
+          end
+
+          def grace
+            Chat::Interruptions::GRACE
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :concerns, in: 'app/models/chat/*.rb'
+        concerns.cannot_reference_includers
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_concern_independence_flags_class_methods_reading_their_includers_constants
+    with_project do |root|
+      write "#{root}/app/models/chat.rb", <<~RUBY
+        class Chat
+          LIMIT = 3
+          include Interruptions
+        end
+      RUBY
+
+      write "#{root}/app/models/chat/interruptions.rb", <<~RUBY
+        module Chat::Interruptions
+          extend ActiveSupport::Concern
+
+          class_methods do
+            def limit
+              Chat::LIMIT
+            end
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :concerns, in: 'app/models/chat/*.rb'
+        concerns.cannot_reference_includers
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/must not reference its includer Chat\b/, diagnostics.first.message)
+    end
+  end
+
+  def test_concern_independence_allows_classes_in_the_includers_namespace
+    with_project do |root|
+      write "#{root}/app/models/card.rb", <<~RUBY
+        class Card
+          include Closeable
+        end
+      RUBY
+
+      write "#{root}/app/models/card/closure.rb", <<~RUBY
+        class Card::Closure
+          REASONS = %w[ done ]
+        end
+      RUBY
+
+      write "#{root}/app/models/card/closeable.rb", <<~RUBY
+        module Card::Closeable
+          extend ActiveSupport::Concern
+
+          def close(reason)
+            Card::Closure.new if Card::Closure::REASONS.include?(reason)
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :concerns, in: 'app/models/card/*.rb'
+        concerns.cannot_reference_includers
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
   def test_concern_independence_flags_reference_to_constants_owned_by_includer
     with_project do |root|
       write "#{root}/app/models/widget.rb", <<~RUBY
