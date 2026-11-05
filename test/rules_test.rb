@@ -270,6 +270,28 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_cannot_call_matches_a_named_receiver_outside_the_analyzed_source
+    with_project do |root|
+      write "#{root}/app/tools/lookup.rb", <<~RUBY
+        class Lookup
+          def run = ActiveRecord::Base.connection
+          def absolute = ::ActiveRecord::Base.connection
+          def client = provider.connection
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :tools, in: 'app/tools/**/*.rb'
+        tools.cannot_call :connection, receiver: 'ActiveRecord::Base'
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal [2, 3], diagnostics.map { |diagnostic| diagnostic.location.line }
+      assert_equal 'Lookup calls connection on ActiveRecord::Base', diagnostics.first.evidence
+    end
+  end
+
   def test_cannot_call_follows_method_aliases_on_resolved_receivers
     with_project do |root|
       write "#{root}/app/models/store.rb", <<~RUBY
