@@ -36,10 +36,12 @@ models.cannot_call :find_by_sql, receiver: "ActiveRecord::Base"
 
 `User.find_by_sql` is caught when `User` descends from `ActiveRecord::Base`;
 `connection.find_by_sql` is not. ArchSpec resolves static constant receivers,
-including ones a gem declares (`ActiveRecord::Base.find_by_sql` matches by its
-name), and refuses to guess the type of local variables. Calls through method aliases
-are matched to their target when the receiver can be resolved, so forbidding
-`destroy_all` also catches a resolved alias such as `Store.wipe`.
+including ones a gem declares (`ActiveRecord::Base.find_by_sql` matches by the
+name as it's written, since nothing analyzed says what it resolves to), and
+refuses to guess the type of local variables. Calls through method aliases
+are matched to their target when the receiver can be resolved and its alias is
+in the analyzed source, so forbidding `destroy_all` also catches a resolved
+alias such as `Store.wipe`, but not an alias a gem declares.
 
 ## Forbid Definitions
 

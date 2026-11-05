@@ -277,6 +277,7 @@ class RulesTest < ArchSpecTest
           def run = ActiveRecord::Base.connection
           def absolute = ::ActiveRecord::Base.connection
           def client = provider.connection
+          def other = OtherGem::Client.connection
         end
       RUBY
 
@@ -289,6 +290,30 @@ class RulesTest < ArchSpecTest
 
       assert_equal [2, 3], diagnostics.map { |diagnostic| diagnostic.location.line }
       assert_equal 'Lookup calls connection on ActiveRecord::Base', diagnostics.first.evidence
+    end
+  end
+
+  def test_cannot_call_tells_a_nested_constant_from_the_gems_it_shadows
+    with_project do |root|
+      write "#{root}/app/tools/shadow.rb", <<~RUBY
+        module Shadow
+          module ActiveRecord
+            class Base; def self.connection = nil; end
+          end
+
+          class Lookup
+            def nested = ActiveRecord::Base.connection
+            def gem = ::ActiveRecord::Base.connection
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :tools, in: 'app/tools/**/*.rb'
+        tools.cannot_call :connection, receiver: 'ActiveRecord::Base'
+      end
+
+      assert_equal [9], diagnostics_for(definition, root).map { |diagnostic| diagnostic.location.line }
     end
   end
 
@@ -1011,6 +1036,54 @@ class RulesTest < ArchSpecTest
       definition = ArchSpec.define do
         component :patches, in: 'lib/**/*.rb'
         patches.cannot_reference_includers
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
+  def test_concern_independence_flags_a_concern_naming_the_receiver_it_mixes_into
+    with_project do |root|
+      write "#{root}/lib/worker.rb", "class Worker; end\n"
+
+      write "#{root}/lib/recycling.rb", <<~RUBY
+        class Recycling
+          module Poller
+            def poll
+              Worker.new
+            end
+          end
+
+          def self.install
+            Worker.prepend(Poller)
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :patches, in: 'lib/**/*.rb'
+        patches.cannot_reference_includers
+      end
+
+      diagnostics = diagnostics_for(definition, root)
+
+      assert_equal 1, diagnostics.size
+      assert_match(/Recycling::Poller must not reference its includer Worker/, diagnostics.first.message)
+    end
+  end
+
+  def test_mixin_on_the_receivers_own_constant_gives_it_the_modules_methods
+    with_project do |root|
+      write "#{root}/lib/greets.rb", "module Greets; def greet; end; end\n"
+      write "#{root}/lib/worker.rb", <<~RUBY
+        class Worker
+          Worker.include(Greets)
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :workers, in: 'lib/worker.rb'
+        workers.must_implement :greet
       end
 
       assert_empty diagnostics_for(definition, root)

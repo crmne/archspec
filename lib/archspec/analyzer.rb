@@ -162,7 +162,7 @@ module ArchSpec
         :dynamic_superclass
       )
       MethodFallback = Data.define(:path, :owner, :name, :scope, :location, :visibility, :signatures)
-      MixinFallback = Data.define(:path, :owner, :message, :target, :location, :nesting)
+      MixinFallback = Data.define(:path, :owner, :receiver, :message, :target, :location, :nesting)
 
       DYNAMIC_MESSAGES = %i[
         class_eval
@@ -756,13 +756,16 @@ module ArchSpec
       end
 
       # Worker.prepend(Poller) mixes Poller into Worker, not into the class
-      # whose body makes the call, so only a bare or self receiver counts.
+      # whose body makes the call. A receiver that isn't a constant, such as
+      # tool.class.prepend(Guard), names nothing we can record it on.
       def record_mixin_fallback(path, node, message, owner, location, nesting)
         return unless MIXIN_EDGE_TYPES.key?(message)
-        return unless node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode)
+
+        receiver = constant_reference_name(node.receiver)
+        return unless receiver_kind(node) == :none || receiver
 
         constant_arguments(node).each do |target|
-          @mixin_fallbacks << MixinFallback.new(path, owner, message, target, location, nesting)
+          @mixin_fallbacks << MixinFallback.new(path, owner, receiver, message, target, location, nesting)
         end
       end
 
@@ -829,22 +832,31 @@ module ArchSpec
       def apply_mixin_fallbacks(graph)
         @mixin_fallbacks.each do |fallback|
           type = MIXIN_EDGE_TYPES.fetch(fallback.message)
+          owner = mixin_owner(graph, fallback)
           next if graph.edges.any? do |edge|
-            edge.type == type && edge.from_path == fallback.path && edge.from_constant == fallback.owner &&
+            edge.type == type && edge.from_path == fallback.path && edge.from_constant == owner &&
               edge.to == fallback.target
           end
 
-          constant = graph.constants_named(fallback.owner).find { |candidate| candidate.path == fallback.path }
+          nodes = graph.constants_named(owner)
+          constant = nodes.find { |candidate| candidate.path == fallback.path } ||
+                     (nodes.find { |candidate| !candidate.namespace_only } if fallback.receiver)
           constant&.add_mixin(fallback.message, fallback.target)
           graph.add_edge(
             type: type,
             from_path: fallback.path,
-            from_constant: fallback.owner,
+            from_constant: owner,
             to: fallback.target,
             location: fallback.location,
             lexical_nesting: fallback.nesting
           )
         end
+      end
+
+      def mixin_owner(graph, fallback)
+        return fallback.owner unless fallback.receiver
+
+        graph.resolve_constant_reference(fallback.receiver, fallback.owner, lexical_nesting: fallback.nesting)
       end
 
       def set_fallback_visibility(path, owner, names, scope, visibility)
