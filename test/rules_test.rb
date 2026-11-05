@@ -964,6 +964,37 @@ class RulesTest < ArchSpecTest
     end
   end
 
+  def test_concern_independence_ignores_mixins_into_another_receiver
+    with_project do |root|
+      write "#{root}/lib/worker.rb", "class Worker; end\n"
+
+      write "#{root}/lib/recycling.rb", <<~RUBY
+        class Recycling
+          module Poller
+            def poll
+              Recycling.due?(self)
+            end
+          end
+
+          def self.install
+            Worker.prepend(Poller)
+          end
+
+          def self.due?(worker)
+            true
+          end
+        end
+      RUBY
+
+      definition = ArchSpec.define do
+        component :patches, in: 'lib/**/*.rb'
+        patches.cannot_reference_includers
+      end
+
+      assert_empty diagnostics_for(definition, root)
+    end
+  end
+
   def test_concern_independence_flags_reference_to_constants_owned_by_includer
     with_project do |root|
       write "#{root}/app/models/widget.rb", <<~RUBY

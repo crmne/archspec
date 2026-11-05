@@ -755,8 +755,11 @@ module ArchSpec
         @generated_methods << GeneratedMethod.new(path, owner, message, node, location, visibility, scope)
       end
 
+      # Worker.prepend(Poller) mixes Poller into Worker, not into the class
+      # whose body makes the call, so only a bare or self receiver counts.
       def record_mixin_fallback(path, node, message, owner, location, nesting)
         return unless MIXIN_EDGE_TYPES.key?(message)
+        return unless node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode)
 
         constant_arguments(node).each do |target|
           @mixin_fallbacks << MixinFallback.new(path, owner, message, target, location, nesting)

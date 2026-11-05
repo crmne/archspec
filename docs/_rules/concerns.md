@@ -33,7 +33,7 @@ end
 
 A concern that names its includer couples the two and defeats the point of extracting it. Passing behavior through the instance, such as `self` or a method the includer defines, does not trigger the rule.
 
-A value constant the includer defines, such as `Order::LIMIT`, counts as naming the includer. A class or module nested in its namespace, such as `Order::Line`, is a constant of its own, and so are the concern's own constants, including those its `class_methods` read.
+A value constant the includer defines, such as `Order::LIMIT`, counts as naming the includer. A class or module nested in its namespace, such as `Order::Line`, is a constant of its own, and so are the concern's own constants, including those its `class_methods` read. Only `include`, `prepend`, and `extend` on the class itself make it an includer: `Worker.prepend(Poller)` in another class's body mixes `Poller` into `Worker`.
 
 Modules that explicitly `extend ActiveSupport::Concern` receive Rails concern
 semantics. `class_methods` blocks and nested `ClassMethods` modules provide the
