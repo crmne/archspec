@@ -141,13 +141,13 @@ jobs:
       - name: Set up Ruby for API docs (root Gemfile)
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.4"
+          ruby-version: "4.0"
           bundler-cache: true
 
       - name: Set up Ruby for Jekyll build (docs Gemfile)
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.4"
+          ruby-version: "4.0"
           bundler-cache: true
           working-directory: docs
 
