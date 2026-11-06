@@ -29,8 +29,9 @@ Gem::Specification.new do |spec|
   spec.executables = ['archspec']
   spec.require_paths = ['lib']
 
-  spec.add_dependency 'herb', '~> 0.11.0'
-  # Herb serializes ERB programs with its own Prism 1.x, which Prism 2 can't load.
+  # Herb serializes ERB programs in its bundled Prism's format, and Prism can load
+  # only its own major's. Herb 0.11.2 moved to Prism 2's, so the pair moves together.
+  spec.add_dependency 'herb', '>= 0.11.0', '< 0.11.2'
   spec.add_dependency 'prism', '>= 1.0', '< 2'
   spec.add_dependency 'rubydex', '~> 0.4.0'
 
