@@ -153,7 +153,7 @@ jobs:
 
       - name: Set up Pages
         id: pages
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: actions/configure-pages@v5
 
       - name: Build docs
@@ -174,18 +174,18 @@ jobs:
         run: docs/bin/audit-seo.rb docs/_site
 
       - name: Plan IndexNow submission
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         run: ruby .github/scripts/indexnow.rb plan docs/_site "$RUNNER_TEMP/indexnow.json"
 
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         with:
           name: indexnow
           path: ${{ runner.temp }}/indexnow.json
           retention-days: 1
 
       - name: Upload Pages artifact
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: actions/upload-pages-artifact@v4
         with:
           path: docs/_site
@@ -193,7 +193,7 @@ jobs:
   deploy_docs:
     name: Deploy docs
     needs: [test, docs]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     permissions:
       pages: write
