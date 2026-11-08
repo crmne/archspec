@@ -125,18 +125,18 @@ jobs:
           ARCHSPEC_TORTURE: "1"
         run: bundle exec ruby -Itest test/torture_test.rb -n "/test_(discourse|mastodon)/"
 
-  docs:
+  docs_check:
+    name: Docs build
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
     env:
       BUNDLE_PATH: vendor/bundle
       BUNDLE_DISABLE_SHARED_GEMS: "true"
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # sitemap lastmod comes from each page's last commit
+          # Every release tag is built (the latest at /), and sitemap lastmod
+          # comes from each page's last commit.
+          fetch-depth: 0
 
       - name: Set up Ruby for API docs (root Gemfile)
         uses: ruby/setup-ruby@v1
@@ -151,81 +151,31 @@ jobs:
           bundler-cache: true
           working-directory: docs
 
-      - name: Set up Pages
-        id: pages
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        uses: actions/configure-pages@v5
-
+      # Builds the latest release and this checkout, with the API docs and
+      # the SEO audit as build hooks (docs/_config.yml). docs.yml deploys.
       - name: Build docs
         working-directory: docs
-        run: |
-          if [ -n "${PAGES_BASE_PATH}" ]; then
-            bundle exec jekyll build --baseurl "${PAGES_BASE_PATH}"
-          else
-            bundle exec jekyll build
-          fi
         env:
-          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
-
-      - name: Build API docs (RDoc) into /api/
-        run: docs/bin/build-api.sh docs/_site/api
-
-      - name: Audit generated SEO
-        run: docs/bin/audit-seo.rb docs/_site
-
-      - name: Plan IndexNow submission
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        run: ruby .github/scripts/indexnow.rb plan docs/_site "$RUNNER_TEMP/indexnow.json"
-
-      - uses: actions/upload-artifact@v4
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        with:
-          name: indexnow
-          path: ${{ runner.temp }}/indexnow.json
-          retention-days: 1
-
-      - name: Upload Pages artifact
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: docs/_site
-
-  deploy_docs:
-    name: Deploy docs
-    needs: [test, docs]
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          JEKYLL_ENV: production
+        run: bundle exec jekyll-vitepress build --destination _site
 
   release:
     name: Release gem
-    needs: [test, test_musl, docs, torture, torture_apps]
+    needs: [test, test_musl, docs_check, torture, torture_apps]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     uses: ./.github/workflows/release.yml
     permissions:
       contents: write
     secrets: inherit
 
-  indexnow:
-    runs-on: ubuntu-latest
-    needs: deploy_docs
+  # The release job tags with GITHUB_TOKEN, which starts no other workflow,
+  # so publish the new stable docs from here.
+  docs:
+    name: Publish docs
+    needs: [release]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    uses: ./.github/workflows/docs.yml
     permissions:
       contents: read
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: .github/scripts
-      - uses: actions/download-artifact@v4
-        with:
-          name: indexnow
-      - name: Submit changed URLs to IndexNow
-        run: ruby .github/scripts/indexnow.rb submit indexnow.json
+      pages: write
+      id-token: write

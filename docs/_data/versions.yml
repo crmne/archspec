@@ -1,7 +1,6 @@
-current: auto
+# `jekyll-vitepress build` fills in the stable and next versions; this file
+# adds the links that sit beside them in the version selector.
 items:
-  - title: Latest
-    url: /
   - title: Releases
     url: https://github.com/crmne/archspec/releases
     external: true

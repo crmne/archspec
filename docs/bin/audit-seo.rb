@@ -124,28 +124,44 @@ html_files.each do |file|
 end
 # rubocop:enable Metrics/BlockLength
 
-sitemap_path = site_dir.join('sitemap.xml')
 robots_path = site_dir.join('robots.txt')
-errors << 'sitemap.xml is missing' unless sitemap_path.file?
 errors << 'robots.txt is missing' unless robots_path.file?
+robots = robots_path.file? ? robots_path.read : ''
 
-if sitemap_path.file?
-  begin
-    sitemap = sitemap_path.read
-    REXML::Document.new(sitemap)
-    locations = sitemap.scan(%r{<loc>(.*?)</loc>}m).flatten.map { |url| CGI.unescapeHTML(url.strip) }
-    errors << 'sitemap.xml contains duplicate URLs' unless locations.length == locations.uniq.length
-    missing = indexable_canonicals.uniq - locations
-    extra = locations - indexable_canonicals.uniq
-    missing.each { |url| errors << "sitemap.xml is missing #{url}" }
-    extra.each { |url| errors << "sitemap.xml includes non-indexable or unknown URL #{url}" }
-  rescue REXML::ParseException => e
-    errors << "sitemap.xml is invalid XML (#{e.message})"
+# Each docs version (the latest release at /, master at /next/) has its own
+# sitemap, and robots.txt lists them all. Together they must list every
+# indexable page exactly once.
+sitemap_urls = robots.scan(/^Sitemap:\s*(\S+)/i).flatten
+sitemap_urls = ["#{site_root}sitemap.xml"] if sitemap_urls.empty?
+locations = []
+sitemap_urls.each do |url|
+  sitemap_uri = URI(url)
+  unless sitemap_uri.host == site_root.host
+    errors << "robots.txt lists a sitemap on another host (#{url})"
+    next
   end
+
+  name = sitemap_uri.path.delete_prefix('/')
+  sitemap_path = site_dir.join(name)
+  unless sitemap_path.file?
+    errors << "#{name} is missing"
+    next
+  end
+
+  sitemap = sitemap_path.read
+  REXML::Document.new(sitemap)
+  urls = sitemap.scan(%r{<loc>(.*?)</loc>}m).flatten.map { |loc| CGI.unescapeHTML(loc.strip) }
+  errors << "#{name} contains duplicate URLs" unless urls.length == urls.uniq.length
+  locations.concat(urls)
+rescue REXML::ParseException => e
+  errors << "#{name} is invalid XML (#{e.message})"
 end
 
+errors << 'sitemaps list the same URL more than once' unless locations.length == locations.uniq.length
+(indexable_canonicals.uniq - locations).each { |url| errors << "no sitemap lists #{url}" }
+(locations.uniq - indexable_canonicals.uniq).each { |url| errors << "a sitemap lists non-indexable or unknown URL #{url}" }
+
 if robots_path.file?
-  robots = robots_path.read
   errors << 'robots.txt does not block generated Markdown duplicates' unless robots.include?('Disallow: /*.md$')
   unless robots.include?("Sitemap: #{site_root}sitemap.xml")
     errors << 'robots.txt does not advertise the canonical sitemap'

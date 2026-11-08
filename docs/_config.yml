@@ -14,6 +14,10 @@ kramdown:
 
 permalink: pretty
 
+# Build scripts, not pages.
+exclude:
+  - bin
+
 theme: jekyll-vitepress-theme
 
 collections:
@@ -134,6 +138,13 @@ jekyll_vitepress:
     appearance_menu: Appearance
     switch_to_dark: Switch to dark theme
     switch_to_light: Switch to light theme
+  # `bundle exec jekyll-vitepress build` publishes the latest release at /
+  # and master at /next/.
+  versions:
+    next: true
+  build:
+    after_build: SITE_BASE_URL="${VITEPRESS_VERSION_URL%/}" bin/build-api.sh "$VITEPRESS_VERSION_OUTPUT/api" "$VITEPRESS_VERSION_ROOT"
+    after_assemble: ruby bin/audit-seo.rb "$VITEPRESS_SITE"
 
 plugins:
   - jekyll-vitepress-theme
