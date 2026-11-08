@@ -2,6 +2,10 @@ name: Release
 
 on:
   workflow_call:
+    outputs:
+      released:
+        description: Whether this run published a new version
+        value: ${{ jobs.publish.outputs.released }}
   push:
     tags:
       - "v*"
@@ -19,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      released: ${{ steps.check_version.outputs.version_changed }}
     env:
       BUNDLE_PATH: vendor/bundle
       BUNDLE_DISABLE_SHARED_GEMS: "true"

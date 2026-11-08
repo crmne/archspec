@@ -173,7 +173,7 @@ jobs:
   docs:
     name: Publish docs
     needs: [release]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: needs.release.outputs.released == 'true'
     uses: ./.github/workflows/docs.yml
     permissions:
       contents: read
