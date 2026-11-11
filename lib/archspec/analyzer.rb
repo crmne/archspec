@@ -995,7 +995,7 @@ module ArchSpec
 
         node.full_name.to_s
       rescue Prism::ConstantPathNode::DynamicPartsInConstantPathError,
-             Prism::ConstantPathNode::MissingNodesInConstantPathError
+             Prism::ConstantPathNode::ErrorRecoveryNodesInConstantPathError
         nil
       end
 

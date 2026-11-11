@@ -366,10 +366,11 @@ class ErbSourceTest < ArchSpecTest
     spec = Gem::Specification.load(File.expand_path('../archspec.gemspec', __dir__))
     requirement = ->(name) { spec.dependencies.find { |dependency| dependency.name == name }.requirement }
 
-    assert requirement.call('herb').satisfied_by?(Gem::Version.new('0.11.1'))
-    refute requirement.call('herb').satisfied_by?(Gem::Version.new('0.11.2'))
-    assert requirement.call('prism').satisfied_by?(Gem::Version.new('1.9.0'))
-    refute requirement.call('prism').satisfied_by?(Gem::Version.new('1.8.2'))
-    refute requirement.call('prism').satisfied_by?(Gem::Version.new('2.0.0'))
+    refute requirement.call('herb').satisfied_by?(Gem::Version.new('0.11.1'))
+    assert requirement.call('herb').satisfied_by?(Gem::Version.new('0.11.2'))
+    refute requirement.call('prism').satisfied_by?(Gem::Version.new('1.9.0'))
+    assert requirement.call('prism').satisfied_by?(Gem::Version.new('2.0.0'))
+    assert requirement.call('prism').satisfied_by?(Gem::Version.new('2.1.0'))
+    refute requirement.call('prism').satisfied_by?(Gem::Version.new('3.0.0'))
   end
 end

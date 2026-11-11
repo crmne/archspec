@@ -30,10 +30,10 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   # Herb serializes ERB programs with the Prism it bundles, and Prism loads only
-  # its own version's output: Herb 0.11.0 and 0.11.1 write 1.9's, and 0.11.2 writes
-  # 2's. The two move together.
-  spec.add_dependency 'herb', '>= 0.11.0', '< 0.11.2'
-  spec.add_dependency 'prism', '~> 1.9.0'
+  # its own major version's output: Herb 0.11.0 and 0.11.1 write 1.9's, and
+  # 0.11.2 writes 2's. The two move together.
+  spec.add_dependency 'herb', '>= 0.11.2', '< 0.12'
+  spec.add_dependency 'prism', '~> 2.0'
   spec.add_dependency 'rubydex', '~> 0.4.0'
 
   spec.add_development_dependency 'minitest', '>= 5.20', '< 6'
