@@ -1,5 +1,7 @@
 ---
 title: Dependencies
+seo:
+  title: Component dependency rules
 nav_order: 2
 description: Use ArchSpec dependency rules to define component allowlists, deny specific dependencies, restrict consumers, and expose public APIs.
 ---

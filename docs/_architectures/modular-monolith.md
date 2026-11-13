@@ -1,5 +1,7 @@
 ---
 title: Modular Monolith
+seo:
+  title: Modular monolith architecture preset
 nav_order: 7
 description: Use ArchSpec's modular monolith preset to declare application modules, dependency allowlists, and public APIs for package boundaries.
 ---

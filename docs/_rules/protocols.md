@@ -1,5 +1,7 @@
 ---
 title: Protocols
+seo:
+  title: Protocol implementation rules
 nav_order: 4
 description: Use ArchSpec protocol rules to require classes in a component to implement one method or at least one member of an accepted method set.
 ---

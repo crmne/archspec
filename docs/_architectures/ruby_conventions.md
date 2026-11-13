@@ -1,5 +1,7 @@
 ---
 title: Ruby Conventions
+seo:
+  title: Ruby conventions preset
 nav_order: 10
 description: Use ArchSpec's Ruby conventions preset to enforce idiomatic method names across a project without declaring application components.
 ---

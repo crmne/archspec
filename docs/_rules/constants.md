@@ -1,5 +1,7 @@
 ---
 title: Constants
+seo:
+  title: Constant reference rules
 nav_order: 6
 description: Use ArchSpec constant rules to forbid references to named Ruby constants and anything nested beneath them across component boundaries.
 ---

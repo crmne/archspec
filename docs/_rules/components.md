@@ -1,5 +1,7 @@
 ---
 title: Components
+seo:
+  title: Component structure rules
 nav_order: 8
 description: Use ArchSpec component rules to require selected directories to stay empty and report files that violate an intentional project boundary.
 ---
