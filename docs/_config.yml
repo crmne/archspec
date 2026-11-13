@@ -17,6 +17,7 @@ permalink: pretty
 # Build scripts, not pages.
 exclude:
   - bin
+  - 2026-11-13-seo.md
 
 theme: jekyll-vitepress-theme
 
