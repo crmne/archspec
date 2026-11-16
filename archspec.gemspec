@@ -36,7 +36,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'prism', '~> 2.0'
   spec.add_dependency 'rubydex', '~> 0.4.0'
 
-  spec.add_development_dependency 'minitest', '>= 5.20', '< 6'
+  spec.add_development_dependency 'minitest', '>= 5.20', '< 7'
   spec.add_development_dependency 'activesupport', '>= 7.2', '< 9'
   spec.add_development_dependency 'activerecord', '>= 7.2', '< 9'
   spec.add_development_dependency 'rake', '>= 13.0'
