@@ -168,7 +168,7 @@ module ArchSpec
   end
 
   class Component
-    attr_reader :name, :files, :constants, :file_reasons, :constant_reasons
+    attr_reader :name, :files, :constants, :constant_occurrences, :file_reasons, :constant_reasons
 
     def initialize(name)
       @name = name.to_sym
@@ -208,6 +208,8 @@ module ArchSpec
 
     RESOLVED_ROOTS = %w[Object BasicObject].freeze
 
+    NO_COMPONENTS = Set[].freeze
+
     attr_reader :root, :files, :constants, :edges, :components, :analysis_diagnostics, :conditional_callbacks,
                 :fact_diagnostics
 
@@ -224,6 +226,12 @@ module ArchSpec
       @effective_definition_cache = {}
       @effective_method_cache = {}
       @method_exposures = {}
+      @owners_by_file = {}
+      @owners_by_constant = {}
+      @owners_by_occurrence = {}
+      @source_components_cache = {}.compare_by_identity
+      @target_components_cache = {}.compare_by_identity
+      @resolved_constant_cache = {}.compare_by_identity
     end
 
     def add_file(path:, parse_errors:, suppressions: [])
@@ -247,6 +255,7 @@ module ArchSpec
                                   namespace_only: namespace_only)
       constants << constant
       @constants_by_name[normalized] << constant
+      clear_edge_caches
       constant
     end
 
@@ -328,6 +337,7 @@ module ArchSpec
 
     def assign_components(component_specs)
       @components = {}
+      clear_edge_caches
 
       component_specs.each do |spec|
         component = Component.new(spec.name)
@@ -366,20 +376,21 @@ module ArchSpec
 
         @components[component.name] = component
       end
+
+      @owners_by_file = owners_by(&:files)
+      @owners_by_constant = owners_by(&:constants)
+      @owners_by_occurrence = owners_by(&:constant_occurrences)
     end
 
     def component_names_for_path(path)
-      components.values.each_with_object(Set.new) do |component, names|
-        names.add(component.name) if component.files.include?(path)
-      end
+      @owners_by_file.fetch(path, NO_COMPONENTS)
     end
 
     def component_names_for_constant(name, path: nil)
       normalized = normalize_constant(name)
+      return @owners_by_constant.fetch(normalized, NO_COMPONENTS) unless path
 
-      components.values.each_with_object(Set.new) do |component, names|
-        names.add(component.name) if component.includes_constant?(normalized, path: path)
-      end
+      @owners_by_occurrence.fetch([normalized, path], NO_COMPONENTS)
     end
 
     # The edge's source as prose: its constant when known, otherwise the
@@ -394,9 +405,11 @@ module ArchSpec
     # selectors stay precise when a file also defines unrelated constants;
     # top-level edges fall back to the file assignment.
     def source_components_for(edge)
-      return component_names_for_path(edge.from_path) unless edge.from_constant
-
-      component_names_for_constant(edge.from_constant, path: edge.from_path)
+      @source_components_cache[edge] ||= if edge.from_constant
+                                           component_names_for_constant(edge.from_constant, path: edge.from_path)
+                                         else
+                                           component_names_for_path(edge.from_path)
+                                         end
     end
 
     def dependency_edges
@@ -404,11 +417,13 @@ module ArchSpec
     end
 
     def target_components_for(edge)
-      return Set.new unless DEPENDENCY_EDGE_TYPES.include?(edge.type)
+      return NO_COMPONENTS unless DEPENDENCY_EDGE_TYPES.include?(edge.type)
 
-      resolved = resolve_edge_constant(edge)
-      constants_named(resolved).each_with_object(Set.new) do |constant, names|
-        names.merge(component_names_for_constant(resolved, path: constant.path))
+      @target_components_cache[edge] ||= begin
+        resolved = resolve_edge_constant(edge)
+        constants_named(resolved).each_with_object(Set.new) do |constant, names|
+          names.merge(component_names_for_constant(resolved, path: constant.path))
+        end.freeze
       end
     end
 
@@ -427,9 +442,12 @@ module ArchSpec
     # appeared. This matters for compact class declarations and superclass
     # expressions, where inferring scope from the finished class name is wrong.
     def resolve_edge_constant(edge)
-      return normalize_constant(edge.resolved_to) if edge.resolved_to
-
-      resolve_constant_reference(edge.to, edge.from_constant, lexical_nesting: edge.lexical_nesting)
+      @resolved_constant_cache[edge] ||= if edge.resolved_to
+                                           normalize_constant(edge.resolved_to)
+                                         else
+                                           resolve_constant_reference(edge.to, edge.from_constant,
+                                                                      lexical_nesting: edge.lexical_nesting)
+                                         end.freeze
     end
 
     # Every resolvable ancestor in Ruby lookup order, plus names whose
@@ -593,6 +611,21 @@ module ArchSpec
     end
 
     private
+
+    # An edge is immutable data (Edge#with makes a new one), so the caches key
+    # it by identity. What they hold depends only on the constants and the
+    # components, and is frozen because every caller gets the same object.
+    def clear_edge_caches
+      @source_components_cache.clear
+      @target_components_cache.clear
+      @resolved_constant_cache.clear
+    end
+
+    # The names of the components that own each member the block selects.
+    def owners_by
+      components.each_value.flat_map { |component| yield(component).map { |member| [member, component.name] } }
+                .group_by(&:first).transform_values { |pairs| pairs.to_set(&:last).freeze }
+    end
 
     def expose_method_definitions(definitions)
       definitions.map do |definition|
