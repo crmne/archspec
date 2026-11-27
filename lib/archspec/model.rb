@@ -223,6 +223,7 @@ module ArchSpec
       @fact_diagnostics = []
       @effective_definition_cache = {}
       @effective_method_cache = {}
+      @ancestor_cache = {}
       @method_exposures = {}
     end
 
@@ -247,6 +248,7 @@ module ArchSpec
                                   namespace_only: namespace_only)
       constants << constant
       @constants_by_name[normalized] << constant
+      clear_ancestor_caches
       constant
     end
 
@@ -321,9 +323,12 @@ module ArchSpec
       @method_exposures[name]
     end
 
+    # Ancestry feeds the method caches, so whatever changes a constant's
+    # mixins or superclass after a lookup clears both through this.
     def clear_method_caches
       @effective_definition_cache.clear
       @effective_method_cache.clear
+      clear_ancestor_caches
     end
 
     def assign_components(component_specs)
@@ -435,41 +440,14 @@ module ArchSpec
     # Every resolvable ancestor in Ruby lookup order, plus names whose
     # declarations are outside the analyzed source. The scope controls whether
     # mixins come from include/prepend or extend; superclass traversal applies
-    # to both sides.
+    # to both sides. A complete answer is kept until the constants or their
+    # ancestry change; a walk already under way is cut short by what it has
+    # visited, so its answers are not.
     def ancestor_names(name, scope: :instance, visited: Set.new)
       normalized = normalize_constant(name)
-      return [Set.new, Set.new] if visited.include?(normalized) || RESOLVED_ROOTS.include?(normalized)
+      return resolve_ancestors(normalized, scope, visited) unless visited.empty?
 
-      visited = visited.dup.add(normalized)
-      nodes = constants_named(normalized)
-      return [Set.new, Set[normalized]] if nodes.empty?
-
-      ancestors = Set.new
-      unresolved = Set.new
-      nodes.each do |node|
-        mixins = if scope == :class
-                   node.mixins[:singleton_prepend] | node.mixins[:extend]
-                 else
-                   node.mixins[:prepend] | node.mixins[:include]
-                 end
-        mixins.each do |ancestor|
-          resolved = resolve_constant_reference(ancestor, node.name, lexical_nesting: [node.name] + node.nesting)
-          ancestors.add(resolved)
-          nested, missing = ancestor_names(resolved, visited: visited)
-          ancestors.merge(nested)
-          unresolved.merge(missing)
-        end
-
-        next unless node.superclass
-
-        resolved = resolve_constant_reference(node.superclass, node.name, lexical_nesting: node.nesting)
-        ancestors.add(resolved)
-        nested, missing = ancestor_names(resolved, scope: scope, visited: visited)
-        ancestors.merge(nested)
-        unresolved.merge(missing)
-      end
-
-      [ancestors, unresolved]
+      @ancestor_cache[[normalized, scope]] ||= resolve_ancestors(normalized, scope, visited).each(&:freeze).freeze
     end
 
     def effective_instance_methods(name)
@@ -639,11 +617,56 @@ module ArchSpec
         @constants_by_name[constant.name].any? { |other| !other.namespace_only }
     end
 
+    def resolve_ancestors(normalized, scope, visited)
+      return [Set.new, Set.new] if visited.include?(normalized) || RESOLVED_ROOTS.include?(normalized)
+
+      visited = visited.dup.add(normalized)
+      nodes = constants_named(normalized)
+      return [Set.new, Set[normalized]] if nodes.empty?
+
+      ancestors = Set.new
+      unresolved = Set.new
+      nodes.each do |node|
+        mixins = if scope == :class
+                   node.mixins[:singleton_prepend] | node.mixins[:extend]
+                 else
+                   node.mixins[:prepend] | node.mixins[:include]
+                 end
+        mixins.each do |ancestor|
+          resolved = resolve_constant_reference(ancestor, node.name, lexical_nesting: [node.name] + node.nesting)
+          ancestors.add(resolved)
+          nested, missing = resolve_ancestors(resolved, :instance, visited)
+          ancestors.merge(nested)
+          unresolved.merge(missing)
+        end
+
+        next unless node.superclass
+
+        resolved = resolve_constant_reference(node.superclass, node.name, lexical_nesting: node.nesting)
+        ancestors.add(resolved)
+        nested, missing = resolve_ancestors(resolved, scope, visited)
+        ancestors.merge(nested)
+        unresolved.merge(missing)
+      end
+
+      [ancestors, unresolved]
+    end
+
+    def clear_ancestor_caches
+      @ancestor_cache.clear
+    end
+
+    # A pattern with nothing to expand names one file, which is in the graph
+    # or not; only a pattern with glob characters needs the directory walk.
     def each_matching_file(pattern)
       glob = File.absolute_path(pattern, root)
-      Dir.glob(glob).sort.each do |path|
-        expanded = File.expand_path(path)
-        yield expanded if files.key?(expanded)
+      if pattern.match?(/[*?\[{\\]/)
+        Dir.glob(glob).sort.each do |path|
+          expanded = File.expand_path(path)
+          yield expanded if files.key?(expanded)
+        end
+      elsif files.key?(glob)
+        yield glob
       end
     end
 
